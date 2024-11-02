@@ -1,22 +1,36 @@
 <?php
-@ini_set('display_errors', 0);
+@ini_set('display_errors', '0');
 
+// Установка типа по умолчанию, если не передан
+$type = $_GET['type'] ?? true;
 
-if (empty($_GET['type'])) $_GET['type'] = true;
+$host = $_GET['host'] ?? '';
+$user = $_GET['user'] ?? '';
+$pass = $_GET['pass'] ?? '';
+$base = $_GET['base'] ?? '';
 
-if ('base' === $_GET['type']) {
-	if (@mysql_connect($_GET['host'], $_GET['user'], $_GET['pass']) !== false
-	&& @mysql_select_db($_GET['base']) !== false) {
-		echo '<span style="color:#46B100">База найдена</span>';
-	} else {
-		echo '<span style="color:#FF0000">Не удалось найти базу</span>';
-	}
+// Проверка соединения с базой данных
+if ($type === 'base') {
+    $connection = @mysqli_connect($host, $user, $pass);
+
+    if ($connection && @mysqli_select_db($connection, $base)) {
+        echo '<span style="color:#46B100">База найдена</span>';
+    } else {
+        echo '<span style="color:#FF0000">Не удалось найти базу</span>';
+    }
+
+    // Закрытие соединения
+    @mysqli_close($connection);
 } else {
-	if (false === @mysql_connect($_GET['host'], $_GET['user'], $_GET['pass'])) {
-		echo '<span style="color:#FF0000">Не удалось подключиться</span>';
-	} else {
-		echo '<span style="color:#46B100">Подключились</span>';
-	}
-}
+    $connection = @mysqli_connect($host, $user, $pass);
 
+    if ($connection) {
+        echo '<span style="color:#46B100">Подключились</span>';
+    } else {
+        echo '<span style="color:#FF0000">Не удалось подключиться</span>';
+    }
+
+    // Закрытие соединения
+    @mysqli_close($connection);
+}
 ?>
