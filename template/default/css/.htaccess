@@ -1,1 +1,7 @@
+# Разрешаем доступ ко всем файлам по умолчанию
 Allow From All
+
+# Блокируем доступ к файлам определённых типов
+<FilesMatch "\.(htaccess|htpasswd|ini|log|sh)$">
+    Require all denied
+</FilesMatch>
