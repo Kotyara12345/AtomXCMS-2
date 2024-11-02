@@ -1,101 +1,93 @@
 <?php
-@ini_set('display_errors', 0);
+@ini_set('display_errors', '0');
 
+// Устанавливает права доступа к файлам и директориям
+function setChMod(string $path, int $mode = 0755, bool $recursive = true): bool {
+    clearstatcache();
+    $flag = true;
 
-//set chmod
-function setChMod($path, $mode = 0755, $recursive = true) {
-	clearstatcache();
-	$flag = true;
-	if (file_exists($path) && is_dir($path) && $recursive === true) {
-		$child = glob($path . '/*');
+    if (file_exists($path) && is_dir($path) && $recursive) {
+        $children = glob($path . '/*');
 
-		if (!empty($child)) {
-			//recursive
-			foreach ($child as $row) {
-				if ($row != '.' && $row != '..') {
-					if (!setChMod($row)) {
-						$flag = false;
-					}
-				}
-			}
-		}
-		if (!@chmod($path, $mode) || $flag === false) return false;
-		return true;
-	
-	} else if (file_exists($path)) {
-		if (@chmod($path, $mode)) return true;
-		return false;
-	}
+        if (!empty($children)) {
+            // Рекурсивный вызов
+            foreach ($children as $child) {
+                if ($child !== '.' && $child !== '..') {
+                    if (!setChMod($child, $mode, $recursive)) {
+                        $flag = false;
+                    }
+                }
+            }
+        }
+        if (!@chmod($path, $mode) || !$flag) {
+            return false;
+        }
+        return true;
+    } elseif (file_exists($path)) {
+        return @chmod($path, $mode);
+    }
+    
+    return false;
 }
 
+// Проверяет, доступен ли путь для записи
+function checkWritablePerms(string $path, bool $recursive = true): bool {
+    if (file_exists($path) && is_dir($path) && $recursive) {
+        $children = glob($path . '/*');
+        $flag = true;
 
-function checkWriteablePerms($path, $recursive = true) {
-	if (file_exists($path) && is_dir($path) && $recursive === true) {
-		$child = glob($path . '/*');
-
-		if (!empty($child)) {
-			//recursive
-			foreach ($child as $row) {
-				if ($row != '.' && $row != '..') {
-					if (!checkWriteablePerms($row)) {
-						$flag = false;
-					}
-				}
-			}
-		}
-		if (!@is_writeable($path) || $flag === false) return false;
-		return true;
-	} else {
-		if (@is_writeable($path)) return true;
-		return false;
-	}
+        if (!empty($children)) {
+            // Рекурсивный вызов
+            foreach ($children as $child) {
+                if ($child !== '.' && $child !== '..') {
+                    if (!checkWritablePerms($child, $recursive)) {
+                        $flag = false;
+                    }
+                }
+            }
+        }
+        if (!@is_writable($path) || !$flag) {
+            return false;
+        }
+        return true;
+    } else {
+        return @is_writable($path);
+    }
 }
 
 $out = '';
 $flag = true;
-if (!setChMod('../sys/cache/') && !checkWriteablePerms('../sys/cache/')) {
-	$out .= '<span style="color:#FF0000">/sys/cache/</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../sys/avatars/') && !checkWriteablePerms('../sys/avatars/')) {
-	$out .= '<span style="color:#FF0000">/sys/avatars/</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../sys/files/') && !checkWriteablePerms('../sys/files/')) {
-	$out .= '<span style="color:#FF0000">/sys/files/</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../sys/logs/') && !checkWriteablePerms('../sys/logs/')) {
-	$out .= '<span style="color:#FF0000">/sys/logs/</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../sys/tmp/') && !checkWriteablePerms('../sys/tmp/')) {
-	$out .= '<span style="color:#FF0000">/sys/tmp/</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../sys/settings/') && !checkWriteablePerms('../sys/settings/')) {
-	$out .= '<span style="color:#FF0000">/sys/settings/</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../template/') && !checkWriteablePerms('../template/')) {
-	$out .= '<span style="color:#FF0000">/template/</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../sitemap.xml') && !checkWriteablePerms('../sitemap.xml')) {
-	$out .= '<span style="color:#FF0000">/sitemap.xml</span> - Права выставлены не верно<br />';
-	$flag = false;
-}
-if (!setChMod('../sys/plugins/') && !checkWriteablePerms('../sys/plugins/')) {
-	$out .= '<span style="color:#FF0000">/sys/plugins/</span> - Права выставлены не верно<br />';
-	$flag = false;
+
+// Проверяем права для нужных директорий и файлов
+$pathsToCheck = [
+    '../sys/cache/',
+    '../sys/avatars/',
+    '../sys/files/',
+    '../sys/logs/',
+    '../sys/tmp/',
+    '../sys/settings/',
+    '../template/',
+    '../sitemap.xml',
+    '../sys/plugins/'
+];
+
+foreach ($pathsToCheck as $path) {
+    if (!setChMod($path) && !checkWritablePerms($path)) {
+        $out .= '<span style="color:#FF0000">' . h($path) . '</span> - Права выставлены не верно<br />';
+        $flag = false;
+    }
 }
 
 echo $out;
-if ($flag === false) {
-	echo '<span style="color:#E90E0E">Не удалось выставить права на все необходимые папки и файлы! Сделайте это в ручную.</span><br />';
+
+if (!$flag) {
+    echo '<span style="color:#E90E0E">Не удалось выставить права на все необходимые папки и файлы! Сделайте это в ручную.</span><br />';
 } else {
-	echo '<span style="color:#46B100">Права на все необходимые файлы установлены верно!</span><br />';
+    echo '<span style="color:#46B100">Права на все необходимые файлы установлены верно!</span><br />';
 }
 
-
+// Функция для экранирования вывода
+function h(string $str): string {
+    return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
+}
 ?>
