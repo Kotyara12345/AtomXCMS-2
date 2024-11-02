@@ -1,1 +1,43 @@
-<?php####################################################												#### Author:       Andrey Brykin (Drunya)         #### Version:      0.7                            #### Project:      CMS                            #### package       CMS AtomX                      #### subpackege    Admin Panel module             #### copyright     ©Andrey Brykin 2010-2011       ########################################################################################################												#### any partial or not partial extension         #### CMS AtomX,without the consent of the         #### author, is illegal                           ###################################################### Любое распространение                        #### CMS AtomX или ее частей,                     #### без согласия автора, является не законным    ####################################################include_once '../sys/boot.php';include_once ROOT . '/admin/inc/adm_boot.php';$template_standart  = glob(ROOT . '/template/' . Config::read('template') . '/css/*.css');$template_standart  = array_merge(glob(ROOT . '/template/' . Config::read('template') . '/html/*/*.html'), $template_standart);if (is_array($template_standart)) {    foreach ($template_standart as $file) {        if (file_exists($file . '.stand')) {            if (copy($file . '.stand', $file)) {                unlink($file . '.stand');            }        }    }}$_SESSION['message'] = __('The template is restored');redirect('/admin/default_dis.php');
+<?php
+##################################################
+##                                                ##
+## Author:       Andrey Brykin (Drunya)         ##
+## Version:      0.7                            ##
+## Project:      CMS                            ##
+## package       CMS AtomX                      ##
+## subpackage    Admin Panel module             ##
+## copyright     ©Andrey Brykin 2010-2011       ##
+##################################################
+
+##################################################
+##                                                ##
+## Любое частичное или полное расширение       ##
+## CMS AtomX без согласия автора является        ##
+## незаконным                                   ##
+##################################################
+## Any distribution of CMS AtomX or its parts   ##
+## without the author's consent is illegal       ##
+##################################################
+
+include_once '../sys/boot.php';
+include_once ROOT . '/admin/inc/adm_boot.php';
+
+$templateDir = ROOT . '/template/' . Config::read('template');
+$templateStandard = array_merge(
+    glob($templateDir . '/html/*/*.html'),
+    glob($templateDir . '/css/*.css')
+);
+
+if (is_array($templateStandard)) {
+    foreach ($templateStandard as $file) {
+        $standFile = $file . '.stand';
+        if (file_exists($standFile)) {
+            if (copy($standFile, $file)) {
+                unlink($standFile);
+            }
+        }
+    }
+}
+
+$_SESSION['message'] = __('Шаблон восстановлен');
+redirect('/admin/default_dis.php');
