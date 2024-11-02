@@ -6,10 +6,7 @@ VALUES (
     'if (!empty($modules)) {\r\n' .
     '    foreach ($modules as $module) {\r\n' .
     '        $module = basename($module);\r\n' .
-    '        $unuseable = array(\r\n' .
-    '            \'statistics\',\r\n' .
-    '            \'pages\',\r\n' .
-    '        );\r\n' .
+    '        $unuseable = [\'statistics\', \'pages\'];\r\n' .
     '        if (in_array($module, $unuseable)) continue;\r\n' .
     '        if (Config::read(\'active\', $module) == 1) {\r\n' .
     '            if ($module == \'chat\') {\r\n' .
