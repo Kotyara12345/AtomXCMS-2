@@ -3,33 +3,25 @@
 /**
  * Class AtmCustomTemplateFunctions
  *
- * Uses to define a custom template functions.
+ * Uses to define custom template functions.
  */
 class AtmCustomTemplateFunctions
 {
-    public static function get()
+    public static function get(): array
     {
-        $functions = array();
-
+        $functions = [];
 
         /**
-         * Example.
-         * It function will be available in a template files as "someFunctionName".
-         * You can use any kind & quantity of the params. In this example
-         * we used (string)$someParam, but it could be int, array or even object.
+         * Пример функции.
+         * Эта функция будет доступна в шаблонах под именем "someFunctionName".
+         * Можно использовать параметры любого типа и количества.
          *
-         * Usage example: {{ someFunctionName('string') }}.
+         * Пример использования: {{ someFunctionName('string') }}.
          *
-         *
-         * @param $someParam string
-         *
-         * $functions['someFunctionName'] = function($someParam)
-         * {
-         *    // Some code here ...
-         *    return $someParam;
-         * };
+         * @param string $someParam
+         * @return string
          */
-
+        $functions['someFunctionName'] = fn(string $someParam): string => strtoupper($someParam);
 
         return $functions;
     }
