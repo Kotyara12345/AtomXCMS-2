@@ -1,5 +1,5 @@
 <?php
-return array(
+return [
 	'News' 						=> 'Новости',
 	'Message' 					=> 'Сообщения',
 	'Send a message' 			=> 'Отправить сообщение',
@@ -337,8 +337,4 @@ return array(
 
 'The sequence number of the topics with which you want to connect this topic, see from page address topics. This room is located in the end of the address, after' => 'Порядковый номер темы с которой вы хотите соединить эту тему, узнать его можно из адреса страницы темы. Этот номер находится в конце адреса, после',
 	
-);
-
-
-
-
+];
