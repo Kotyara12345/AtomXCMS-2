@@ -5,97 +5,15 @@ sleep(1);
 $step = (isset($_GET['step'])) ? $_GET['step'] : '1';
 if (!in_array($step, array(1, 2, 3))) $step = 1;
 
-switch ($step) {
-	case 1:
-?>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<?php
-		break;
-	case 2:
-?>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<li></li>
-<?php
-		break;
-	case 3:
-?>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<li class="act"></li>
-<?php
-		break;
-	default:
-	
-		break;
+// Количество элементов для каждого шага
+$stepsCount = 25;
+
+// Генерация вывода
+$output = '';
+for ($i = 1; $i <= $stepsCount; $i++) {
+    $class = ($i <= $step * 6) ? 'act' : '';
+    $output .= "<li class=\"$class\"></li>\n";
 }
 
+echo $output;
 ?>
