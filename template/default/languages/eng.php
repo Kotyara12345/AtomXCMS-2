@@ -1,5 +1,5 @@
 <?php
-return array(
+return [
 	'News' 						=> 'News',
 	'Message' 					=> 'Message',
 	'Send a message' 			=> 'Send a message',
@@ -331,7 +331,7 @@ return array(
 
 'The sequence number of the topics with which you want to connect this topic, see from page address topics. This room is located in the end of the address, after' => 'The sequence number of the topics with which you want to connect this topic, see from page address topics. This room is located in the end of the address, after',
 	
-);
+];
 
 
 
