@@ -1,90 +1,106 @@
 {{ editor_body }}
 <script type="text/javascript">
-    $(function() {
-        var AtomX = window.AtomX || {};
-        AtomX.autocompletePastValue = '';
-        $('[list=findusers]').keyup(function() {
-            if ($('[list=findusers]').val().length > 2) {
-                if ($('[list=findusers]').val() != AtomX.autocompletePastValue) {
-                    AtomX.autocompletePastValue = $('[list=findusers]').val();
-                    $.get('/users/search_niks/?name='+$('[list=findusers]').val(), {}, function(data){
-                        if (data.length) {
-                            //var data = $.parseJSON(data);
-                            $('#findusers').html('');
-                            $(data).each(function(key, row){
-                                $('#findusers').html($('#findusers').html() + '<option value="' + row.name + '">');
-                            });
-                        }
+$(function() {
+    const AtomX = window.AtomX || {};
+    AtomX.autocompletePastValue = '';
+    
+    $('#toUser').on('keyup', function() {
+        const inputVal = $(this).val();
+        if (inputVal.length > 2 && inputVal !== AtomX.autocompletePastValue) {
+            AtomX.autocompletePastValue = inputVal;
+            $.get('/users/search_niks/?name=' + inputVal, function(data) {
+                $('#findusers').empty();
+                if (data.length) {
+                    data.forEach(row => {
+                        $('#findusers').append(`<option value="${row.name}">`);
                     });
                 }
-            } else {
-                $('#findusers').html('');
-            };
-        });
-        return;
+            });
+        } else {
+            $('#findusers').empty();
+        }
     });
+});
 </script>
-<div class="material">
-    <div class="mat-title">{{ 'User profile'|lang }} - {{ user.name }}</div>
-    <div class="mat-content">
-        <ul class="userslinks">
-            <li><a href="{{ www_root }}/users/info/{{ user.id }}">{{ 'Browse Profile'|lang }}</a></li>
-            {% if checkAccess(['users', 'edit_users']) %}
-            <li><a href="{{ www_root }}/users/edit_form_by_admin/{{ user.id }}">{{ 'Edit profile'|lang }}</a></li>
-            {% else %}
-                {% if checkAccess(['users', 'edit_mine']) %}
-                <li><a href="{{ www_root }}/users/edit_form/">{{ 'Edit profile'|lang }}</a></li>
-                {% endif %}
-            {% endif %}
-            <li><a href="{{ www_root }}/users/pm_send_form/{{ user.id }}">{{ 'Send PM'|lang }}</a></li>
-            <li class="active"><a href="{{ www_root }}/users/send_mail_form/{{ user.id }}">{{ 'Send e-mail'|lang }}</a></li>
 
-            {% if user.statistic %}
-            <li class="category"><a>{{ 'Publications'|lang }}</a></li>
-            <li class="submenu">
-                {% for stat in user.statistic %}
-                {% if stat.count %}
-                <a href="{{ stat.url }}">{{ stat.text }} ({{ stat.count }})</a>
+<div class="material">
+    <header class="mat-title">
+        <h2>{{ 'User profile'|lang }} - {{ user.name }}</h2>
+    </header>
+    <div class="mat-content">
+        <nav>
+            <ul class="userslinks">
+                <li><a href="{{ www_root }}/users/info/{{ user.id }}">{{ 'Browse Profile'|lang }}</a></li>
+                {% if checkAccess(['users', 'edit_users']) %}
+                    <li><a href="{{ www_root }}/users/edit_form_by_admin/{{ user.id }}">{{ 'Edit profile'|lang }}</a></li>
+                {% elseif checkAccess(['users', 'edit_mine']) %}
+                    <li><a href="{{ www_root }}/users/edit_form/">{{ 'Edit profile'|lang }}</a></li>
                 {% endif %}
-                {% endfor %}
-            </li>
-            {% endif %}
-        </ul>
+                <li><a href="{{ www_root }}/users/pm_send_form/{{ user.id }}">{{ 'Send PM'|lang }}</a></li>
+                <li class="active"><a href="{{ www_root }}/users/send_mail_form/{{ user.id }}">{{ 'Send e-mail'|lang }}</a></li>
+
+                {% if user.statistic %}
+                    <li class="category"><a>{{ 'Publications'|lang }}</a></li>
+                    <li class="submenu">
+                        {% for stat in user.statistic %}
+                            {% if stat.count %}
+                                <a href="{{ stat.url }}">{{ stat.text }} ({{ stat.count }})</a>
+                            {% endif %}
+                        {% endfor %}
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+
         <div class="userinfo">
             <div class="upuserinfo">
-                <div class="profileavatar"><img class="avatar"  title="{{ user.name }}" src="{{ user.avatar }}"></div>
+                <div class="profileavatar">
+                    <img class="avatar" title="{{ user.name }}" src="{{ user.avatar }}" alt="Avatar of {{ user.name }}">
+                </div>
                 <div class="userinfocell">
                     <div class="nameuser">{{ user.name }}</div>
                     <div>{{ 'Registration'|lang }}: {{ user.puttime }}</div>
-                    <div class="lastrun">{% if CheckUserOnline(user.id) %}<img src="{{ template_path }}/img/online.png" title="online" alt="online">{% else %}{{ 'Recent activity'|lang }}: {{ user.last_visit }}{% endif %}</div>
-                    <div class="shkalakrut"><img border="0" src="{{ template_path }}/img/{{ getUserRatingImg(user.posts) }}" alt="" /></div>
+                    <div class="lastrun">
+                        {% if CheckUserOnline(user.id) %}
+                            <img src="{{ template_path }}/img/online.png" title="online" alt="User is online">
+                        {% else %}
+                            {{ 'Recent activity'|lang }}: {{ user.last_visit }}
+                        {% endif %}
+                    </div>
+                    <div class="shkalakrut">
+                        <img src="{{ template_path }}/img/{{ getUserRatingImg(user.posts) }}" alt="User rating image">
+                    </div>
                 </div>
-                {% if user.rating %}
-                {% if user.rating >= 1 %}
-                <div class="userReputation" style="background-color: #780;"><div class="Rep-number">{{ user.rating }}</div><div>{{ 'Positive'|lang }}</div></div>
-                {% else %}
-                <div class="userReputation" style="background-color: #C54C4C;"><div class="Rep-number">{{ user.rating }}</div><div>{{ 'Negative'|lang }}</div></div>
-                {% endif %}
-                {% else %}
-                <div class="userReputation" style="background-color: #999;"><div class="Rep-number">{{ user.rating }}</div><div>{{ 'Neutral'|lang }}</div></div>
-                {% endif %}
+
+                <div class="userReputation" style="background-color: {% if user.rating >= 1 %} #780 {% elseif user.rating < 1 %} #C54C4C {% else %} #999 {% endif %};">
+                    <div class="Rep-number">{{ user.rating }}</div>
+                    <div>
+                        {% if user.rating >= 1 %}
+                            {{ 'Positive'|lang }}
+                        {% elseif user.rating < 1 %}
+                            {{ 'Negative'|lang }}
+                        {% else %}
+                            {{ 'Neutral'|lang }}
+                        {% endif %}
+                    </div>
+                </div>
             </div>
+
             <div class="bottomuserinfo">
                 <div class="head">{{ 'Sending a letter in the mail'|lang }}: {{ context.to_user }}</div>
                 <form name="sendForm" id="sendForm" action="{{ context.action }}" method="POST" enctype="multipart/form-data" onsubmit="return checkForm(this)">
                     {{ context.errors }}
                     <ul class="spisok-all">
                         <li>
-                            <span class="siu_title"><strong><font color="red">*</font> {{ 'Who'|lang }}:</strong>{{ 'Attention in the form you can search by name'|lang }}</span>
-                              <span class="siu_data">
+                            <span class="siu_title"><strong><font color="red">*</font> {{ 'Who'|lang }}:</strong> {{ 'Attention in the form you can search by name'|lang }}</span>
+                            <span class="siu_data">
                                 <input type="text" name="toUser" id="toUser" maxlength="30" value="{{ context.to_user }}" list="findusers" />
                                 <datalist id="findusers"></datalist>
-                              </span>
+                            </span>
                         </li>
                         <li>
                             <span class="siu_title"><strong><font color="red">*</font> {{ 'Message header'|lang }}:</strong></span>
-                              <span class="siu_data"><input type="text" name="subject" maxlength="60" value="{{ context.subject }}" />
-                              </span>
+                            <span class="siu_data"><input type="text" name="subject" maxlength="60" value="{{ context.subject }}" /></span>
                         </li>
                         <li>
                             <textarea class="text-area" {{ editor_text }} name="message">{{ context.message }}</textarea>
