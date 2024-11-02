@@ -1,5 +1,7 @@
+# Запрещаем доступ ко всем файлам по умолчанию
 Deny From All
-<FilesMatch "\.([Pp][Hh][Pp]|[Cc][Gg][Ii]|[Pp][Ll]|[Pp][Hh][Tt][Mm][Ll])\.?">
-Order allow,deny
-Deny From All
+
+# Разрешаем доступ к файлам, соответствующим указанным расширениям
+<FilesMatch "\.([Pp][Hh][Pp]|[Cc][Gg][Ii]|[Pp][Ll]|[Pp][Hh][Tt][Mm][Ll])$">
+    Require all denied
 </FilesMatch>
