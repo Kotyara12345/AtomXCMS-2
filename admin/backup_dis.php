@@ -1,1 +1,49 @@
-<?php/*-----------------------------------------------\| 												 || @Author:       Andrey Brykin (Drunya)          || @Email:        drunyacoder@gmail.com           || @Site:         http://atomx.net                || @Version:      1.2                             || @Project:      CMS                             || @package       CMS AtomX                       || @subpackege    Admin Panel module              || @copyright     ©Andrey Brykin 2010-2013        |\-----------------------------------------------*//*-----------------------------------------------\| 												 ||  any partial or not partial extension          ||  CMS AtomX,without the consent of the          ||  author, is illegal                            ||------------------------------------------------||  Любое распространение                         ||  CMS AtomX или ее частей,                      ||  без согласия автора, является не законным     |\-----------------------------------------------*/include_once '../sys/boot.php';include_once ROOT . '/admin/inc/adm_boot.php';$pageTitle = '';$pageNav = '';$pageNavr = '';include_once ROOT . '/admin/template/header.php';$template_standart  = glob(ROOT . '/template/' . Config::read('template') . '/css/*.stand');$template_standart  = array_merge(glob(ROOT . '/template/' . Config::read('template') . '/html/*/*.stand'), $template_standart);if (is_array($template_standart)) {	foreach ($template_standart as $file) {		unlink($file);	}}$_SESSION['message'] = __('Backup complete');redirect('/admin');include_once 'template/footer.php'; ?>
+<?php
+declare(strict_types=1);
+
+/**
+ * @author    Andrey Brykin (Drunya)
+ * @email     drunyacoder@gmail.com
+ * @site      http://atomx.net
+ * @version   1.2
+ * @project   CMS AtomX
+ * @package   Admin Panel Module
+ * @copyright ©Andrey Brykin 2010-2013
+ *
+ * Любое распространение CMS AtomX или ее частей
+ * без согласия автора является незаконным.
+ */
+
+require_once '../sys/boot.php';
+require_once ROOT . '/admin/inc/adm_boot.php';
+
+// Установка заголовков страницы
+$pageTitle = '';
+$pageNav = '';
+$pageNavr = '';
+
+// Подключение шапки
+include_once ROOT . '/admin/template/header.php';
+
+// Удаление стандартных файлов шаблона
+$templateStandartFiles = array_merge(
+    glob(ROOT . '/template/' . Config::read('template') . '/css/*.stand'),
+    glob(ROOT . '/template/' . Config::read('template') . '/html/*/*.stand')
+);
+
+if (is_array($templateStandartFiles)) {
+    foreach ($templateStandartFiles as $file) {
+        if (is_file($file)) {
+            unlink($file);
+        }
+    }
+}
+
+// Установка сообщения об успешном завершении
+$_SESSION['message'] = __('Backup complete');
+
+// Перенаправление на главную страницу админки
+redirect('/admin');
+
+// Подключение подвала
+include_once 'template/footer.php';
