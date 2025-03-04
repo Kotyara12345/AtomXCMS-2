@@ -1,6 +1,9 @@
 <?php
+
+declare(strict_types=1);
+
 ##################################################
-##												##
+##                                              ##
 ## @Author:       Andrey Brykin (Drunya)        ##
 ## @Version:      1.3                           ##
 ## @Project:      CMS                           ##
@@ -10,11 +13,10 @@
 ## @Last mod.     2014/01/10                    ##
 ##################################################
 
-
 ##################################################
-##												##
-## any partial or not partial extension         ##
-## CMS AtomX,without the consent of the         ##
+##                                              ##
+## Any partial or not partial extension         ##
+## CMS AtomX, without the consent of the        ##
 ## author, is illegal                           ##
 ##################################################
 ## Любое распространение                        ##
@@ -22,200 +24,170 @@
 ## без согласия автора, является не законным    ##
 ##################################################
 
-
 header('Content-Type: text/html; charset=utf-8');
-if (!isInstall()) redirect('/install');
 
+if (!isInstall()) {
+    redirect('/install');
+}
 
-
-
-$FpsDB = $Register['DB']; //TODO
+$FpsDB = $Register['DB']; // TODO: Refactor to use dependency injection
 $ACL = $Register['ACL'];
 $_SESSION['lang'] = Config::read('language');
 
-/*
-pr(time());
-pr($_SESSION['adm_panel_authorize']);
-die();
-*/
-
-
-if (ADM_REFER_PROTECTED == 1) {
-	$script_name = (!empty($_SERVER['REQUEST_URI'])) ? $_SERVER['REQUEST_URI'] : '';
-	$script_name = strrchr($script_name, '/');
-	if ($script_name != '/index.php') {
-		$referer = (!empty($_SERVER['HTTP_REFERER'])) ? $_SERVER['HTTP_REFERER'] : '';
-		preg_match('#^http://([^/]+)#', $referer, $match);
-		if (empty($match[1]) || $match[1] != $_SERVER['SERVER_NAME'])
-			redirect('/admin/index.php');
-	}
+// Referer protection
+if (ADM_REFER_PROTECTED === 1) {
+    $script_name = $_SERVER['REQUEST_URI'] ?? '';
+    $script_name = strrchr($script_name, '/');
+    if ($script_name !== '/index.php') {
+        $referer = $_SERVER['HTTP_REFERER'] ?? '';
+        preg_match('#^https?://([^/]+)#', $referer, $match);
+        if (empty($match[1]) || $match[1] !== $_SERVER['SERVER_NAME']) {
+            redirect('/admin/index.php');
+        }
+    }
 }
 
-
-///if (empty($_SESSION['user'])) redirect('/');
+// Authorization check
 if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize'] < time() || empty($_SESSION['user'])) {
-	if (isset($_POST['send']) && isset($_POST['login']) && isset($_POST['passwd'])) {
-		$errors = '';
-		$login = strtolower(trim($_POST['login']));
-		$pass = trim($_POST['passwd']);
-		
-		if (empty($login)) $errors .= '<li>Заполните поле "Логин"</li>';
-		if (empty($pass)) $errors .= '<li>Заполните поле "Пароль"</li>';
-		
+    if (isset($_POST['send'], $_POST['login'], $_POST['passwd'])) {
+        $errors = [];
+        $login = strtolower(trim($_POST['login']));
+        $pass = trim($_POST['passwd']);
 
-		if (empty($errors)) {
-			
-			$user = $FpsDB->select('users', DB_FIRST, array('cond' => array('name' => $login, 'passw' => md5($pass))));
-			if (!count($user)) {
-				$errors .= '<li>Не верный Пароль или Логин</li>';
-			} else {
-				//turn access
-				$ACL->turn(array('panel', 'entry'), true, $user[0]['status']);
-			}
-			
-			if (empty($errors)) {
-				$_SESSION['user'] = $user[0];
-				$_SESSION['adm_panel_authorize'] = (time() + Config::read('session_time', 'secure'));
-				redirect('/admin/');
-			}
-		}
-	}
+        if (empty($login)) {
+            $errors[] = 'Заполните поле "Логин"';
+        }
+        if (empty($pass)) {
+            $errors[] = 'Заполните поле "Пароль"';
+        }
 
+        if (empty($errors)) {
+            $user = $FpsDB->select('users', DB_FIRST, ['cond' => ['name' => $login, 'passw' => md5($pass)]]);
+            if (empty($user)) {
+                $errors[] = 'Неверный пароль или логин';
+            } else {
+                // Grant access
+                $ACL->turn(['panel', 'entry'], true, $user[0]['status']);
+            }
+
+            if (empty($errors)) {
+                $_SESSION['user'] = $user[0];
+                $_SESSION['adm_panel_authorize'] = time() + Config::read('session_time', 'secure');
+                redirect('/admin/');
+            }
+        }
+    }
 
     $pageTitle = 'Авторизация в панели Администрирования';
     $pageNav = '';
     $pageNavr = '';
-
-
 ?>
 
-
-
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-	<title>AtomX Admin Panel Authorization</title>
-	<meta name="description" content="" />
-	<meta name="keywords" content="" />
-	<meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
-	<link rel="StyleSheet" type="text/css" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css" />
-	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
-	<script type="text/javascript">
-	</script>
+    <meta charset="UTF-8">
+    <title>AtomX Admin Panel Authorization</title>
+    <meta name="description" content="">
+    <meta name="keywords" content="">
+    <link rel="stylesheet" type="text/css" href="<?= WWW_ROOT ?>/admin/template/css/style.css">
+    <script src="<?= WWW_ROOT ?>/sys/js/jquery.js"></script>
+    <script>
+        $(document).ready(function() {
+            const shmask = $('.shadow-mask');
+            if (shmask.length) {
+                const bodyWidth = $('body').css('width');
+                let lpos = (parseInt(bodyWidth) - 900) / 2;
+                if (lpos < 1) lpos = 0;
+
+                const l = lpos + (18 - (lpos % 18)) + 51;
+                shmask.css('left', l);
+            }
+        });
+    </script>
 </head>
 <body>
-	<script>
-	$(document).ready(function(){
-		var shmask = $('.shadow-mask');
-		if (typeof shmask != 'undefined') {
-		
-			var body = $('body').css('width');
-			var lpos = (parseInt(body) - 900) / 2;
-			if (lpos < 1) lpos = 0;
-			
-			var l = (lpos % 18);
-			l = lpos + (18 - l) + 51;
-			shmask.css({'left': l});
-			
-			/*
-			var t = (parseInt(shmask.css('top')) % 10);
-			t = parseInt(shmask.css('top')) + t;
-			shmask.css({'top': t});
-			*/
-		}
-	});
-	</script>
-	<div id="login-wrapper">
-		<div class="shadow-mask"></div>
-		<div class="form">
-			<div class="title">Авторизация</div>
-			<form method="POST" action="" >
-				<div class="items">
-					<?php 
-					if (!empty($errors)) {
-						echo '<ul class="error">' . $errors . '</ul>';
-						unset($errors);
-					}
-					?>
-					<div class="item"><span>Логин</span><input name="login" type="text" /></div>
-					<div class="item"><span>Пароль</span><input name="passwd" type="password" /></div>
-				</div>
-				<div class="submit"><input type="submit" name="send" value="" /></div>
-			</form>
-		</div>
-	</div>
+    <div id="login-wrapper">
+        <div class="shadow-mask"></div>
+        <div class="form">
+            <div class="title">Авторизация</div>
+            <form method="POST" action="">
+                <div class="items">
+                    <?php if (!empty($errors)): ?>
+                        <ul class="error">
+                            <?php foreach ($errors as $error): ?>
+                                <li><?= htmlspecialchars($error) ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                    <div class="item">
+                        <span>Логин</span>
+                        <input name="login" type="text">
+                    </div>
+                    <div class="item">
+                        <span>Пароль</span>
+                        <input name="passwd" type="password">
+                    </div>
+                </div>
+                <div class="submit">
+                    <input type="submit" name="send" value="">
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 </html>
 
+<?php
+    exit;
+} elseif (!empty($_SESSION['adm_panel_authorize'])) {
+    $_SESSION['adm_panel_authorize'] = time() + Config::read('session_time', 'secure');
 
+    if (!empty($ACL)) {
+        $ACL = $Register['ACL'];
+    }
 
+    if ($ACL->turn(['panel', 'restricted_access'], false)) {
+        $url = preg_replace('#^.*/([^/]+)\.\w{2,5}$#i', "$1", $_SERVER['SCRIPT_NAME']);
 
-
-
-<?php	
-	//include_once 'template/footer.php';
-	die();
-
-	
-	
-} else if (!empty($_SESSION['adm_panel_authorize'])) {
-	$_SESSION['adm_panel_authorize'] = (time() + Config::read('session_time', 'secure'));
-	
-	
-	if (!empty($ACL)) $ACL = $Register['ACL'];
-	
-	if ($ACL->turn(array('panel', 'restricted_access'), false)) {
-
-		$url = preg_replace('#^.*/([^/]+)\.\w{2,5}$#i', "$1", $_SERVER['SCRIPT_NAME']);
-		
-		if (!empty($url) && $url != 'index' && $url != 'exit') {
-			if (!$ACL->turn(array('panel', 'restricted_access_' . $url), false)) {
-				$_SESSION['message'] = __('Permission denied');
-				redirect('/admin/');
-			}
-		}
-	}
+        if (!empty($url) && $url !== 'index' && $url !== 'exit') {
+            if (!$ACL->turn(['panel', 'restricted_access_' . $url], false)) {
+                $_SESSION['message'] = __('Permission denied');
+                redirect('/admin/');
+            }
+        }
+    }
 }
 
-
-/**
- * Install new a modules.
- * If you has put a new module files to modules directory,
- * you can find that module in the left-side menu.
- * Choose "install" in the module dropdown menu to start install process.
- *
- * During the installation process a some files and settings will be import
- * to the Atom.
- * For more information see FpsModuleInstaller class.
- */
+// Module installation
 if (!empty($_GET['install'])) {
-	$instMod = (string)$_GET['install'];
-	if (!empty($instMod) && preg_match('#^[a-z]+$#i', $instMod)) {
-		$ModulesInstaller = new FpsModuleInstaller();
-		try {
+    $instMod = (string)$_GET['install'];
+    if (!empty($instMod) && preg_match('#^[a-z]+$#i', $instMod)) {
+        $ModulesInstaller = new FpsModuleInstaller();
+        try {
             $ModulesInstaller->installModule($instMod);
             $_SESSION['message'] = sprintf(__('Module "%s" has been installed'), $instMod);
         } catch (Exception $e) {
             $_SESSION['errors'] = sprintf(__('Module "%s" has been not installed (Reason: %s)'), $instMod, $e->getMessage());
         }
         redirect('/admin/');
-	}
+    }
 }
 
-
-
-
-
-
-function getAdmFrontMenuParams()
+/**
+ * Get admin front menu parameters.
+ *
+ * @return array
+ */
+function getAdmFrontMenuParams(): array
 {
-    $out = array();
+    $out = [];
     $modules = glob(ROOT . '/modules/*', GLOB_ONLYDIR);
-    if (count($modules)) {
-        foreach ($modules as $key => $modPath) {
+
+    if (!empty($modules)) {
+        foreach ($modules as $modPath) {
             if (file_exists($modPath . '/info.php')) {
-                include($modPath . '/info.php');
+                include $modPath . '/info.php';
                 if (isset($menuInfo)) {
                     $mod = basename($modPath);
                     $out[$mod] = $menuInfo;
@@ -223,7 +195,6 @@ function getAdmFrontMenuParams()
             }
         }
     }
+
     return $out;
 }
-
-?>
