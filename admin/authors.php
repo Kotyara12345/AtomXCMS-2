@@ -1,110 +1,76 @@
 <?php
-/*-----------------------------------------------\
-| 												 |
-| @Author:       Andrey Brykin (Drunya)          |
-| @Email:        drunyacoder@gmail.com           |
-| @Site:         http://atomx.net                |
-| @Version:      1.5                             |
-| @Project:      CMS                             |
-| @package       CMS AtomX                       |
-| @subpackege    Authors list (Admin Part)       |
-| @copyright     ©Andrey Brykin 2010-2014        |
-\-----------------------------------------------*/
+declare(strict_types=1);
 
-/*-----------------------------------------------\
-| 												 |
-|  any partial or not partial extension          |
-|  CMS AtomX,without the consent of the          |
-|  author, is illegal                            |
-|------------------------------------------------|
-|  Любое распространение                         |
-|  CMS AtomX или ее частей,                      |
-|  без согласия автора, является не законным     |
-\-----------------------------------------------*/
+/**
+ * @author    Andrey Brykin (Drunya)
+ * @email     drunyacoder@gmail.com
+ * @site      http://atomx.net
+ * @version   1.5
+ * @project   CMS AtomX
+ * @package   Authors List (Admin Part)
+ * @copyright ©Andrey Brykin 2010-2014
+ *
+ * Любое распространение CMS AtomX или ее частей
+ * без согласия автора является незаконным.
+ */
 
+require_once '../sys/boot.php';
+require_once ROOT . '/admin/inc/adm_boot.php';
 
-include_once '../sys/boot.php';
-include_once ROOT . '/admin/inc/adm_boot.php';
-
-
-
+// Установка заголовков страницы
 $pageTitle = $page_title = __('Dev. Team');
 $pageNav = $page_title;
-$pageNavr = '<span style="float:right;"><a href="javascript://" onClick="showHelpWin(\'Арбайтен! Арбайтен! Арбайтен!\', \'А никто и не мешает\')">' . __('I want to be here') . '</a></span>';
+$pageNavr = '<span style="float:right;">
+                <a href="javascript://" onClick="showHelpWin(\'Арбайтен! Арбайтен! Арбайтен!\', \'А никто и не мешает\')">
+                    ' . __('I want to be here') . '
+                </a>
+             </span>';
+
+// Подключение шапки
 include_once ROOT . '/admin/template/header.php';
 ?>
 
-
-	
 <div class="list">
-	<div class="title">Authors</div>
-	<div class="level1">
-		<div class="items">
-			<div class="setting-item">
-				<div class="center">
-					<h3>Idea by</h3>
-					Andrey Brykin (Drunya)
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="center">
-					<h3>Programmers</h3>
-					Andrey Brykin (Drunya)<br />
-					Danilov Alexandr (modos189)
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="center">
-					<h3>Testers and audit</h3>
-					Andrey Konyaev (Ater)<br />
-					Laguta Dmitry (ARMI)<br />
-					Roman Maximov (r00t_san)<br />
-					Alexandr Verenik (Wasja)<br />
-					Danilov Alexandr (modos189)
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="center">
-					<h3>Marketing</h3>
-					Andrey Brykin (Drunya)<br />
-					Andrey Konyaev (Ater)
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="center">
-					<h3>Design and Templates</h3>
-					Lapin Boris (MrBoriska)<br />
-					Andrey Brykin (Drunya)<br />
-					Alexandr Bognar (Krevedko)<br />
-					Roman Maximov (r00t_san)<br />
-					Laguta Dmitry (ARMI)
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="center">
-					<h3>Specialists by Security</h3>
-					Roman Maximov (r00t_san)
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="center">
-					<h3>Additional Software</h3>
-					Andrey Brykin (Drunya)<br />
-					Alexandr Verenik (Wasja)
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="center">
-					<h3>Translation</h3>
-					Victor Sproot (Sproot)<br />
-					Andrey Brykin (Drunya)
-				</div>
-			</div>
-		</div>
-	</div>
+    <div class="title"><?= __('Authors') ?></div>
+    <div class="level1">
+        <div class="items">
+            <?php
+            $authors = [
+                'Idea by' => ['Andrey Brykin (Drunya)'],
+                'Programmers' => ['Andrey Brykin (Drunya)', 'Danilov Alexandr (modos189)'],
+                'Testers and audit' => [
+                    'Andrey Konyaev (Ater)',
+                    'Laguta Dmitry (ARMI)',
+                    'Roman Maximov (r00t_san)',
+                    'Alexandr Verenik (Wasja)',
+                    'Danilov Alexandr (modos189)',
+                ],
+                'Marketing' => ['Andrey Brykin (Drunya)', 'Andrey Konyaev (Ater)'],
+                'Design and Templates' => [
+                    'Lapin Boris (MrBoriska)',
+                    'Andrey Brykin (Drunya)',
+                    'Alexandr Bognar (Krevedko)',
+                    'Roman Maximov (r00t_san)',
+                    'Laguta Dmitry (ARMI)',
+                ],
+                'Specialists by Security' => ['Roman Maximov (r00t_san)'],
+                'Additional Software' => ['Andrey Brykin (Drunya)', 'Alexandr Verenik (Wasja)'],
+                'Translation' => ['Victor Sproot (Sproot)', 'Andrey Brykin (Drunya)'],
+            ];
+
+            foreach ($authors as $role => $names) {
+                echo '<div class="setting-item">
+                        <div class="center">
+                            <h3>' . __($role) . '</h3>
+                            ' . implode('<br />', $names) . '
+                        </div>
+                      </div>';
+            }
+            ?>
+        </div>
+    </div>
 </div>
 
-
 <?php
+// Подключение подвала
 include_once 'template/footer.php';
-?>
