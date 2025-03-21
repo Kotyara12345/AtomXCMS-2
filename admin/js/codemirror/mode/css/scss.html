@@ -1,17 +1,24 @@
 <!doctype html>
-<html>
-  <head>
+<html lang="ru">
+<head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CodeMirror: SCSS mode</title>
     <link rel="stylesheet" href="../../lib/codemirror.css">
-    <script src="../../lib/codemirror.js"></script>
-    <script src="css.js"></script>
-    <style>.CodeMirror {background: #f8f8f8;}</style>
     <link rel="stylesheet" href="../../doc/docs.css">
-  </head>
-  <body>
-    <h1>CodeMirror: SCSS mode</h1>
-    <form><textarea id="code" name="code">
+    <style>
+        .CodeMirror {
+            background: #f8f8f8;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>CodeMirror: SCSS mode</h1>
+    </header>
+    <main>
+        <form>
+            <textarea id="code" name="code" aria-label="SCSS code editor">
 /* Some example SCSS */
 
 @import "compass/css3";
@@ -25,8 +32,7 @@ $margin: 16px;
     background-color: black;
   }
   border-color: $blue;
-  color:
-    darken($blue, 9%);
+  color: darken($blue, 9%);
 }
 
 .border {
@@ -72,13 +78,15 @@ li {
   @include flow-into(target);
   border: 10px solid green;
   margin: 20px;
-  width: 200px; }
+  width: 200px;
+}
 
 .new-container {
   @include flow-from(target);
   border: 10px solid red;
   margin: 20px;
-  width: 200px; }
+  width: 200px;
+}
 
 body {
   margin: 0;
@@ -128,18 +136,24 @@ code {
   font-size: 80%;
   color: #418A8A;
 }
-</textarea></form>
+            </textarea>
+        </form>
+        <p><strong>MIME types defined:</strong> <code>text/scss</code>.</p>
+        <p><strong>Parsing/Highlighting Tests:</strong> 
+            <a href="../../test/index.html#scss_*">normal</a>,  
+            <a href="../../test/index.html#verbose,scss_*">verbose</a>.
+        </p>
+    </main>
+    <script src="../../lib/codemirror.js" defer></script>
+    <script src="css.js" defer></script>
     <script>
-      var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
-        lineNumbers: true,
-        matchBrackets: true,
-        mode: "text/x-scss"
-      });
+        document.addEventListener("DOMContentLoaded", function() {
+            var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+                lineNumbers: true,
+                matchBrackets: true,
+                mode: "text/x-scss"
+            });
+        });
     </script>
-
-    <p><strong>MIME types defined:</strong> <code>text/scss</code>.</p>
-
-    <p><strong>Parsing/Highlighting Tests:</strong> <a href="../../test/index.html#scss_*">normal</a>,  <a href="../../test/index.html#verbose,scss_*">verbose</a>.</p>
-
-  </body>
+</body>
 </html>
