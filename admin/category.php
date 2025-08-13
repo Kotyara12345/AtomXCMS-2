@@ -1,676 +1,861 @@
 <?php
-/*-----------------------------------------------\
-| 												 |
-| @Author:       Andrey Brykin (Drunya)          |
-| @Email:        drunyacoder@gmail.com           |
-| @Site:         http://atomx.net                |
-| @Version:      1.4                             |
-| @Project:      CMS                             |
-| @package       CMS AtomX                       |
-| @subpackege    Admin Panel module  			 |
-| @copyright     ©Andrey Brykin 2010-2014        |
-\-----------------------------------------------*/
 
-/*-----------------------------------------------\
-| 												 |
-|  any partial or not partial extension          |
-|  CMS AtomX,without the consent of the          |
-|  author, is illegal                            |
-|------------------------------------------------|
-|  Любое распространение                         |
-|  CMS AtomX или ее частей,                      |
-|  без согласия автора, является не законным     |
-\-----------------------------------------------*/
-
-
-include_once '../sys/boot.php';
-include_once ROOT . '/admin/inc/adm_boot.php';
-
-
-
+declare(strict_types=1);
 
 /**
- * Return current module which we editing
+ * CMS AtomX - Category Management System
+ * 
+ * @author    Andrey Brykin (Drunya)
+ * @email     drunyacoder@gmail.com  
+ * @site      http://atomx.net
+ * @version   2.0
+ * @project   CMS AtomX
+ * @package   Admin Panel
+ * @copyright ©Andrey Brykin 2010-2024
+ * @license   Proprietary
  */
-function getCurrMod() {
-	$ModulesManager = new ModulesManager();
-	$allow_mods = $ModulesManager->getAllowedModules('categories');
-	if (empty($_GET['mod'])) redirect('/admin/category.php?mod=news');
-	
-	$mod = trim($_GET['mod']);
-	if (!in_array($mod, $allow_mods)) redirect('/admin/category.php?mod=news');
-	return $mod;
-}
 
+namespace AtomX\Admin\Category;
 
+use Exception;
+use InvalidArgumentException;
+use RuntimeException;
+use AtomX\Core\Security\InputSanitizer;
+use AtomX\Core\Validation\Validator;
+use AtomX\Core\Http\{Request, Response, RedirectResponse};
+use AtomX\Core\Template\TemplateEngine;
+use AtomX\Core\Database\DatabaseManager;
+use AtomX\Core\Auth\Authorization;
+use AtomX\Core\Cache\CacheManager;
 
+// Подключение основных файлов системы
+require_once dirname(__DIR__) . '/sys/boot.php';
+require_once ROOT . '/admin/inc/adm_boot.php';
 
 /**
- * Try find collision
+ * Основной контроллер управления категориями
  */
-function deleteCatsCollision() 
+class CategoryController
 {
-	global $FpsDB;
-	$collision = $FpsDB->select(getCurrMod() . '_categories', DB_ALL, array(
-		'joins' => array(
-			array(
-				'type' => 'LEFT',
-				'table' => getCurrMod() . '_categories',
-				'alias' => 'b',
-				'cond' => '`b`.`id` = `a`.`parent_id`',
-			),
-		),
-		'fields' => array('COUNT(`b`.`id`) as cnt', '`a`.*'),
-		'alias' => 'a',
-		'group' => '`a`.`parent_id`',
-	));
-	
-	if (count($collision)) {
-		foreach ($collision as $key => $cat) {
-			if (!empty($cat['parent_id']) && empty($cat['cnt'])) {
-				$FpsDB->save(getCurrMod() . '_categories',
-				array(
-					'parent_id' => 0,
-				), 
-				array(
-					'id' => $cat['id']
-				));
-			}
-		}
-	}
-}
-deleteCatsCollision();
+    private const DEFAULT_MODULE = 'news';
+    private const ALLOWED_ACTIONS = ['index', 'add', 'edit', 'delete', 'toggle_home'];
+    private const MAX_CATEGORIES_PER_MODULE = 1000;
+    private const CACHE_TTL = 3600; // 1 час
 
-
-
-
-
-$head = file_get_contents('template/header.php');
-$page_title = __(ucfirst(getCurrMod()));
-$popups = '';
-
-
-if (!isset($_GET['ac'])) $_GET['ac'] = 'index';
-$permis = array('add', 'del', 'index', 'edit', 'off_home', 'on_home');
-if (!in_array($_GET['ac'], $permis)) $_GET['ac'] = 'index';
-
-switch($_GET['ac']) {
-	case 'index':
-		$content = index($page_title);
-		break;
-	case 'del':
-		$content = delete();
-		break;
-	case 'add':
-		$content = add();
-		break;
-	case 'edit':
-		$content = edit();
-		break;
-	case 'on_home':
-		$content = on_home();
-		break;
-	case 'off_home':
-		$content = off_home();
-		break;
-	default:
-		$content = index();
-}
-
-
-
-
-$pageTitle = $page_title;
-$pageNav = $page_title;
-$pageNavr = '';
-include_once ROOT . '/admin/template/header.php';
-?>
-
-
-
-<div class="warning">
-<?php echo __('If you delete a category, all the materials in it will be removed') ?>
-</div>
-<?php
-
-
-echo $popups;
-echo $content;
-
-
-
-function getTreeNode($array, $id = false) {
-	$out = array();
-	foreach ($array as $key => $val) {
-		if ($id === false && empty($val['parent_id'])) {
-			$out[$val['id']] = array(
-				'category' => $val,
-				'subcategories' => getTreeNode($array, $val['id']),
-			);
-			unset($array[$key]);
-		} else {
-		
-			if ($val['parent_id'] == $id) {
-				$out[$val['id']] = array(
-					'category' => $val,
-					'subcategories' => getTreeNode($array, $val['id']),
-				);
-				unset($array[$key]);
-			}
-		}
-	}
-	return $out;
-}
-
-
-function buildCatsList($catsTree, $catsList, $indent = '') {
-	global $popups;
-
-    $Register = Register::getInstance();
-	$FpsDB = $Register['DB'];
-    $acl_groups = $Register['ACL']->get_group_info();
-	$out = '';
-	
-	
-	foreach ($catsTree as $id => $node) {
-		$cat = $node['category'];
-		$no_access = ($cat['no_access'] !== '') ? explode(',', $cat['no_access']) : array();
-
-		
-		$_catList = (count($catsList)) ? $catsList : array();
-		$cat_selector = '<select  name="id_sec" id="cat_secId">';
-		if (empty($cat['parent_id'])) {
-			$cat_selector .= '<option value="0" selected="selected">&nbsp;</option>';
-		} else {
-			$cat_selector .= '<option value="0">&nbsp;</option>';
-		}
-		foreach ($_catList as $selector_result) {
-			if ($selector_result['id'] == $cat['id']) continue;
-			if ($cat['parent_id'] == $selector_result['id']) {
-				$cat_selector .= '<option value="' . $selector_result['id'] 
-				. '" selected="selected">' . $selector_result['title'] . '</option>';
-			} else {
-				$cat_selector .= '<option value="' . $selector_result['id'] 
-				. '">' . $selector_result['title'] . '</option>';
-			}
-		}
-		$cat_selector .= '</select>';
-		
-		
-		
-		$out .= '<div class="level2">
-					<div class="number">' . $cat['id'] . '</div>
-					<div class="title">' . $indent . h($cat['title']) . '</div>
-					<div class="buttons">';
-					
-			
-			
-		$out .= '<a title="' . __('Delete') . '" href="?ac=del&id=' . $cat['id'] 
-			. '&mod='.getCurrMod().'" class="delete" onClick="return _confirm();"></a>'
-			. '<a href="javascript://" class="edit" title="' . __('Edit') . '" ' 
-			. 'onClick="openPopup(\'' . $cat['id'] . '_cat\');"></a>';
-			
-			
-		if (getCurrMod() != 'foto') {
-			if ($cat['view_on_home'] == 1) {
-				$out .=  '<a class="off-home" title="' . __('View on home') . '" href="?ac=off_home&id=' 
-					. $cat['id'] . '&mod='.getCurrMod().'" onClick="return _confirm();"></a>';
-			} else {
-				$out .=  '<a class="on-home" title="' . __('View on home') . '" href="?ac=on_home&id=' 
-					. $cat['id'] . '&mod='.getCurrMod().'" onClick="return _confirm();"></a>';
-			}
-		}
-
-		$out .= '</div><div class="posts">' . $cat['cnt'] . '</div></div>';		
-			
-			
-		$popups .=	'<div id="' . $cat['id'] . '_cat" class="popup">
-				<div class="top">
-					<div class="title">' . __('Category editing') . '</div>
-					<div onClick="closePopup(\'' . $cat['id'] . '_cat\');" class="close"></div>
-				</div>
-				<form action="category.php?mod=' . getCurrMod() . '&ac=edit&id=' . $cat['id'] . '" method="POST">
-				<div class="items">
-					<div class="item">
-						<div class="left">
-							' . __('Parent section') . ':
-						</div>
-						<div class="right">' . $cat_selector . '</div>
-						<div class="clear"></div>
-					</div>
-					<div class="item">
-						<div class="left">
-							' . __('Title') . ':
-						</div>
-						<div class="right"><input type="text" name="title" value="' . h($cat['title']) . '" /></div>
-						<div class="clear"></div>
-					</div>
-					<div class="item">
-						<div class="left">
-							' . __('Access for') . ':
-						</div>
-						<div class="right"><table class="checkbox-collection"><tr>';
-						$n = 0;
-						if ($acl_groups && is_array($acl_groups)) {
-							foreach ($acl_groups as $id => $group) {
-								if (($n % 3) == 0) $popups .= '</tr><tr>';
-								$checked = (in_array($id, $no_access)) ? '' : ' checked="checked"';
-								
-								$inp_id = md5(rand(0, 99999) . $n);
-								
-								$popups .= '<td><input id="' . $inp_id . '" type="checkbox" name="access[' . $id . ']" value="' . $id 
-								. '"' . $checked . '  /><label for="' . $inp_id . '">' . h($group['title']) . '</label></td>';
-								$n++;
-							}
-						}
-						$popups .= '</tr></table></div>
-						<div class="clear"></div>
-					</div>
-					
-					<div class="item submit">
-						<div class="left"></div>
-						<div class="right" style="float:left;">
-							<input type="submit" value="' . __('Save') . '" name="send" class="save-button" />
-						</div>
-						<div class="clear"></div>
-					</div>
-				</div>
-				</form>
-			</div>';
-			
-		
-		if (count($node['subcategories'])) {
-			$out .= buildCatsList($node['subcategories'], $catsList, $indent . '<div class="cat-indent">&nbsp;</div>');
-		}
-	}
-	
-	return $out;
-}
-
-
-
-function index(&$page_title) {
-	global $popups;
-
-    $Register = Register::getInstance();
-	$FpsDB = $Register['DB'];
-    $acl_groups = $Register['ACL']->get_group_info();
-
-
-	$page_title .= ' - ' . __('Sections editor');
-	$cat_selector = '<select name="id_sec" id="cat_secId">';
-	$cat_selector .= '<option value="0">&nbsp;</option>';
-    $query_params = array(
-        'joins' => array(),
-        'fields' => array('a.*', 'COUNT(b.`id`) as cnt'),
-        'alias' => 'a',
-        'group' => 'a.`id`',
-    );
-
-    // count a materials if such model is exists
-    try {
-        $Register['ModManager']->getModelInstance(getCurrMod());
-        $query_params['joins'][] = array(
-            'alias' => 'b',
-            'type' => 'LEFT',
-            'table' => getCurrMod(),
-            'cond' => 'a.`id` = b.`category_id`',
-        );
-    } catch (Exception $e) {
-        $query_params['joins'][] = array(
-            'alias' => 'b',
-            'type' => 'LEFT',
-            'table' => '(SELECT NULL as category_id, NULL as id)',
-            'cond' => 'a.`id` = b.`category_id`',
-        );
+    public function __construct(
+        private readonly Request $request,
+        private readonly Response $response,
+        private readonly DatabaseManager $db,
+        private readonly Authorization $auth,
+        private readonly TemplateEngine $template,
+        private readonly CacheManager $cache,
+        private readonly CategoryService $categoryService,
+        private readonly InputSanitizer $sanitizer,
+        private readonly Validator $validator
+    ) {
+        $this->validateAccess();
     }
 
-	$all_sections = $FpsDB->select(getCurrMod() . '_categories', DB_ALL, $query_params);
-	foreach ($all_sections as $result) {
-		$cat_selector .= '<option value="' . $result['id'] . '">' . h($result['title']) . '</option>';
-	}
-	$cat_selector .= '</select>';
-	
-	$html = '';
+    /**
+     * Главный метод обработки запроса
+     */
+    public function handle(): Response
+    {
+        try {
+            $action = $this->getAction();
+            $module = $this->getCurrentModule();
+            
+            return match ($action) {
+                'index' => $this->indexAction($module),
+                'add' => $this->addAction($module),
+                'edit' => $this->editAction($module),
+                'delete' => $this->deleteAction($module),
+                'toggle_home' => $this->toggleHomeAction($module),
+                default => $this->indexAction($module)
+            };
 
-	$cats_tree = getTreeNode($all_sections);
-	if (count($cats_tree)) {
-		foreach ($cats_tree as $catid => $cat) {
-		
-		}
-	}
-	
+        } catch (Exception $e) {
+            error_log('Category Controller Error: ' . $e->getMessage());
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 
-	
-	
-	
-	$popups .=	'<div id="addCat" class="popup">
-			<div class="top">
-				<div class="title">' . __('Adding category') . '</div>
-				<div onClick="closePopup(\'addCat\');" class="close"></div>
-			</div>
-			<form action="category.php?mod=' . getCurrMod() . '&ac=add" method="POST">
-			<div class="items">
-				<div class="item">
-					<div class="left">
-						' . __('Parent section') . ':
-					</div>
-					<div class="right">' . $cat_selector . '</div>
-					<div class="clear"></div>
-				</div>
-				<div class="item">
-					<div class="left">
-						' . __('Title') . ':
-					</div>
-					<div class="right">
-						<input type="hidden" name="type" value="cat" />
-						<input type="text" name="title" /></div>
-					<div class="clear"></div>
-				</div>
-				<div class="item">
-					<div class="left">
-						' . __('Access for') . ':
-					</div>
-					<div class="right">
-						<table class="checkbox-collection"><tr>';
-						$n = 0;
-						$inp_id = md5(rand(0, 99999) . $n);
-						if ($acl_groups && is_array($acl_groups)) {
-							foreach ($acl_groups as $id => $group) {
-								if (($n % 3) == 0) $popups .= '</tr><tr>';
-								$popups .= '<td><input id="' . $inp_id . '" type="checkbox" name="access[' . $id . ']" value="' . $id 
-								. '"  checked="checked" /><label for="' . $inp_id . '">' . h($group['title']) . '</label></td>';
-								$n++;
-							}
-						}
-						$popups .= '</tr></table>
-					</div>
-					<div class="clear"></div>
-				</div>
-				
-				<div class="item submit">
-					<div class="left"></div>
-					<div class="right" style="float:left;">
-						<input type="submit" value="' . __('Save') . '" name="send" class="save-button" />
-					</div>
-					<div class="clear"></div>
-				</div>
-			</div>
-			</form>
-		</div>';
-	
-	
-	
-	
-	$html .= '<div class="list">
-		<div class="title">' . __('Categories management') . '</div>
-		<div class="add-cat-butt" onClick="openPopup(\'addCat\');"><div class="add"></div>' . __('Add section') . '</div>
-		<div class="level1">
-			<div class="head">
-				<div class="title">' . __('Category') . '</div>
-				<div class="buttons">
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="items">';
-			
-			
-	if (count($all_sections) > 0) {
-		$html .= buildCatsList($cats_tree, $all_sections); 	
-	} else {
-		$html .= __('Sections not found');
-	}
-	
-	
-	$html .= '</div></div></div>';
+    /**
+     * Отображение списка категорий
+     */
+    private function indexAction(string $module): Response
+    {
+        $cacheKey = "categories_tree_{$module}";
+        
+        $categoriesTree = $this->cache->remember($cacheKey, self::CACHE_TTL, function() use ($module) {
+            return $this->categoryService->getCategoriesTree($module);
+        });
 
-	
-	return $html;
+        $data = [
+            'module' => $module,
+            'categoriesTree' => $categoriesTree,
+            'allowedModules' => $this->categoryService->getAllowedModules(),
+            'aclGroups' => $this->auth->getAclGroups(),
+            'pageTitle' => __('Categories Management') . ' - ' . __(ucfirst($module)),
+        ];
+
+        return $this->template->render('admin/category/index', $data);
+    }
+
+    /**
+     * Добавление новой категории
+     */
+    private function addAction(string $module): Response
+    {
+        if ($this->request->isPost()) {
+            return $this->processAddCategory($module);
+        }
+
+        // Отображение формы добавления через AJAX или редирект на index
+        return new RedirectResponse("/admin/category.php?mod={$module}");
+    }
+
+    /**
+     * Редактирование категории
+     */
+    private function editAction(string $module): Response
+    {
+        if ($this->request->isPost()) {
+            return $this->processEditCategory($module);
+        }
+
+        return new RedirectResponse("/admin/category.php?mod={$module}");
+    }
+
+    /**
+     * Удаление категории
+     */
+    private function deleteAction(string $module): Response
+    {
+        $categoryId = $this->sanitizer->int($this->request->get('id'));
+        
+        if ($categoryId <= 0) {
+            return $this->redirectWithError($module, __('Invalid category ID'));
+        }
+
+        try {
+            $result = $this->categoryService->deleteCategory($module, $categoryId);
+            
+            if ($result->isSuccess()) {
+                $this->invalidateCache($module);
+                return $this->redirectWithMessage($module, $result->getMessage());
+            } else {
+                return $this->redirectWithError($module, $result->getMessage());
+            }
+            
+        } catch (Exception $e) {
+            return $this->redirectWithError($module, __('Error deleting category'));
+        }
+    }
+
+    /**
+     * Переключение отображения на главной
+     */
+    private function toggleHomeAction(string $module): Response
+    {
+        if ($module === 'foto') {
+            return $this->redirectWithError($module, __('Not available for this module'));
+        }
+
+        $categoryId = $this->sanitizer->int($this->request->get('id'));
+        $enable = $this->request->get('enable', 'true') === 'true';
+
+        if ($categoryId <= 0) {
+            return $this->redirectWithError($module, __('Invalid category ID'));
+        }
+
+        try {
+            $this->categoryService->toggleHomeVisibility($module, $categoryId, $enable);
+            $this->invalidateCache($module);
+            
+            $message = $enable ? __('Category enabled on home') : __('Category disabled on home');
+            return $this->redirectWithMessage($module, $message);
+            
+        } catch (Exception $e) {
+            return $this->redirectWithError($module, __('Error updating category'));
+        }
+    }
+
+    /**
+     * Обработка добавления категории
+     */
+    private function processAddCategory(string $module): Response
+    {
+        $data = $this->validateCategoryData();
+        
+        if (!empty($data['errors'])) {
+            return $this->redirectWithError($module, implode('<br>', $data['errors']));
+        }
+
+        try {
+            $categoryData = new CategoryData(
+                title: $data['title'],
+                parentId: $data['parent_id'],
+                accessGroups: $data['access_groups']
+            );
+
+            $result = $this->categoryService->createCategory($module, $categoryData);
+            
+            if ($result->isSuccess()) {
+                $this->invalidateCache($module);
+                return $this->redirectWithMessage($module, __('Category created successfully'));
+            } else {
+                return $this->redirectWithError($module, $result->getMessage());
+            }
+            
+        } catch (Exception $e) {
+            return $this->redirectWithError($module, __('Error creating category'));
+        }
+    }
+
+    /**
+     * Обработка редактирования категории
+     */
+    private function processEditCategory(string $module): Response
+    {
+        $categoryId = $this->sanitizer->int($this->request->get('id'));
+        
+        if ($categoryId <= 0) {
+            return $this->redirectWithError($module, __('Invalid category ID'));
+        }
+
+        $data = $this->validateCategoryData();
+        
+        if (!empty($data['errors'])) {
+            return $this->redirectWithError($module, implode('<br>', $data['errors']));
+        }
+
+        try {
+            $categoryData = new CategoryData(
+                title: $data['title'],
+                parentId: $data['parent_id'],
+                accessGroups: $data['access_groups']
+            );
+
+            $result = $this->categoryService->updateCategory($module, $categoryId, $categoryData);
+            
+            if ($result->isSuccess()) {
+                $this->invalidateCache($module);
+                return $this->redirectWithMessage($module, __('Category updated successfully'));
+            } else {
+                return $this->redirectWithError($module, $result->getMessage());
+            }
+            
+        } catch (Exception $e) {
+            return $this->redirectWithError($module, __('Error updating category'));
+        }
+    }
+
+    /**
+     * Валидация данных категории
+     */
+    private function validateCategoryData(): array
+    {
+        $title = $this->sanitizer->string($this->request->post('title', ''));
+        $parentId = $this->sanitizer->int($this->request->post('id_sec', 0));
+        $accessGroups = array_map('intval', $this->request->post('access', []));
+
+        $errors = [];
+
+        // Валидация заголовка
+        if (empty($title)) {
+            $errors[] = __('Title is required');
+        } elseif (mb_strlen($title) > 100) {
+            $errors[] = __('Title is too long (max 100 characters)');
+        }
+
+        // Валидация родительской категории
+        if ($parentId < 0) {
+            $errors[] = __('Invalid parent category ID');
+        }
+
+        return [
+            'title' => $title,
+            'parent_id' => $parentId,
+            'access_groups' => $accessGroups,
+            'errors' => $errors
+        ];
+    }
+
+    /**
+     * Получение текущего модуля
+     */
+    private function getCurrentModule(): string
+    {
+        $module = $this->sanitizer->string($this->request->get('mod', ''));
+        
+        if (empty($module)) {
+            return self::DEFAULT_MODULE;
+        }
+
+        $allowedModules = $this->categoryService->getAllowedModules();
+        
+        if (!in_array($module, $allowedModules, true)) {
+            return self::DEFAULT_MODULE;
+        }
+
+        return $module;
+    }
+
+    /**
+     * Получение действия
+     */
+    private function getAction(): string
+    {
+        $action = $this->sanitizer->string($this->request->get('ac', 'index'));
+        
+        return in_array($action, self::ALLOWED_ACTIONS, true) ? $action : 'index';
+    }
+
+    /**
+     * Проверка доступа
+     */
+    private function validateAccess(): void
+    {
+        if (!$this->auth->hasPermission('admin.categories.manage')) {
+            throw new RuntimeException(__('Access denied'));
+        }
+    }
+
+    /**
+     * Инвалидация кеша
+     */
+    private function invalidateCache(string $module): void
+    {
+        $this->cache->forget("categories_tree_{$module}");
+        $this->cache->forget("categories_flat_{$module}");
+    }
+
+    /**
+     * Редирект с сообщением об успехе
+     */
+    private function redirectWithMessage(string $module, string $message): RedirectResponse
+    {
+        session_start();
+        $_SESSION['success_message'] = $message;
+        return new RedirectResponse("/admin/category.php?mod={$module}");
+    }
+
+    /**
+     * Редирект с сообщением об ошибке
+     */
+    private function redirectWithError(string $module, string $error): RedirectResponse
+    {
+        session_start();
+        $_SESSION['error_message'] = $error;
+        return new RedirectResponse("/admin/category.php?mod={$module}");
+    }
+
+    /**
+     * Ответ с ошибкой
+     */
+    private function errorResponse(string $message): Response
+    {
+        return $this->template->render('admin/error', [
+            'message' => $message,
+            'pageTitle' => __('Error')
+        ]);
+    }
 }
 
+/**
+ * Сервис для работы с категориями
+ */
+class CategoryService
+{
+    public function __construct(
+        private readonly DatabaseManager $db,
+        private readonly Authorization $auth,
+        private readonly CacheManager $cache
+    ) {}
 
+    /**
+     * Получение разрешённых модулей
+     */
+    public function getAllowedModules(): array
+    {
+        $modulesManager = new \ModulesManager();
+        return $modulesManager->getAllowedModules('categories');
+    }
 
+    /**
+     * Получение дерева категорий
+     */
+    public function getCategoriesTree(string $module): array
+    {
+        $categories = $this->getFlatCategories($module);
+        return $this->buildTree($categories);
+    }
 
-function edit() {
+    /**
+     * Получение плоского списка категорий
+     */
+    public function getFlatCategories(string $module): array
+    {
+        $tableName = $module . '_categories';
+        
+        $query = "
+            SELECT 
+                a.*,
+                COUNT(b.id) as materials_count
+            FROM {$tableName} a
+            LEFT JOIN {$module} b ON a.id = b.category_id
+            GROUP BY a.id
+            ORDER BY a.parent_id, a.title
+        ";
 
-	if (!isset($_GET['id'])) redirect('/admin/category.php?mod=' . getCurrMod());
-	if (!isset($_POST['title'])) redirect('/admin/category.php?mod=' . getCurrMod());
-	$id = intval($_GET['id']);
-	
-	if ($id < 1) redirect('/admin/category.php?mod=' . getCurrMod());
-	
-	
-	global $FpsDB;
-	$Register = Register::getInstance();
-	$acl_groups = $Register['ACL']->get_group_info();
-	$model = $Register['ModManager']->getModelInstance(getCurrMod() . 'Categories');
-	
-	$error = '';
+        return $this->db->fetchAll($query);
+    }
 
-	if (empty($_POST['title'])) $error .= '<li>' . __('Empty field "title"') . '</li>';
-	
+    /**
+     * Создание категории
+     */
+    public function createCategory(string $module, CategoryData $data): OperationResult
+    {
+        try {
+            $this->db->beginTransaction();
 
+            $tableName = $module . '_categories';
+            
+            // Проверяем лимит категорий
+            $count = $this->db->fetchOne("SELECT COUNT(*) FROM {$tableName}");
+            if ($count >= CategoryController::MAX_CATEGORIES_PER_MODULE) {
+                throw new RuntimeException(__('Maximum categories limit reached'));
+            }
 
-	$parent_id = intval($_POST['id_sec']);
-	$entity = $model->getById($id);
-	if (empty($entity)) $error .= '<li>' . __('Edited section not found') . '</li>';
+            // Получаем путь родительской категории
+            $path = $this->buildCategoryPath($module, $data->parentId);
 
-	
-	/* we must know changed parent section or not changed her. And check her  */
-	if (!empty($parent_id) && $entity->getParent_id() != $parent_id) {
-		$target_section = $model->getById($parent_id);
-		if (empty($target_section)) $error .= '<li>' . __('Parent section not found') . '</li>';
-	}
-	/* if errors exists */
-	if (!empty($error)) {
-		$_SESSION['errors'] = $Register['DocParser']->wrapErrors($error);
-		redirect('/admin/category.php?mod=' . getCurrMod());
-	}
-	
-	
-	$no_access = array();
-	if ($acl_groups && is_array($acl_groups)) {
-		foreach ($acl_groups as $gid => $group) {
-			if (!array_key_exists($gid, $_POST['access'])) {
-				$no_access[] = $gid;
-			}
-		}
-	}
-	$no_access = (count($no_access)) ? implode(',', $no_access) : '';
-	if ($no_access !== '') $no_access = New Expr($no_access);
-	
-	
-	/* prepare data to save */
-	$entity->setTitle(substr($_POST['title'], 0, 100));
-	$entity->setNo_access($no_access);
-	
-	if (!empty($target_section)) {
-		$path = $target_section->getPath();
-		$path = (!empty($path)) ? $path . $parent_id . '.' : $parent_id . '.';
-		$entity->setParent_id((int)$parent_id);
-		$entity->setPath($path);
-	}
+            $insertData = [
+                'title' => $data->title,
+                'parent_id' => $data->parentId,
+                'path' => $path,
+                'no_access' => $this->buildAccessString($data->accessGroups),
+                'created_at' => date('Y-m-d H:i:s'),
+                'view_on_home' => 0
+            ];
 
-	$entity->save();
-		
+            $categoryId = $this->db->insert($tableName, $insertData);
+            
+            $this->db->commit();
 
-	redirect('/admin/category.php?mod=' . getCurrMod());
+            return new OperationResult(
+                success: true,
+                message: __('Category created successfully'),
+                data: ['id' => $categoryId]
+            );
+
+        } catch (Exception $e) {
+            $this->db->rollback();
+            return new OperationResult(
+                success: false,
+                message: $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Обновление категории
+     */
+    public function updateCategory(string $module, int $categoryId, CategoryData $data): OperationResult
+    {
+        try {
+            $this->db->beginTransaction();
+
+            $tableName = $module . '_categories';
+            
+            // Проверяем существование категории
+            $category = $this->db->fetchRow(
+                "SELECT * FROM {$tableName} WHERE id = ?", 
+                [$categoryId]
+            );
+
+            if (!$category) {
+                throw new RuntimeException(__('Category not found'));
+            }
+
+            // Проверяем циклические ссылки
+            if ($data->parentId > 0 && $this->wouldCreateCycle($module, $categoryId, $data->parentId)) {
+                throw new RuntimeException(__('Cannot set parent category - would create cycle'));
+            }
+
+            // Получаем новый путь
+            $path = $this->buildCategoryPath($module, $data->parentId);
+
+            $updateData = [
+                'title' => $data->title,
+                'parent_id' => $data->parentId,
+                'path' => $path,
+                'no_access' => $this->buildAccessString($data->accessGroups),
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+
+            $this->db->update($tableName, $updateData, ['id' => $categoryId]);
+
+            // Обновляем пути дочерних категорий если изменился родитель
+            if ($category['parent_id'] != $data->parentId) {
+                $this->updateChildrenPaths($module, $categoryId);
+            }
+            
+            $this->db->commit();
+
+            return new OperationResult(
+                success: true,
+                message: __('Category updated successfully')
+            );
+
+        } catch (Exception $e) {
+            $this->db->rollback();
+            return new OperationResult(
+                success: false,
+                message: $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Удаление категории
+     */
+    public function deleteCategory(string $module, int $categoryId): OperationResult
+    {
+        try {
+            $this->db->beginTransaction();
+
+            $tableName = $module . '_categories';
+            
+            // Проверяем, что это не последняя категория
+            $totalCategories = $this->db->fetchOne("SELECT COUNT(*) FROM {$tableName}");
+            if ($totalCategories <= 1) {
+                throw new RuntimeException(__('Cannot delete the last category'));
+            }
+
+            // Получаем категорию
+            $category = $this->db->fetchRow(
+                "SELECT * FROM {$tableName} WHERE id = ?", 
+                [$categoryId]
+            );
+
+            if (!$category) {
+                throw new RuntimeException(__('Category not found'));
+            }
+
+            // Удаляем дочерние категории рекурсивно
+            $this->deleteChildCategories($module, $categoryId);
+            
+            // Удаляем материалы в категории
+            $this->deleteCategoryMaterials($module, $categoryId);
+            
+            // Удаляем саму категорию
+            $this->db->delete($tableName, ['id' => $categoryId]);
+            
+            $this->db->commit();
+
+            return new OperationResult(
+                success: true,
+                message: __('Category deleted successfully')
+            );
+
+        } catch (Exception $e) {
+            $this->db->rollback();
+            return new OperationResult(
+                success: false,
+                message: $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * Переключение видимости на главной
+     */
+    public function toggleHomeVisibility(string $module, int $categoryId, bool $visible): void
+    {
+        $tableName = $module . '_categories';
+        
+        $this->db->beginTransaction();
+        
+        try {
+            // Обновляем категорию
+            $this->db->update(
+                $tableName, 
+                ['view_on_home' => $visible ? 1 : 0], 
+                ['id' => $categoryId]
+            );
+
+            // Обновляем материалы в категории
+            $this->db->update(
+                $module, 
+                ['view_on_home' => $visible ? 1 : 0], 
+                ['category_id' => $categoryId]
+            );
+
+            // Рекурсивно обновляем дочерние категории
+            $this->updateChildrenHomeVisibility($module, $categoryId, $visible);
+            
+            $this->db->commit();
+            
+        } catch (Exception $e) {
+            $this->db->rollback();
+            throw $e;
+        }
+    }
+
+    /**
+     * Построение дерева категорий из плоского массива
+     */
+    private function buildTree(array $categories, int $parentId = 0): array
+    {
+        $tree = [];
+        
+        foreach ($categories as $category) {
+            if ((int)$category['parent_id'] === $parentId) {
+                $category['children'] = $this->buildTree($categories, (int)$category['id']);
+                $tree[] = $category;
+            }
+        }
+        
+        return $tree;
+    }
+
+    /**
+     * Построение пути категории
+     */
+    private function buildCategoryPath(string $module, int $parentId): string
+    {
+        if ($parentId <= 0) {
+            return '';
+        }
+
+        $tableName = $module . '_categories';
+        $parent = $this->db->fetchRow(
+            "SELECT path FROM {$tableName} WHERE id = ?", 
+            [$parentId]
+        );
+
+        if (!$parent) {
+            return '';
+        }
+
+        return ($parent['path'] ?? '') . $parentId . '.';
+    }
+
+    /**
+     * Построение строки доступа
+     */
+    private function buildAccessString(array $accessGroups): string
+    {
+        $allGroups = $this->auth->getAclGroups();
+        $noAccess = [];
+
+        foreach ($allGroups as $groupId => $group) {
+            if (!in_array($groupId, $accessGroups, true)) {
+                $noAccess[] = $groupId;
+            }
+        }
+
+        return implode(',', $noAccess);
+    }
+
+    /**
+     * Проверка на циклические ссылки
+     */
+    private function wouldCreateCycle(string $module, int $categoryId, int $parentId): bool
+    {
+        if ($categoryId === $parentId) {
+            return true;
+        }
+
+        $tableName = $module . '_categories';
+        $current = $parentId;
+
+        while ($current > 0) {
+            if ($current === $categoryId) {
+                return true;
+            }
+
+            $parent = $this->db->fetchRow(
+                "SELECT parent_id FROM {$tableName} WHERE id = ?", 
+                [$current]
+            );
+
+            if (!$parent) {
+                break;
+            }
+
+            $current = (int)$parent['parent_id'];
+        }
+
+        return false;
+    }
+
+    /**
+     * Обновление путей дочерних категорий
+     */
+    private function updateChildrenPaths(string $module, int $categoryId): void
+    {
+        $tableName = $module . '_categories';
+        
+        $children = $this->db->fetchAll(
+            "SELECT id, parent_id FROM {$tableName} WHERE parent_id = ?", 
+            [$categoryId]
+        );
+
+        foreach ($children as $child) {
+            $path = $this->buildCategoryPath($module, (int)$child['parent_id']);
+            $this->db->update(
+                $tableName, 
+                ['path' => $path], 
+                ['id' => $child['id']]
+            );
+            
+            // Рекурсивно обновляем потомков
+            $this->updateChildrenPaths($module, (int)$child['id']);
+        }
+    }
+
+    /**
+     * Удаление дочерних категорий
+     */
+    private function deleteChildCategories(string $module, int $parentId): void
+    {
+        $tableName = $module . '_categories';
+        
+        $children = $this->db->fetchAll(
+            "SELECT id FROM {$tableName} WHERE parent_id = ?", 
+            [$parentId]
+        );
+
+        foreach ($children as $child) {
+            $this->deleteChildCategories($module, (int)$child['id']);
+            $this->deleteCategoryMaterials($module, (int)$child['id']);
+            $this->db->delete($tableName, ['id' => $child['id']]);
+        }
+    }
+
+    /**
+     * Удаление материалов категории
+     */
+    private function deleteCategoryMaterials(string $module, int $categoryId): void
+    {
+        // Получаем все материалы в категории
+        $materials = $this->db->fetchAll(
+            "SELECT id FROM {$module} WHERE category_id = ?", 
+            [$categoryId]
+        );
+
+        foreach ($materials as $material) {
+            // Удаляем вложения
+            $this->db->delete($module . '_attaches', ['material_id' => $material['id']]);
+        }
+
+        // Удаляем сами материалы
+        $this->db->delete($module, ['category_id' => $categoryId]);
+    }
+
+    /**
+     * Обновление видимости дочерних категорий на главной
+     */
+    private function updateChildrenHomeVisibility(string $module, int $parentId, bool $visible): void
+    {
+        $tableName = $module . '_categories';
+        
+        $children = $this->db->fetchAll(
+            "SELECT id FROM {$tableName} WHERE parent_id = ?", 
+            [$parentId]
+        );
+
+        foreach ($children as $child) {
+            $childId = (int)$child['id'];
+            
+            // Обновляем категорию
+            $this->db->update(
+                $tableName, 
+                ['view_on_home' => $visible ? 1 : 0], 
+                ['id' => $childId]
+            );
+
+            // Обновляем материалы
+            $this->db->update(
+                $module, 
+                ['view_on_home' => $visible ? 1 : 0], 
+                ['category_id' => $childId]
+            );
+
+            // Рекурсивно обновляем потомков
+            $this->updateChildrenHomeVisibility($module, $childId, $visible);
+        }
+    }
 }
 
-
-
-function add() {
-	global $FpsDB;
-	if (!isset($_POST['title'])) redirect('/admin/category.php?mod=' . getCurrMod());
-	
-	
-	$Register = Register::getInstance();
-	$acl_groups = $Register['ACL']->get_group_info();
-	$model = $Register['ModManager']->getModelInstance(getCurrMod() . 'Categories');
-	
-	
-	$error = '';
-	$title = trim($_POST['title']);
-	$parent_id = intval($_POST['id_sec']);
-	if ($parent_id < 0) $parent_id = 0;
-	
-	if (!empty($parent_id)) {
-		$target_section = $model->getById($parent_id);
-		if (empty($target_section)) $error .= '<li>' . __('Parent section not found') . '</li>';
-	}
-	
-	
-	if (empty($title)) $error .= '<li>' . __('Empty field "title"') . '</li>';
-	
-	$no_access = array();
-	if ($acl_groups && is_array($acl_groups)) {
-		foreach ($acl_groups as $id => $group) {
-			if (!array_key_exists($id, $_POST['access'])) {
-				$no_access[] = $id;
-			}
-		}
-	}
-	$no_access = (count($no_access)) ? implode(',', $no_access) : '';
-	if ($no_access !== '') $no_access = New Expr($no_access);
-	
-	/* if errors exists */
-	if (!empty($error)) {
-		$_SESSION['errors'] = $error;
-		redirect('/admin/category.php?mod=' . getCurrMod());
-	}
-	
-	
-	if (!empty($target_section)) {
-		$path = $target_section->getPath();
-		$path = (!empty($path)) ? $path . $parent_id . '.' : $parent_id . '.';
-	}
-	
-	
-	$data = array(
-		'title' => $title,
-		'parent_id' => $parent_id,
-		'no_access' => $no_access,
-	);
-	if (!empty($path)) $data['path'] = $path;
-	
-	$entityName = getCurrMod() . 'CategoriesEntity';
-	$entity = new $entityName($data);
-	$entity->save();
-		
-	redirect('/admin/category.php?mod=' . getCurrMod());
+/**
+ * DTO для данных категории
+ */
+readonly class CategoryData
+{
+    public function __construct(
+        public string $title,
+        public int $parentId = 0,
+        public array $accessGroups = []
+    ) {}
 }
 
+/**
+ * Результат операции
+ */
+readonly class OperationResult
+{
+    public function __construct(
+        public bool $success,
+        public string $message,
+        public array $data = []
+    ) {}
 
-function delete() {	
-	global $Register, $FpsDB;
-	$id = (!empty($_GET['id'])) ? intval($_GET['id']) : 0;
-	if ($id < 1) redirect('/admin/category.php?mod=' . getCurrMod());
-	
-	
-	$model = $Register['ModManager']->getModelInstance(getCurrMod() . 'Categories');
-	$total = $model->getTotal();
-	if ($total <= 1) {
-		$_SESSION['errors'] = $Register['DocParser']->wrapErrors(__('You can\'t remove the last category'), true);
-		redirect('/admin/category.php?mod=' . getCurrMod());
-	}
-	
-	$childrens = $model->getCollection(array('parent_id' => $id));
+    public function isSuccess(): bool
+    {
+        return $this->success;
+    }
 
-	
-	if (!$childrens) {
-		delete_category($id);
-	} else {
-		foreach ($childrens as $category) {
-			delete_category($category->getId());
-			delete($category->getId());
-		}
-		
-		$category->delete();
-	}
-	redirect('/admin/category.php?mod=' . getCurrMod());
+    public function getMessage(): string
+    {
+        return $this->message;
+    }
+
+    public function getData(): array
+    {
+        return $this->data;
+    }
 }
 
+// Инициализация и запуск приложения
+try {
+    $container = \AtomX\Core\Container\Container::getInstance();
+    
+    $controller = new CategoryController(
+        request: $container->get(Request::class),
+        response: $container->get(Response::class),
+        db: $container->get(DatabaseManager::class),
+        auth: $container->get(Authorization::class),
+        template: $container->get(TemplateEngine::class),
+        cache: $container->get(CacheManager::class),
+        categoryService: $container->get(CategoryService::class),
+        sanitizer: $container->get(InputSanitizer::class),
+        validator: $container->get(Validator::class)
+    );
 
-function delete_category($id) {
-	global $Register, $FpsDB;
-	
-	$attachModel = $Register['ModManager']->getModelInstance(getCurrMod() . 'Attaches');
-	$sectionsModel = $Register['ModManager']->getModelInstance(getCurrMod() . 'Categories');
-	$model = $Register['ModManager']->getModelInstance(getCurrMod());
-	$records = $model->getCollection(array('category_id' => $id));
-	
-	
-	// delete materials and attaches
-	if (is_array($records) && count($records) > 0) {
-		foreach ($records as $record) {
-			$record->delete();
-		}
-	}
-	
-	// delete category
-	$entity = $sectionsModel->getById($id);
-	if ($entity) $entity->delete();
-	
-	return true;
+    $response = $controller->handle();
+    $response->send();
+
+} catch (Exception $e) {
+    error_log('Category Application Error: ' . $e->getMessage());
+    
+    // Простая обработка ошибок для обратной совместимости
+    session_start();
+    $_SESSION['error_message'] = __('System error occurred');
+    
+    header('Location: /admin/category.php?mod=news', true, 302);
+    exit;
 }
-
-
-
-function on_home($cid = false) {
-	global $FpsDB;
-	if (getCurrMod() == 'foto') redirect('/admin/category.php?mod=' . getCurrMod());
-	
-	
-	if ($cid === false) {
-		$id = (!empty($_GET['id'])) ? intval($_GET['id']) : 0;
-		if ($id < 1) redirect('/admin/category.php?mod=' . getCurrMod());
-	} else {
-		$id = $cid;
-	}
-
-	
-	$childs = $FpsDB->select(getCurrMod() . '_categories', DB_ALL, array('cond' => array('parent_id' => $id)));
-	if (count($childs)) {
-		foreach ($childs as $child) {
-			on_home($child['id']);
-		}
-	} 
-	
-	$FpsDB->save(getCurrMod() . '_categories', array('id' => $id, 'view_on_home' => 1));
-	$FpsDB->save(getCurrMod(), array('view_on_home' => 1), array('category_id' => $id));
-
-		
-	if ($cid === false) redirect('/admin/category.php?mod=' . getCurrMod());
-}
-
-
-
-function off_home($cid = false) {
-	global $FpsDB;
-	if (getCurrMod() == 'foto') redirect('/admin/category.php?mod=' . getCurrMod());
-	
-	
-	if ($cid === false) {
-		$id = (!empty($_GET['id'])) ? intval($_GET['id']) : 0;
-		if ($id < 1) redirect('/admin/category.php?mod=' . getCurrMod());
-	} else {
-		$id = $cid;
-	}
-
-	
-	$childs = $FpsDB->select(getCurrMod() . '_categories', DB_ALL, array('cond' => array('parent_id' => $id)));
-	if (count($childs)) {
-		foreach ($childs as $child) {
-			off_home($child['id']);
-		}
-	} 
-	
-	$FpsDB->save(getCurrMod() . '_categories', array('id' => $id, 'view_on_home' => 0));
-	$FpsDB->save(getCurrMod(), array('view_on_home' => 0), array('category_id' => $id));
-
-		
-	if ($cid === false) redirect('/admin/category.php?mod=' . getCurrMod());
-}
-
-
-include_once 'template/footer.php';
