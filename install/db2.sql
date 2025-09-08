@@ -1,4 +1,28 @@
-(`name`, `body`) 
-				VALUES ('menu', 'echo \'<ul class=\"uMenuRoot\">\';\r\n$modules = glob(\'modules/*\');\r\nif (!empty($modules)) {\r\n	foreach($modules as $module) {\r\n		$module = substr(strrchr($module, \'/\'), 1);\r\n		$unuseable = array(\r\n			\'statistics\',\r\n			\'pages\',\r\n		);\r\n		if (in_array($module, $unuseable)) continue;\r\n		if (Config::read(\'active\', $module) == 1) {\r\n			if ($module == \'chat\') {\r\n				echo \'<li><div class=\"uMenuItem\"><a href=\"javascript://\" onclick=\"window.open(\\\'/chat/\\\', \\\'chat\\\', \\\'resizable=0, location=0, width=210, height=620\\\')\">\' . Config::read(\'title\', $module) . \'</a></div></li>\';\r\n				continue;\r\n			}\r\n			echo \'<li><div class=\"uMenuItem\"><a href=\"/\' . R . $module . \'/\">\' . Config::read(\'title\', $module) . \'</a></div></li>\';\r\n		}\r\n	}\r\n}\r\necho \'</ul>\';');
+INSERT INTO `table_name` (`name`, `body`) 
+VALUES ('menu', '<?php
+echo \'<ul class="uMenuRoot">\';
+$modules = [];
+$activeModules = Config::getActiveModules();
 
+foreach ($activeModules as $module => $config) {
+    if (in_array($module, [\'statistics\', \'pages\'])) {
+        continue;
+    }
+    
+    $title = htmlspecialchars($config[\'title\'] ?? $module, ENT_QUOTES, \'UTF-8\');
+    $url = htmlspecialchars(\'/\' . R . $module . \'/\', ENT_QUOTES, \'UTF-8\');
+    
+    if ($module === \'chat\') {
+        echo \'<li><div class="uMenuItem\"><a href="javascript://" onclick="openChatWindow()">\' . $title . \'</a></div></li>\';
+        continue;
+    }
+    
+    echo \'<li><div class="uMenuItem\"><a href="\' . $url . \'">\' . $title . \'</a></div></li>\';
+}
 
+echo \'</ul>\';
+
+function openChatWindow() {
+    window.open(\'/chat/\', \'chat\', \'resizable=0,location=0,width=210,height=620\');
+}
+?>');
