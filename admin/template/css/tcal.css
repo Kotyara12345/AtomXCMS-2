@@ -1,100 +1,318 @@
-/*
-	Stylesheet for Tigra Calendar v5.0
-	Product is Public Domain (Free for any kind of applicaiton, customization and derivative works are allowed) 
-	URL: http://www.softcomplex.com/products/tigra_calendar/
+/* ===== VARIABLES ===== */
+:root {
+  --tcal-z-index: 100;
+  --tcal-width: 198px; /* 170px + padding */
+  --tcal-border-color: #c0c0c0;
+  --tcal-shadow: 3px 3px 4px rgba(192, 192, 192, 0.3);
+  --tcal-bg-color: #ffffff;
+  --tcal-header-bg: #808080;
+  --tcal-header-color: #ffffff;
+  --tcal-weekend-bg: #acd6f5;
+  --tcal-today-border: #ff0000;
+  --tcal-selected-bg: #ffb3be;
+  --tcal-other-month: #c0c0c0;
+  --tcal-cell-padding: 4px 0;
+  --tcal-font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
 
-	- all image paths are relative to path of stylesheet
-	- the styles below can be moved into the document or in existing stylesheet
-
-*/
-
-/* input box in default state */ 
+/* ===== BASE STYLES ===== */
 .tcalInput {
-	background: url('/sys/img/calendar/cal.gif') 100% 50% no-repeat;
-	padding-right: 20px;
-	cursor: pointer;
+  background: url('/sys/img/calendar/cal.gif') 100% 50% no-repeat;
+  padding-right: 24px;
+  cursor: pointer;
+  border: 1px solid var(--tcal-border-color);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 14px;
 }
 
-/* additional properties for input boxe in activated state, above still applies unless in conflict */
+.tcalInput:focus {
+  outline: 2px solid #0066cc;
+  outline-offset: 2px;
+}
+
 .tcalActive {
-	background-image: url('/sys/img/calendar/no_cal.gif');
+  background-image: url('/sys/img/calendar/no_cal.gif');
 }
-/* container of calendar's pop-up */
+
+/* ===== CALENDAR CONTAINER ===== */
 #tcal {
-	position: absolute;
-	visibility: hidden;
-	z-index: 100;
-	width: 170px;
-	background-color: white;
-	margin-top: 2px;
-	padding: 0 2px 2px 2px;
-	border: 1px solid silver;
-
-	-moz-box-shadow: 3px 3px 4px silver;
-	-webkit-box-shadow: 3px 3px 4px silver;
-	box-shadow: 3px 3px 4px silver;
-	-ms-filter: "progid:DXImageTransform.Microsoft.Shadow(Strength=4, Direction=135, Color='silver')";
-	filter: progid:DXImageTransform.Microsoft.Shadow(Strength=4, Direction=135, Color='silver');
+  position: absolute;
+  visibility: hidden;
+  z-index: var(--tcal-z-index);
+  width: var(--tcal-width);
+  background-color: var(--tcal-bg-color);
+  margin-top: 4px;
+  padding: 8px;
+  border: 1px solid var(--tcal-border-color);
+  border-radius: 6px;
+  box-shadow: var(--tcal-shadow);
+  font-family: var(--tcal-font-family);
 }
 
-/* table containing navigation and current month */
+/* Show calendar when active */
+#tcal.tcalVisible {
+  visibility: visible;
+}
+
+/* ===== CONTROLS ===== */
 #tcalControls {
-	border-collapse: collapse;
-	border: 0;
-	width: 100%;
+  border-collapse: collapse;
+  border: 0;
+  width: 100%;
+  margin-bottom: 8px;
 }
+
 #tcalControls td {
-	border-collapse: collapse;
-	border: 0;
-	padding: 0;
-	width: 16px;
-	background-position: 50% 50%;
-	background-repeat: no-repeat;
-	cursor: pointer;
+  border: 0;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  background-position: center;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
 }
+
+#tcalControls td:hover {
+  opacity: 0.7;
+}
+
+#tcalControls td:active {
+  opacity: 0.5;
+}
+
 #tcalControls th {
-	border-collapse: collapse;
-	border: 0;
-	padding: 0;
-	line-height: 25px;
-	font-size: 10px;
-	text-align: center;
-	font-family: Tahoma, Geneva, sans-serif;
-	font-weight: bold;
-	white-space: nowrap;
+  border: 0;
+  padding: 0;
+  line-height: 1.5;
+  font-size: 14px;
+  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--tcal-header-color);
 }
+
+/* Navigation buttons */
 #tcalPrevYear { background-image: url('/sys/img/calendar/prev_year.gif'); }
 #tcalPrevMonth { background-image: url('/sys/img/calendar/prev_mon.gif'); }
 #tcalNextMonth { background-image: url('/sys/img/calendar/next_mon.gif'); }
 #tcalNextYear { background-image: url('/sys/img/calendar/next_year.gif'); }
 
-/* table containing week days header and calendar grid */
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  #tcalControls td {
+    border: 1px solid currentColor;
+  }
+}
+
+/* ===== CALENDAR GRID ===== */
 #tcalGrid {
-	border-collapse: collapse;
-	border: 1px solid silver;
-	width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--tcal-border-color);
+  width: 100%;
+  font-size: 12px;
 }
+
 #tcalGrid th {
-	border: 1px solid silver;
-	border-collapse: collapse;
-	padding: 3px 0;
-	text-align: center;
-	font-family: Tahoma, Geneva, sans-serif;
-	font-size: 10px;
-	background-color: gray;
-	color: white;
+  border: 1px solid var(--tcal-border-color);
+  padding: 6px 0;
+  text-align: center;
+  background-color: var(--tcal-header-bg);
+  color: var(--tcal-header-color);
+  font-weight: 600;
+  font-size: 11px;
 }
+
 #tcalGrid td {
-	border: 0;
-	border-collapse: collapse;
-	padding: 2px 0;
-	text-align: center;
-	font-family: Tahoma, Geneva, sans-serif;
-	width: 14%;
-	font-size: 11px;
-	cursor: pointer;
-}		
-#tcalGrid td.tcalOtherMonth { color: silver; }
-#tcalGrid td.tcalWeekend { background-color: #ACD6F5; }
-#tcalGrid td.tcalToday { border: 1px solid red; }
-#tcalGrid td.tcalSelected { background-color: #FFB3BE; }		
+  border: 0;
+  padding: var(--tcal-cell-padding);
+  text-align: center;
+  width: 14.28%; /* 100% / 7 days */
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+/* Cell states */
+#tcalGrid td:hover {
+  background-color: #f0f0f0;
+}
+
+#tcalGrid td:focus {
+  outline: 2px solid #0066cc;
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+#tcalGrid td.tcalOtherMonth {
+  color: var(--tcal-other-month);
+  opacity: 0.6;
+}
+
+#tcalGrid td.tcalWeekend {
+  background-color: var(--tcal-weekend-bg);
+}
+
+#tcalGrid td.tcalToday {
+  border: 2px solid var(--tcal-today-border);
+  font-weight: bold;
+}
+
+#tcalGrid td.tcalSelected {
+  background-color: var(--tcal-selected-bg);
+  font-weight: bold;
+}
+
+/* ===== ACCESSIBILITY IMPROVEMENTS ===== */
+/* Screen reader only text */
+.tcal-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus styles for keyboard navigation */
+#tcalGrid td:focus-visible {
+  outline: 2px solid #0066cc;
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  #tcalGrid td {
+    transition: none;
+  }
+  
+  #tcalControls td {
+    transition: none;
+  }
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 480px) {
+  :root {
+    --tcal-width: 280px;
+  }
+  
+  #tcal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    margin-top: 0;
+    max-width: 95vw;
+  }
+  
+  #tcalGrid {
+    font-size: 14px;
+  }
+  
+  #tcalGrid td {
+    padding: 8px 0;
+    font-size: 14px;
+  }
+  
+  #tcalGrid th {
+    padding: 8px 0;
+    font-size: 12px;
+  }
+  
+  #tcalControls th {
+    font-size: 16px;
+  }
+}
+
+/* ===== DARK THEME SUPPORT ===== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tcal-bg-color: #2d2d2d;
+    --tcal-border-color: #555;
+    --tcal-header-bg: #555;
+    --tcal-header-color: #fff;
+    --tcal-weekend-bg: #2a4d69;
+    --tcal-selected-bg: #8b4513;
+    --tcal-other-month: #888;
+    --tcal-shadow: 3px 3px 4px rgba(0, 0, 0, 0.5);
+  }
+  
+  .tcalInput {
+    background-color: #333;
+    color: #fff;
+    border-color: #555;
+  }
+  
+  #tcalGrid td:hover {
+    background-color: #444;
+  }
+}
+
+/* ===== MODERN ENHANCEMENTS ===== */
+/* Smooth animations */
+#tcal {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+}
+
+#tcal.tcalVisible {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  #tcalGrid td {
+    padding: 8px 0;
+    min-height: 44px; /* Minimum touch target size */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  #tcalControls td {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Print styles */
+@media print {
+  #tcal {
+    position: static;
+    visibility: visible;
+    box-shadow: none;
+    border: 1px solid #000;
+  }
+  
+  .tcalInput {
+    background: none;
+    padding-right: 8px;
+  }
+}
+
+/* ===== FALLBACKS FOR OLDER BROWSERS ===== */
+/* Basic fallback for very old browsers */
+#tcal {
+  display: none;
+}
+
+#tcal.tcalVisible {
+  display: block;
+}
+
+/* IE 10+ specific styles */
+@media all and (-ms-high-contrast: none), (-ms-high-contrast: active) {
+  #tcal {
+    filter: progid:DXImageTransform.Microsoft.Shadow(Strength=4, Direction=135, Color='silver');
+  }
+}
