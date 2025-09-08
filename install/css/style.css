@@ -1,46 +1,388 @@
-html, body {padding:0px; margin:0px; color:#000000;font-family:Corbel; font-size:15px;}
-a {color:#FFFFFF; text-decoration:none;}
-html {width:100%; height:100%;}
-body {width:100%; height:100%; background: url('../img/bg.jpg') repeat;}
+/* Reset and base styles */
+html, body {
+    padding: 0;
+    margin: 0;
+    color: #000000;
+    font-family: Corbel, Arial, sans-serif;
+    font-size: 15px;
+    width: 100%;
+    height: 100%;
+}
 
+/* Links */
+a {
+    color: #FFFFFF;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
 
-#head {width:100%; height:150px; background: url('../img/bg2.jpg') repeat; position:relative;}
-#subhead {width:100%; height:10px; margin-top:1px; background: url('../img/bg3.jpg') repeat;}
-#logo {width:332px; height:67px; left:23%; top:10%; background: url('../img/install-logo.png') no-repeat; position:relative;}
-#newv {float:right; color:#E90E0E; font-family:Corbel; font-style:italic;}
-#newv a {float:right; color:#E90E0E; font-family:Corbel; font-style:italic;}
+a:hover {
+    text-decoration: underline;
+}
 
-#progressbar {width:720px; height:21px; margin:0px auto; top:35px; position:relative;}
-#progressbar li {display:block; width:28px; height:28px; float:left; background: url('../img/progress-bar-line.png') no-repeat; }
-#progressbar li.progressbar-li {position:relative; left: -6px; top:-8px;}
-#progressbar li.act {display:block; width:28px; height:28px; float:left; background: url('../img/progress-bar-line-active.png') no-repeat; }
+/* Body background */
+body {
+    background: url('../img/bg.jpg') repeat;
+    background-color: #f0f0f0; /* Fallback color */
+}
 
+/* Header styles */
+#head {
+    width: 100%;
+    height: 150px;
+    background: url('../img/bg2.jpg') repeat;
+    background-color: #2c3e50; /* Fallback color */
+    position: relative;
+}
 
-#container {width:1000px; height:800px; margin:0px auto; margin-top:-115px; background: url('../img/convert-close.png') no-repeat; position:relative;}
-a#begin {display:block; position:relative; top:60px; left:45%; color:#000000; text-decoration:none; width:40px;}
-#descr {width:745px; padding:15px; margin:0px auto; top:50px; /*background: url('../img/descr-bg.png') repeat;*/ position:relative; font-size:16px; color:#555;}
-#descr a {color:#000;}
+#subhead {
+    width: 100%;
+    height: 10px;
+    margin-top: 1px;
+    background: url('../img/bg3.jpg') repeat;
+    background-color: #34495e; /* Fallback color */
+}
 
-#container2 {width:706px; padding:15px; margin:0px auto; margin-top:-30px; background: url('../img/container2-bg.png') repeat-y; position:relative;}
+#logo {
+    width: 332px;
+    height: 67px;
+    left: 23%;
+    top: 10%;
+    background: url('../img/install-logo.png') no-repeat;
+    background-size: contain;
+    position: relative;
+}
 
+/* Version info */
+#newv {
+    float: right;
+    color: #E90E0E;
+    font-family: Corbel, Arial, sans-serif;
+    font-style: italic;
+}
 
-.inp {  margin:5px; width:500px;}
-.inp  input {border:none; background:#E2E2C1;-moz-border-radius:5px; -webkit-border-radius:5px; border-radius:5px; border:1px solid #636400; margin-right:10px; margin-left:10px;width: 150px;}
-.btn {background: url('../img/btn.png') no-repeat; width:150px; height:34px;border:none; cursor:pointer;}
+#newv a {
+    color: #E90E0E;
+    font-family: Corbel, Arial, sans-serif;
+    font-style: italic;
+}
 
+#newv a:hover {
+    color: #ff4444;
+}
 
+/* Progress bar */
+#progressbar {
+    width: 720px;
+    height: 21px;
+    margin: 0 auto;
+    top: 35px;
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
 
-#queries, #checkAccess, #checkServer, #SQLserver, #SQLbase, #SQLuser, #SQLpass, #SQLpref {font-size:13px !important;}
+#progressbar li {
+    display: block;
+    width: 28px;
+    height: 28px;
+    background: url('../img/progress-bar-line.png') no-repeat;
+    background-size: contain;
+    list-style: none;
+}
 
-.fin-a {color:#95BC00; font-size: 17px !important; text-decoration:underline;}
-.fin-a:hover {text-decoration:none;}
-.fin-h {color:#95BC00; margin-bottom:7px;}
+#progressbar li.progressbar-li {
+    position: relative;
+    left: -6px;
+    top: -8px;
+}
 
-.help {color:#E90E0E; font-size:13px; padding-top:20px; display:block;}
+#progressbar li.act {
+    background: url('../img/progress-bar-line-active.png') no-repeat;
+    background-size: contain;
+}
 
-#footer1 {width:770px; margin:0px auto; margin-top:-100px; z-index:10; position:relative;}
-#footer1 a {text-transform:uppercase; margin-right:20px; color:#BBBC00; font-family: Arial;}
-#footer1 a:hover {color:#FFFFFF;}
-#footer2 {width:806px; height:307px; margin:0px auto; bottom:0px; background: url('../img/convert-open.png') repeat; position:relative;}
+/* Main container */
+#container {
+    width: 1000px;
+    min-height: 800px;
+    margin: 0 auto;
+    margin-top: -115px;
+    background: url('../img/convert-close.png') no-repeat;
+    background-size: cover;
+    position: relative;
+}
 
+/* Begin button */
+a#begin {
+    display: block;
+    position: relative;
+    top: 60px;
+    left: 45%;
+    color: #000000;
+    text-decoration: none;
+    width: 40px;
+    text-align: center;
+    padding: 10px 20px;
+    background: #95BC00;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
 
+a#begin:hover {
+    background: #7a9d00;
+    text-decoration: none;
+}
+
+/* Description */
+#descr {
+    width: 745px;
+    padding: 15px;
+    margin: 0 auto;
+    top: 50px;
+    position: relative;
+    font-size: 16px;
+    color: #555;
+    line-height: 1.5;
+}
+
+#descr a {
+    color: #000;
+    font-weight: bold;
+}
+
+#descr a:hover {
+    color: #95BC00;
+}
+
+/* Secondary container */
+#container2 {
+    width: 706px;
+    padding: 15px;
+    margin: 0 auto;
+    margin-top: -30px;
+    background: url('../img/container2-bg.png') repeat-y;
+    background-size: 100% auto;
+    position: relative;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+/* Form elements */
+.inp {
+    margin: 5px;
+    width: 500px;
+}
+
+.inp input {
+    border: none;
+    background: #E2E2C1;
+    border-radius: 5px;
+    border: 1px solid #636400;
+    margin: 0 10px;
+    width: 150px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+.inp input:focus {
+    outline: none;
+    border-color: #95BC00;
+    box-shadow: 0 0 5px rgba(149, 188, 0, 0.5);
+}
+
+/* Buttons */
+.btn {
+    background: url('../img/btn.png') no-repeat;
+    background-size: cover;
+    width: 150px;
+    height: 34px;
+    border: none;
+    cursor: pointer;
+    color: white;
+    font-weight: bold;
+    transition: transform 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+/* Form labels */
+#queries, #checkAccess, #checkServer, #SQLserver, #SQLbase, #SQLuser, #SQLpass, #SQLpref {
+    font-size: 13px !important;
+    font-weight: bold;
+    color: #333;
+}
+
+/* Finish styles */
+.fin-a {
+    color: #95BC00;
+    font-size: 17px !important;
+    text-decoration: underline;
+    font-weight: bold;
+}
+
+.fin-a:hover {
+    text-decoration: none;
+    color: #7a9d00;
+}
+
+.fin-h {
+    color: #95BC00;
+    margin-bottom: 7px;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+/* Help text */
+.help {
+    color: #E90E0E;
+    font-size: 13px;
+    padding-top: 20px;
+    display: block;
+    font-style: italic;
+}
+
+/* Footer */
+#footer1 {
+    width: 770px;
+    margin: 0 auto;
+    margin-top: -100px;
+    z-index: 10;
+    position: relative;
+    text-align: center;
+    padding: 20px 0;
+}
+
+#footer1 a {
+    text-transform: uppercase;
+    margin-right: 20px;
+    color: #BBBC00;
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+}
+
+#footer1 a:hover {
+    color: #FFFFFF;
+    text-decoration: underline;
+}
+
+#footer2 {
+    width: 806px;
+    height: 307px;
+    margin: 0 auto;
+    bottom: 0;
+    background: url('../img/convert-open.png') repeat;
+    background-size: cover;
+    position: relative;
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+    #container {
+        width: 90%;
+        margin-top: -50px;
+    }
+    
+    #container2 {
+        width: 90%;
+    }
+    
+    #progressbar {
+        width: 90%;
+    }
+    
+    #descr {
+        width: 90%;
+    }
+    
+    #footer1, #footer2 {
+        width: 90%;
+    }
+}
+
+@media (max-width: 768px) {
+    #logo {
+        left: 10%;
+        width: 250px;
+    }
+    
+    .inp {
+        width: 100%;
+    }
+    
+    .inp input {
+        width: 100%;
+        margin: 5px 0;
+    }
+    
+    .btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    #head {
+        height: 100px;
+    }
+    
+    #logo {
+        width: 200px;
+        height: 50px;
+    }
+    
+    #progressbar li {
+        width: 20px;
+        height: 20px;
+    }
+    
+    #descr {
+        font-size: 14px;
+    }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    a {
+        color: #0000FF;
+    }
+    
+    .btn {
+        border: 2px solid #000;
+    }
+}
+
+/* Print styles */
+@media print {
+    #head, #subhead, #footer1, #footer2 {
+        display: none;
+    }
+    
+    #container {
+        background: none;
+        margin-top: 0;
+    }
+    
+    body {
+        background: white;
+        color: black;
+    }
+    
+    a {
+        color: #0000EE;
+    }
+}
