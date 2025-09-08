@@ -1,338 +1,321 @@
-var wRight = 0;
-var wLeft = 0;
-var wStep = 10;
-var winTimeout = 50;
-var openedWindows = new Array();
-//var wObj = document.getElementById('test');
+// drunya.lib.js - Modernized version
+class AtomXAdmin {
+    constructor() {
+        this.wRight = 0;
+        this.wLeft = 0;
+        this.wStep = 10;
+        this.winTimeout = 50;
+        this.openedWindows = [];
+        this.menuItemOver = false;
+    }
 
+    toggle(id) {
+        const el = $(`#${id}`);
+        el.is(':visible') ? el.hide() : el.show();
+    }
 
-AtomX = new function() {
-	this.toggle = function(id){
-		var el = $('#'+id);
-		if (el.is(':visible')) 
-			el.hide();
-		else
-			el.show();
-	};
-	
-	this.toggleByClass = function(class_name){
-		var el = $('.'+class_name);
-		if (el.is(':visible')) 
-			el.hide();
-		else
-			el.show();
-	};
-	
-	this.hideAll = function(class_name) {
-		$('.'+class_name).hide();
-	};
-	
-	// autocompleter @url - pathtosite/admin/find_users.php?name=<name>
-	this.findUsers = function(url, id) {
-		var output = '';
-		
-		$.get(url, {}, function(response){
-			var users = $.parseJSON(response);
-			
-			$(users).each(function(k, user){
-				output += '<li><a href="../admin/users_rules.php?new_sp=' + user.id + '">' + user.name + '</a> (' + user.id + ')</li>';
-			});
-			
-			$('#'+id).html('<ul>'+output+'</ul>');
-		});
-	};
-	
-	/**
-	 * autocompleter 
-	 * @url - pathtosite/admin/find_users.php?name=<name>
-	 * @id - block ID to past content
-	 * @to_url - for each user
-	 */
-	this.findUsersForForums = function(url, id, to_url) {
-		var output = '';
-		
-		$.get(url, {}, function(response){
-			var users = $.parseJSON(response);
-			
-			
-			$(users).each(function(k, user){
-				str = to_url.replace(/%id/, user.id);
-				str = str.replace(/%name/, user.name);
-				
-				output += '<li><a href="' + str + '">' + user.name + '</a> (' + user.id + ')</li>';
-			});
-			
-			$('#'+id).html('<ul>'+output+'</ul>');
-		});
-	};
-	
-	
-	this.initMultiFileUploadHandler = function(module, callback){
-		if (typeof callback == 'function') this.parseRespnse = callback;
-	
-		function progressHandlingFunction(e){
-			if(e.lengthComputable){
-				$('progress').attr({value:e.loaded, max:e.total});
-			}
-		}
-			 
-		$('#preloader').hide();
-		$('#attach').bind('change', function(){
-			var data = new FormData();
-			jQuery.each($('#attach')[0].files, function(i, file) {
-				var ii = i + 1;
-				data.append('attach'+ii, file);
-		 
-			});
+    toggleByClass(className) {
+        const el = $(`.${className}`);
+        el.is(':visible') ? el.hide() : el.show();
+    }
 
-			$.ajax({
-				url: '/' + module + '/upload_attaches/',
-				type: 'POST',
-				xhr: function() { 
-					var myXhr = $.ajaxSettings.xhr();
-					if(myXhr.upload){ // проверка что осуществляется upload
-						myXhr.upload.addEventListener('progress',progressHandlingFunction, false); //передача в функцию значений
-					}
-					return myXhr;
-				},
-				data: data,
-				cache: false,
-				contentType: false,
-				dataType: 'json',
-				processData: false,
-				beforeSend: function() {
-					$('progress').show().attr({value:'0', max:'10000'}); 
-					if (!$('#attaches-info').is(':visible')) $('#attaches-info').show();
-				},
-				success: function(data){
-					AtomX.parseRespnse(module, data);
-					$('progress').hide();
-				   
-				},
-				error: errorHandler = function() {
-					$('#attaches-info').html('Some error during the files upload!');
-				}
-			});
-		});
-	};
+    hideAll(className) {
+        $(`.${className}`).hide();
+    }
+
+    // Autocompleter with sanitization
+    findUsers(url, id) {
+        let output = '';
+        
+        $.get(url, {}, (response) => {
+            try {
+                const users = JSON.parse(response);
+                
+                users.forEach((user) => {
+                    const safeName = this.escapeHtml(user.name);
+                    output += `<li><a href="../admin/users_rules.php?new_sp=${user.id}">${safeName}</a> (${user.id})</li>`;
+                });
+                
+                $(`#${id}`).html(`<ul>${output}</ul>`);
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+            }
+        }).fail(() => {
+            console.error('Failed to fetch users');
+        });
+    }
+
+    findUsersForForums(url, id, toUrl) {
+        let output = '';
+        
+        $.get(url, {}, (response) => {
+            try {
+                const users = JSON.parse(response);
+                
+                users.forEach((user) => {
+                    const safeName = this.escapeHtml(user.name);
+                    let safeUrl = toUrl.replace(/%id/g, user.id)
+                                       .replace(/%name/g, encodeURIComponent(user.name));
+                    
+                    output += `<li><a href="${safeUrl}">${safeName}</a> (${user.id})</li>`;
+                });
+                
+                $(`#${id}`).html(`<ul>${output}</ul>`);
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+            }
+        }).fail(() => {
+            console.error('Failed to fetch users');
+        });
+    }
+
+    initMultiFileUploadHandler(module, callback) {
+        if (typeof callback === 'function') {
+            this.parseResponse = callback;
+        }
+
+        const progressHandlingFunction = (e) => {
+            if (e.lengthComputable) {
+                $('progress').attr({ value: e.loaded, max: e.total });
+            }
+        };
+
+        $('#preloader').hide();
+        $('#attach').on('change', () => {
+            const data = new FormData();
+            $('#attach')[0].files.forEach((file, i) => {
+                data.append(`attach${i + 1}`, file);
+            });
+
+            $.ajax({
+                url: `/${module}/upload_attaches/`,
+                type: 'POST',
+                xhr: function() {
+                    const myXhr = $.ajaxSettings.xhr();
+                    if (myXhr.upload) {
+                        myXhr.upload.addEventListener('progress', progressHandlingFunction, false);
+                    }
+                    return myXhr;
+                },
+                data: data,
+                cache: false,
+                contentType: false,
+                dataType: 'json',
+                processData: false,
+                beforeSend: () => {
+                    $('progress').show().attr({ value: '0', max: '10000' });
+                    if (!$('#attaches-info').is(':visible')) {
+                        $('#attaches-info').show();
+                    }
+                },
+                success: (data) => {
+                    this.parseResponse(module, data);
+                    $('progress').hide();
+                },
+                error: () => {
+                    $('#attaches-info').html('Some error during the files upload!');
+                }
+            });
+        });
+    }
+
+    // Utility methods
+    escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    resizeWrapper(id) {
+        const nheight = $(id).height();
+        const wrapheight = $('#content-wrapper').height();
+        
+        if (nheight > wrapheight) {
+            $('#content-wrapper').height(nheight);
+        }
+    }
+
+    selectAclTab(id) {
+        $('div.acl-perms-collection').each(function() {
+            $(this).hide();
+        });
+        
+        $(`div#aclset${id}`).show();
+    }
+
+    openPopup(id) {
+        this.resizeWrapper($(`#${id}`));
+        const dataTop = parseInt($(`#${id}`).data('top') || 0);
+        const newTop = window.scrollY + dataTop;
+        
+        $(`#${id}`).css({
+            'top': newTop
+        }).fadeIn(1000);
+        
+        if (!$('div#overlay').is(':visible')) {
+            $('div#overlay').fadeIn();
+        }
+    }
+
+    closePopup(id) {
+        $(`#${id}`).fadeOut(300, () => {
+            if (!$('div.popup').is(':visible') && $('div#overlay').is(':visible')) {
+                $('#overlay').fadeOut('fast', () => {
+                    $('#overlay').hide();
+                });
+            }
+        });
+    }
+
+    wiOpen(pref) {
+        $(`#${pref}_dWin`).fadeIn(1000);
+    }
+
+    hideWin(pref) {
+        $(`#${pref}_dWin`).fadeOut(500);
+    }
+
+    addWin(prefix) {
+        $(`#${prefix}_add`).show();
+        $(`#${prefix}_view`).hide();
+    }
+
+    subMenu(id) {
+        this.menuItemOver = true;
+        this.hideAllMenus();
+
+        if (!$(`#${id}`).is(':visible')) {
+            $(`#${id}`).slideDown();
+        } else {
+            $(`#${id}`).slideUp();
+        }
+    }
+
+    save(prefix) {
+        const inp = $(`#${prefix}_inp`).val().trim();
+        const idSec = prefix === 'cat' ? $(`#${prefix}_secId`).val() : '';
+        
+        if (!inp || inp.length < 2) {
+            alert('Слишком короткое название');
+            return;
+        }
+
+        $.post('load_cat.php?ac=add', { 
+            title: inp, 
+            type: prefix, 
+            id_sec: idSec 
+        }, () => { 
+            window.location.href = ''; 
+        });
+    }
+
+    confirmAction() {
+        return confirm('Вы уверены?');
+    }
+
+    showHelpWin(text, title) {
+        const safeText = this.escapeHtml(text);
+        const safeTitle = this.escapeHtml(title);
+        
+        const helpWin = $(`
+            <div class="popup" id="help-window" style="display:block;">
+                <div class="top">
+                    <div class="title">${safeTitle}</div>
+                    <div class="close" onClick="atomX.closeHelpPopup('help-window')"></div>
+                </div>
+                <div class="items text">
+                    ${safeText}
+                </div>
+            </div>
+        `);
+        
+        $('#content-wrapper').append(helpWin);
+    }
+
+    closeHelpPopup(id) {
+        $(`#${id}`).fadeOut(400, function() {
+            $(this).remove();
+        });
+    }
+
+    // Menu functionality
+    drunyaMenu(params) {
+        let content = '<ul>';
+        
+        Object.keys(params).forEach((key) => {
+            const param = params[key];
+            content += `
+                <li onClick="atomX.subMenu('topsub${key}');">
+                    <a href="#">${this.escapeHtml(param[0])}</a>
+                    <div id="topsub${key}" class="sub">
+                        <div class="shadow"><ul>
+            `;
+            
+            param[1].forEach((line) => {
+                if (line === 'sep') {
+                    content += '<li class="top-menu-sep"></li>';
+                } else {
+                    content += `<li>${line}</li>`;
+                }
+            });
+            
+            content += '</ul></div></div></li>';
+        });
+        
+        $('#topmenu').html(content + '</ul>');
+    }
+
+    hideAllMenus() {
+        $('#topmenu > ul > li .sub').each(function() {
+            $(this).slideUp('fast');
+        });
+        
+        $('.side-menu > ul > li .sub').each(function() {
+            $(this).slideUp('fast');
+        });
+    }
+
+    showSubMenu(id) {
+        this.hideAllMenus();
+        $(`#${id}`).show();
+    }
+
+    showScreenshot(path) {
+        const img = $('#screenshot');
+        if (img.length) {
+            img.attr('src', path);
+        }
+    }
 }
 
-
-
-
-
-function resizeWrapper(id) {
-	var nheight = $(id).height();
-	var wrapheight = $('#content-wrapper').height();
-	
-	if (nheight > wrapheight) {
-		$('#content-wrapper').height(nheight);
-	}
+// FpsLib functionality as static class
+class FpsLib {
+    static showLoader() {
+        $('#ajax-loader').show();
+    }
+    
+    static hideLoader() {
+        $('#ajax-loader').hide();
+    }
 }
 
-function selectAclTab(id) {
-	$('div.acl-perms-collection').each(function(){
-		$(this).hide();
-	});
-	
-	$('div#aclset' + id).show();
+// Global event handlers with proper scoping
+document.addEventListener('click', () => {
+    if (!atomX.menuItemOver) {
+        atomX.hideAllMenus();
+    }
+    atomX.menuItemOver = false;
+});
+
+// Initialize global instance
+const atomX = new AtomXAdmin();
+
+// Export for module systems if needed
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { AtomXAdmin, FpsLib };
 }
-
-
-function openPopup(id) {
-	resizeWrapper($('#'+id));
-	var datatop = parseInt((typeof $('#'+id).data('top') != 'undefined') ? $('#'+id).data('top') : 0);
-	var newtop = window.scrollY + datatop;
-	$('#'+id).css({
-		'top': newtop
-	});
-
-	$('#' + id).fadeIn(1000);
-	
-	if (!$('div#overlay').is(':visible')) {
-		$('div#overlay').fadeIn();
-	}
-}
-
-function closePopup(id) {
-	$('#' + id).fadeOut(300, function(){
-		if (!$('div.popup').is(':visible') && $('div#overlay').is(':visible')) {
-			$('#overlay').fadeOut('fast', function(){
-				$('#overlay').hide();
-			});
-		}
-	});
-}
-
-
-
-function wiOpen(pref) {
-	$('#' + pref + '_dWin').fadeIn(1000);
-}
-
-
-function hideWin(pref) {
-	$('#' + pref + '_dWin').fadeOut(500);
-}
-
-function addWin(prefix) {
-	document.getElementById(prefix + '_add').style.display = '';
-	document.getElementById(prefix + '_view').style.display = 'none';	
-}
-
-function subMenu(id) {
-	menu_item_over = true;
-	hideAll();
-
-	if (!$('#'+id).is(':visible')) {
-		$('#'+id).slideDown();
-	} else {
-		$('#'+id).slideUp();
-	}
-	
-	
-}
-
-
-function save(prefix) {
-
-	var inp = document.getElementById(prefix + '_inp').value;
-	if (prefix == 'cat')
-		var id_sec = document.getElementById(prefix + '_secId').value;
-	else
-		var id_sec = '';
-	if (typeof inp == 'undefined' || typeof inp == '' || inp.length < 2) {
-		alert('Слишком короткое название');
-		return;
-	} else {
-		$.post('load_cat.php?ac=add', {title : inp, type: prefix, id_sec: id_sec}, function(data) { window.location.href = ''; });
-		
-	}
-}
-function _confirm() {
-	return confirm('Вы уверены?');
-}
-
-
-/* help window */
-function showHelpWin(text, title) {
-	var helpWin = document.createElement('div');
-	
-	
-	helpWin.innerHTML = '<div class="popup" id="help-window" style="display:block;">' +
-		'<div class="top">' +
-			'<div class="title">' + title + '</div>' +
-			'<div class="close" onClick="closeHelpPopup(\'help-window\')"></div>' +
-		'</div>' +
-		'<div class="items text">' +
-			text +
-		'</div>' +
-	'</div>';
-	
-	$('#content-wrapper').append(helpWin);
-}
-
-function closeHelpPopup(id) {
-	$('#'+id).fadeOut(400, function(){
-		$('#'+id).remove();
-	})
-}
-
-
-
-
-/* ****** TOP MENU ******* */
-var drunya_menu = false;
-var menu_item_over = false;
-document.onclick = function() {
-	if (menu_item_over == false) {
-		drunya_menu = false;
-		hideAll();
-	}
-}
-function drunyaMenu(params) {
-
-	this.content = '<ul>';
-
-	
-	for(var key in params){
-		var param = params[key];
-
-			
-		this.content = this.content + '<li onClick="subMenu(\'topsub' + key + '\');"><a href="#">' + param[0] + '</a>'
-			+ '<div id="topsub' + key + '" class="sub">'
-			+ '<div class="shadow">'
-			+ '<ul>';
-			
-		for(var _key in param[1]){
-			var line = param[1][_key];
-			if (line == 'sep') {
-				this.content = this.content + 
-				'<li class="top-menu-sep"></li>';
-			} else {
-				this.content = this.content + 
-				'<li>' + line + '</li>';
-			}
-		}
-		this.content = this.content + '</ul></div></div></li>';
-	}
-
-	document.getElementById('topmenu').innerHTML = this.content + '</ul>';
-}
-
-
-
-function hideAll() {
-	$('#topmenu > ul > li .sub').each(function(){
-		$(this).slideUp('fast');
-	});
-	
-	
-	$('.side-menu > ul > li .sub').each(function(){
-		$(this).slideUp('fast');
-	});
-	
-	return;
-}
-
-
-
-
-/* ************  MENU BLOCK ************ */
-
-
-
-function hideSubMenu(id) {
-	/*
-	setTimeout(function() {
-		document.getElementById(id).style.display = 'none';
-	}, 3000);
-	*/
-	return;
-}
-
-function showSubMenu(id) {
-	hideAll();
-	document.getElementById(id).style.display = '';
-}
-
-/**
- * Change image when changing template
- */
-function showScreenshot(path) {
-	var img = document.getElementById('screenshot');
-	if (img != 'undefined') {
-		img.src = path;
-	}
-}
-
-
-
-FpsLib = new function(){
-	this.showLoader = function(){
-		$('#ajax-loader').show();
-	};
-	this.hideLoader = function(){
-		$('#ajax-loader').hide();
-	};
-};
