@@ -1,105 +1,157 @@
 <?php
-@ini_set('display_errors', 0);
-sleep(2);
+declare(strict_types=1);
 
-$out = '';
+/**
+ * Server Configuration Check Script
+ * 
+ * Проверяет доступность критически важных функций для работы с изображениями
+ * и файловой системой. Оптимизирован для PHP 8.1+
+ */
 
-if (ini_get('safe_mod') == 1) {
-	$out .= '<span style="color:#FF0000">safe_mod</span> - Возможности сервера ограничены<br />';
+// Заголовки для предотвращения кеширования и обеспечения безопасности
+header('Content-Type: text/html; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+header('X-Content-Type-Options: nosniff');
+
+// Отключаем display_errors более современным способом
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
+// Проверяем, что это GET запрос
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    http_response_code(405);
+    exit('Method Not Allowed');
 }
 
-if (!function_exists('set_time_limit')) {
-	$out .= '<span style="color:#FF0000">set_time_limit()</span> - Понадобится при быстром росте сайта<br />';
+// Функция для безопасного вывода HTML
+function escapeHtml(string $text): string
+{
+    return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 }
 
-
-if (!function_exists('chmod')) {
-	$out .= '<span style="color:#FF0000">chmod()</span> - Необходимо для смены прав на файлы и папки<br />';
+// Функция проверки доступности функций
+function checkFunctions(array $functions): array
+{
+    $missing = [];
+    
+    foreach ($functions as $function) {
+        if (!function_exists($function)) {
+            $missing[] = $function;
+        }
+    }
+    
+    return $missing;
 }
 
+// Основные проверки
+$warnings = [];
 
-if (!function_exists('getImageSize')) {
-	$out .= '<span style="color:#FF0000">getImageSize()</span> - Необходимо для обработки изображений<br />';
+// Проверка системных функций
+$systemFunctions = ['set_time_limit', 'chmod'];
+$missingSystem = checkFunctions($systemFunctions);
+
+foreach ($missingSystem as $function) {
+    $warnings[] = [
+        'function' => $function,
+        'message' => match($function) {
+            'set_time_limit' => 'Понадобится при быстром росте сайта',
+            'chmod' => 'Необходимо для смены прав на файлы и папки',
+            default => 'Необходима для работы системы'
+        }
+    ];
 }
 
-if (!function_exists('imageCreateFromString')) {
-	$out .= '<span style="color:#FF0000">imageCreateFromString()</span> - Необходимо для обработки изображений<br />';
+// Проверка функций обработки изображений
+$imageFunctions = [
+    'getImageSize' => 'Необходимо для обработки изображений',
+    'imageCreateFromString' => 'Необходимо для обработки изображений',
+    'imagecreatetruecolor' => 'Необходимо для обработки изображений',
+    'imageCopy' => 'Необходимо для обработки изображений',
+    'imageGIF' => 'Необходимо для обработки изображений GIF',
+    'imageJPEG' => 'Необходимо для обработки изображений JPEG',
+    'imagePNG' => 'Необходимо для обработки изображений PNG',
+    'imagecreatefromjpeg' => 'Необходимо для обработки JPEG изображений',
+    'imagecreatefromgif' => 'Необходимо для обработки GIF изображений',
+    'imagecreatefrompng' => 'Необходимо для обработки PNG изображений',
+    'imagesx' => 'Необходимо для обработки изображений',
+    'imagesy' => 'Необходимо для обработки изображений',
+    'imageDestroy' => 'Необходимо для обработки изображений',
+    'exif_imagetype' => 'Необходимо для определения типа изображений',
+    'imagecopyresampled' => 'Необходимо для изменения размера изображений',
+    'imagecolorsforindex' => 'Необходимо для работы с цветами изображений',
+    'imagecolorat' => 'Необходимо для работы с пикселями изображений',
+    'imagesetpixel' => 'Необходимо для работы с пикселями изображений',
+    'imagecolorclosest' => 'Необходимо для работы с цветами изображений'
+];
+
+$missingImage = checkFunctions(array_keys($imageFunctions));
+
+foreach ($missingImage as $function) {
+    $warnings[] = [
+        'function' => $function,
+        'message' => $imageFunctions[$function] ?? 'Необходима для обработки изображений'
+    ];
 }
 
-if (!function_exists('imagecreatetruecolor')) {
-	$out .= '<span style="color:#FF0000">imagecreatetruecolor()</span> - Необходимо для обработки изображений<br />';
+// Проверка расширений
+$requiredExtensions = ['gd', 'exif'];
+foreach ($requiredExtensions as $extension) {
+    if (!extension_loaded($extension)) {
+        $warnings[] = [
+            'function' => $extension . ' extension',
+            'message' => 'Требуется расширение ' . strtoupper($extension) . ' для работы с изображениями'
+        ];
+    }
 }
 
-if (!function_exists('imageCopy')) {
-	$out .= '<span style="color:#FF0000">imageCopy()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imageGIF')) {
-	$out .= '<span style="color:#FF0000">imageGIF()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imageJPEG')) {
-	$out .= '<span style="color:#FF0000">imageJPEG()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagePNG')) {
-	$out .= '<span style="color:#FF0000">imagePNG()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagecreatefromjpeg')) {
-	$out .= '<span style="color:#FF0000">imagecreatefromjpeg()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagecreatefromgif')) {
-	$out .= '<span style="color:#FF0000">imagecreatefromgif()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagecreatefrompng')) {
-	$out .= '<span style="color:#FF0000">imagecreatefrompng()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagesx')) {
-	$out .= '<span style="color:#FF0000">imagesx()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagesy')) {
-	$out .= '<span style="color:#FF0000">imagesy()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imageDestroy')) {
-	$out .= '<span style="color:#FF0000">imageDestroy()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('exif_imagetype')) {
-	$out .= '<span style="color:#FF0000">exif_imagetype()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagecopyresampled')) {
-	$out .= '<span style="color:#FF0000">imagecopyresampled()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagecolorsforindex')) {
-	$out .= '<span style="color:#FF0000">imagecolorsforindex()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagecolorat')) {
-	$out .= '<span style="color:#FF0000">imagecolorat()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagesetpixel')) {
-	$out .= '<span style="color:#FF0000">imagesetpixel()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (!function_exists('imagecolorclosest')) {
-	$out .= '<span style="color:#FF0000">imagecolorclosest()</span> - Необходимо для обработки изображений<br />';
-}
-
-if (empty($out)) echo '<span style="color:#46B100">Ваш сервер настроен идеально! :)</span><br />';
-else echo $out;
+// Вывод результатов
 ?>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Проверка конфигурации сервера</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+        .success { color: #46B100; font-weight: bold; }
+        .warning { color: #FF0000; margin-bottom: 10px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .php-version { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Проверка конфигурации сервера</h1>
+            <p class="php-version">PHP <?= escapeHtml(PHP_VERSION) ?></p>
+        </div>
 
-
-
-
-
-
+        <?php if (empty($warnings)): ?>
+            <p class="success">✅ Ваш сервер настроен идеально! Все необходимые функции доступны.</p>
+        <?php else: ?>
+            <div class="warnings">
+                <h2>⚠️ Обнаружены проблемы:</h2>
+                <?php foreach ($warnings as $warning): ?>
+                    <div class="warning">
+                        <strong><?= escapeHtml($warning['function']) ?>()</strong> - 
+                        <?= escapeHtml($warning['message']) ?>
+                    </div>
+                <?php endforeach; ?>
+                
+                <div style="margin-top: 20px; padding: 15px; background: #f8f8f8; border-radius: 5px;">
+                    <h3>Рекомендации:</h3>
+                    <ul>
+                        <li>Установите расширение GD: <code>sudo apt-get install php-gd</code></li>
+                        <li>Установите расширение EXIF: <code>sudo apt-get install php-exif</code></li>
+                        <li>Включите расширения в php.ini</li>
+                        <li>Перезапустите веб-сервер после установки</li>
+                    </ul>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+</body>
+</html>
