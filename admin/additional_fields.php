@@ -1,455 +1,504 @@
 <?php
-/*-----------------------------------------------\
-| 												 |
-| @Author:       Andrey Brykin (Drunya)          |
-| @Email:        drunyacoder@gmail.com           |
-| @Site:         http://atomx.net                |
-| @Version:      0.5                             |
-| @Project:      CMS                             |
-| @package       CMS AtomX                       |
-| @subpackege    Additional Fields (Admin Part)  |
-| @copyright     ©Andrey Brykin 2010-2013        |
-\-----------------------------------------------*/
+/**
+ * ==================================================
+ * Additional Fields Admin Module
+ * ==================================================
+ * 
+ * @author    Andrey Brykin (Drunya)
+ * @version   1.0
+ * @project   CMS AtomX
+ * @package   Admin Module
+ * @subpackage Additional Fields
+ * @copyright © Andrey Brykin 2010-2014
+ * 
+ * ==================================================
+ * Any partial or complete distribution
+ * of CMS AtomX without the consent of the author
+ * is illegal.
+ * ==================================================
+ * Любое распространение CMS AtomX или ее частей,
+ * без согласия автора, является незаконным.
+ * ==================================================
+ */
 
-/*-----------------------------------------------\
-| 												 |
-|  any partial or not partial extension          |
-|  CMS AtomX,without the consent of the          |
-|  author, is illegal                            |
-|------------------------------------------------|
-|  Любое распространение                         |
-|  CMS AtomX или ее частей,                      |
-|  без согласия автора, является не законным     |
-\-----------------------------------------------*/
-
+declare(strict_types=1);
 
 include_once '../sys/boot.php';
 include_once ROOT . '/admin/inc/adm_boot.php';
 
+// Check permissions
+if (!$ACL->turn(['panel', 'restricted_access_additional_fields'], false)) {
+    $_SESSION['errors'] = __('Permission denied');
+    redirect('/admin/');
+}
 
-
-
-// Know module
+// Get allowed modules
 $ModulesManager = new ModulesManager();
 $allow_modules = $ModulesManager->getAllowedModules('addFields');
 
-
-
-
-if (empty($_GET['m']) || !in_array($_GET['m'], $allow_modules)) {
-	$_GET['m'] = 'news';
-	$_GET['ac'] = 'index';
-}
-$pageTitle = __(ucfirst($_GET['m'])) . ' - ' . __('Additional fields');
-
-// Know action
-if (!isset($_GET['ac'])) $_GET['ac'] = 'index';
-$permis = array('add', 'del', 'index', 'edit');
-if (!in_array($_GET['ac'], $permis)) $_GET['ac'] = 'index';
-
-switch($_GET['ac']) {
-	case 'del':
-		$content = FpsDelete();
-		break;
-	case 'add':
-		$content = FpsAdd();
-		break;
-	case 'edit':
-		$content = FpsEdit();
-		break;
-	default:
-		
+// Validate module
+$module = $_GET['m'] ?? 'news';
+if (!in_array($module, $allow_modules)) {
+    $module = 'news';
 }
 
+$pageTitle = __(ucfirst($module)) . ' - ' . __('Additional fields');
 
+// Validate action
+$action = $_GET['ac'] ?? 'index';
+$allowed_actions = ['add', 'del', 'index', 'edit'];
+if (!in_array($action, $allowed_actions)) {
+    $action = 'index';
+}
 
+// Process action
+switch ($action) {
+    case 'del':
+        handleDelete($module);
+        break;
+    case 'add':
+        handleAdd($module);
+        break;
+    case 'edit':
+        handleEdit($module);
+        break;
+    default:
+        displayIndex($module);
+}
 
-if ($_GET['ac'] == 'index'):
-	$fields = $FpsDB->select($_GET['m'] . '_add_fields', DB_ALL);
-	$AddFields = new FpsAdditionalFields;
-	if (count($fields) > 0)
-		$inputs = $AddFields->getInputs($fields, false, $_GET['m']);
+/**
+ * Display main index page
+ */
+function displayIndex(string $module): void
+{
+    global $FpsDB, $AddFields;
+    
+    $fields = $FpsDB->select($module . '_add_fields', DB_ALL);
+    $AddFields = new FpsAdditionalFields;
+    
+    if (!empty($fields)) {
+        $inputs = $AddFields->getInputs($fields, false, $module);
+    }
 
-
-
-
-	$pageNav = $pageTitle;
-	$pageNavr = '';
-	//echo $head
+    $pageNav = $pageTitle;
+    $pageNavr = '';
+    
     include_once ROOT . '/admin/template/header.php';
-?>
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	<div class="popup" id="addCat">
-		<div class="top">
-			<div class="title"><?php echo __('Adding field') ?></div>
-			<div class="close" onClick="closePopup('addCat')"></div>
-		</div>
-		<div class="items">
-			<form action="additional_fields.php?m=<?php echo $_GET['m'] ?>&ac=add" method="POST">
-			<div class="item">
-				<div class="left">
-					<?php echo __('Type of field') ?>:
-				</div>
-				<div class="right">
-					<select name="type">
-						<option value="text">text</option>
-						<option value="checkbox">checkbox</option>
-						<option value="textarea">textarea</option>
-					</select>
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Visible name of field') ?>:
-					<span class="comment"><?php echo __('Will be displayed in errors') ?></span>
-				</div>
-				<div class="right">
-					<input type="text" name="label" value="" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Max length') ?>:
-					<span class="comment"><?php echo __('of saving data') ?></span>
-				</div>
-				<div class="right">
-					<input type="text" name="size" value="" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Params') ?>:
-					<span class="comment"><?php echo __('Read more in the doc') ?></span>
-				</div>
-				<div class="right">
-					<input type="text" name="params" value="" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Required field') ?>:
-				</div>
-				<div class="right">
-					<input type="checkbox" name="required" value="1" id="required" /><label for="required"></label>
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item submit">
-				<div class="left"></div>
-				<div class="right" style="float:left;">
-					<input type="submit" value="<?php echo __('Save') ?>" name="send" class="save-button" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			</form>
-		</div>
-	</div>
-	
+    ?>
 
-	
-	
-	
-<?php if (!empty($fields)): ?>
-<?php foreach($fields as $field): ?>
-	<?php
-		$params = (!empty($field['params'])) ? unserialize($field['params']) : array();
-		$values = (!empty($params['values'])) ? $params['values'] : '-';
-		$field_marker = 'add_field_' . $field['id'];
-		
-		$required = (!empty($params['required'])) 
-		? '<span style="color:red;">' . __('Yes') . '</span>' 
-		: '<span style="color:blue;">' . __('No') . '</span>';
-	?>
-	
-	<div class="popup" id="edit_<?php echo $field['id'] ?>">
-		<div class="top">
-			<div class="title">Добавление поля</div>
-			<div class="close" onClick="closePopup('edit_<?php echo $field['id'] ?>')"></div>
-		</div>
-		<div class="items">
-			<form action="additional_fields.php?m=<?php echo $_GET['m'] ?>&ac=edit&id=<?php echo $field['id'] ?>" method="POST">
-			<div class="item">
-				<div class="left">
-					<?php echo __('Type of field') ?>:
-				</div>
-				<div class="right">
-					<select name="type">
-						<option value="text"<?php if($field['type'] == 'text') echo ' selected="selected"' ?>>test</option>
-						<option value="checkbox"<?php if($field['type'] == 'checkbox') echo ' selected="selected"' ?>>checkbox</option>
-						<option value="textarea"<?php if($field['type'] == 'textarea') echo ' selected="selected"' ?>>textarea</option>
-					</select>
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Visible name of field') ?>:
-					<span class="comment"><?php echo __('Will be displayed in errors') ?></span>
-				</div>
-				<div class="right">
-					<input type="text" name="label" value="<?php echo h($field['label']) ?>" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Max length') ?>:
-					<span class="comment"><?php echo __('of saving data') ?></span>
-				</div>
-				<div class="right">
-					<input type="text" name="size" value="<?php echo (!empty($field['size'])) ? h($field['size']) : ''; ?>" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Params') ?>:
-					<span class="comment"><?php echo __('Read more in the doc') ?></span>
-				</div>
-				<div class="right">
-					<input type="text" name="params" value="<?php echo ($values != '-') ? h($values) : ''; ?>" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item">
-				<div class="left">
-					<?php echo __('Required field') ?>:
-				</div>
-				<div class="right">
-					<input id="required<?php $field['id'] ?>" type="checkbox" name="required" value="1"<?php if(!empty($params['required'])) echo ' checked="checked"' ?>/><label for="required<?php $field['id'] ?>"></label>
-				</div>
-				<div class="clear"></div>
-			</div>
-			<div class="item submit">
-				<div class="left"></div>
-				<div class="right" style="float:left;">
-					<input type="submit" value="<?php echo __('Save') ?>" name="send" class="save-button" />
-				</div>
-				<div class="clear"></div>
-			</div>
-			</form>
-		</div>
-	</div>
-	
-	
+    <!-- Add Field Modal -->
+    <div class="popup" id="addFieldModal" role="dialog" aria-labelledby="addFieldTitle" aria-hidden="true">
+        <div class="top">
+            <div class="title" id="addFieldTitle"><?= __('Adding field') ?></div>
+            <div class="close" onClick="closePopup('addFieldModal')" aria-label="<?= __('Close') ?>"></div>
+        </div>
+        <div class="items">
+            <form action="additional_fields.php?m=<?= $module ?>&ac=add" method="POST">
+                <div class="item">
+                    <div class="left">
+                        <label for="field_type"><?= __('Type of field') ?>:</label>
+                    </div>
+                    <div class="right">
+                        <select name="type" id="field_type" required>
+                            <option value="text">text</option>
+                            <option value="checkbox">checkbox</option>
+                            <option value="textarea">textarea</option>
+                            <option value="select">select</option>
+                            <option value="radio">radio</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="item">
+                    <div class="left">
+                        <label for="field_label"><?= __('Visible name of field') ?>:</label>
+                        <span class="comment"><?= __('Will be displayed in errors') ?></span>
+                    </div>
+                    <div class="right">
+                        <input type="text" name="label" id="field_label" required />
+                    </div>
+                </div>
+                
+                <div class="item">
+                    <div class="left">
+                        <label for="field_size"><?= __('Max length') ?>:</label>
+                        <span class="comment"><?= __('of saving data') ?></span>
+                    </div>
+                    <div class="right">
+                        <input type="number" name="size" id="field_size" min="1" max="65535" />
+                    </div>
+                </div>
+                
+                <div class="item">
+                    <div class="left">
+                        <label for="field_params"><?= __('Params') ?>:</label>
+                        <span class="comment"><?= __('For select/radio: value1|value2|value3') ?></span>
+                    </div>
+                    <div class="right">
+                        <input type="text" name="params" id="field_params" />
+                    </div>
+                </div>
+                
+                <div class="item">
+                    <div class="left">
+                        <label for="field_required"><?= __('Required field') ?>:</label>
+                    </div>
+                    <div class="right">
+                        <input type="checkbox" name="required" value="1" id="field_required" />
+                        <label for="field_required"></label>
+                    </div>
+                </div>
+                
+                <div class="item submit">
+                    <div class="left"></div>
+                    <div class="right">
+                        <button type="submit" name="send" class="save-button">
+                            <?= __('Save') ?>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 
-	
-	
-<?php endforeach; ?>
-<?php endif; ?>	
-	
-	
-	
-	
+    <!-- Edit Field Modals -->
+    <?php if (!empty($fields)): ?>
+        <?php foreach ($fields as $field): ?>
+            <?php
+            $params = !empty($field['params']) ? unserialize($field['params']) : [];
+            $values = $params['values'] ?? '';
+            $required = !empty($params['required']);
+            ?>
+            
+            <div class="popup" id="edit_<?= $field['id'] ?>" role="dialog" aria-labelledby="editTitle_<?= $field['id'] ?>" aria-hidden="true">
+                <div class="top">
+                    <div class="title" id="editTitle_<?= $field['id'] ?>"><?= __('Editing field') ?></div>
+                    <div class="close" onClick="closePopup('edit_<?= $field['id'] ?>')" aria-label="<?= __('Close') ?>"></div>
+                </div>
+                <div class="items">
+                    <form action="additional_fields.php?m=<?= $module ?>&ac=edit&id=<?= $field['id'] ?>" method="POST">
+                        <div class="item">
+                            <div class="left">
+                                <label for="type_<?= $field['id'] ?>"><?= __('Type of field') ?>:</label>
+                            </div>
+                            <div class="right">
+                                <select name="type" id="type_<?= $field['id'] ?>" required>
+                                    <option value="text"<?= $field['type'] === 'text' ? ' selected' : '' ?>>text</option>
+                                    <option value="checkbox"<?= $field['type'] === 'checkbox' ? ' selected' : '' ?>>checkbox</option>
+                                    <option value="textarea"<?= $field['type'] === 'textarea' ? ' selected' : '' ?>>textarea</option>
+                                    <option value="select"<?= $field['type'] === 'select' ? ' selected' : '' ?>>select</option>
+                                    <option value="radio"<?= $field['type'] === 'radio' ? ' selected' : '' ?>>radio</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="item">
+                            <div class="left">
+                                <label for="label_<?= $field['id'] ?>"><?= __('Visible name of field') ?>:</label>
+                                <span class="comment"><?= __('Will be displayed in errors') ?></span>
+                            </div>
+                            <div class="right">
+                                <input type="text" name="label" id="label_<?= $field['id'] ?>" value="<?= htmlspecialchars($field['label']) ?>" required />
+                            </div>
+                        </div>
+                        
+                        <div class="item">
+                            <div class="left">
+                                <label for="size_<?= $field['id'] ?>"><?= __('Max length') ?>:</label>
+                                <span class="comment"><?= __('of saving data') ?></span>
+                            </div>
+                            <div class="right">
+                                <input type="number" name="size" id="size_<?= $field['id'] ?>" value="<?= $field['size'] ?>" min="1" max="65535" />
+                            </div>
+                        </div>
+                        
+                        <div class="item">
+                            <div class="left">
+                                <label for="params_<?= $field['id'] ?>"><?= __('Params') ?>:</label>
+                                <span class="comment"><?= __('For select/radio: value1|value2|value3') ?></span>
+                            </div>
+                            <div class="right">
+                                <input type="text" name="params" id="params_<?= $field['id'] ?>" value="<?= htmlspecialchars($values) ?>" />
+                            </div>
+                        </div>
+                        
+                        <div class="item">
+                            <div class="left">
+                                <label for="required_<?= $field['id'] ?>"><?= __('Required field') ?>:</label>
+                            </div>
+                            <div class="right">
+                                <input type="checkbox" name="required" value="1" id="required_<?= $field['id'] ?>"<?= $required ? ' checked' : '' ?> />
+                                <label for="required_<?= $field['id'] ?>"></label>
+                            </div>
+                        </div>
+                        
+                        <div class="item submit">
+                            <div class="left"></div>
+                            <div class="right">
+                                <button type="submit" name="send" class="save-button">
+                                    <?= __('Save') ?>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
 
+    <!-- Main Content -->
+    <?php if (!empty($fields)): ?>
+        <div class="list">
+            <div class="title"><?= __('Additional fields') ?></div>
+            <button onclick="openPopup('addFieldModal');" class="add-cat-butt">
+                <div class="add"></div><?= __('Add') ?>
+            </button>
+            
+            <div class="table-responsive">
+                <table class="grid" aria-label="<?= __('Additional fields list') ?>">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?= __('Type of field') ?></th>
+                            <th scope="col"><?= __('Visible name of field') ?></th>
+                            <th scope="col"><?= __('Max length') ?></th>
+                            <th scope="col"><?= __('Params') ?></th>
+                            <th scope="col"><?= __('Required field') ?></th>
+                            <th scope="col"><?= __('Marker of field') ?></th>
+                            <th scope="col" style="width:160px;"><?= __('Actions') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($fields as $field): ?>
+                            <?php
+                            $params = !empty($field['params']) ? unserialize($field['params']) : [];
+                            $values = $params['values'] ?? '-';
+                            $field_marker = 'add_field_' . $field['id'];
+                            $required = !empty($params['required']) 
+                                ? '<span class="text-danger">' . __('Yes') . '</span>' 
+                                : '<span class="text-muted">' . __('No') . '</span>';
+                            ?>
+                            <tr>
+                                <td><?= htmlspecialchars($field['type']) ?></td>
+                                <td><?= htmlspecialchars($field['label']) ?></td>
+                                <td><?= $field['size'] ? htmlspecialchars($field['size']) : '-' ?></td>
+                                <td><?= $values !== '-' ? htmlspecialchars($values) : '-' ?></td>
+                                <td><?= $required ?></td>
+                                <td><code><?= htmlspecialchars(strtolower($field_marker)) ?></code></td>
+                                <td>
+                                    <a class="delete" title="<?= __('Delete') ?>" 
+                                       href="additional_fields.php?m=<?= $module ?>&ac=del&id=<?= $field['id'] ?>" 
+                                       onclick="return confirm('<?= __('Are you sure?') ?>');">
+                                        <span class="sr-only"><?= __('Delete') ?></span>
+                                    </a>
+                                    <a class="edit" title="<?= __('Edit') ?>" 
+                                       href="javascript://" 
+                                       onclick="openPopup('edit_<?= $field['id'] ?>')">
+                                        <span class="sr-only"><?= __('Edit') ?></span>
+                                    </a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    <?php else: ?>
+        <div class="warning">
+            <h3><?= __('Additional fields not found') ?></h3>
+            <p><?= __('No additional fields have been created for this module yet.') ?></p>
+        </div>
+        <button onclick="openPopup('addFieldModal');" class="save-button">
+            <?= __('Add field') ?>
+        </button>
+    <?php endif; ?>
 
-<?php if (!empty($fields)): ?>
-<div class="list">
-	<div class="title"><?php echo __('Additional fields') ?></div>
-	<div onclick="openPopup('addCat');" class="add-cat-butt"><div class="add"></div><?php echo __('Add') ?></div>
-	<table class="grid" cellspacing="0" style="width:100%;">
-		<tr>
-			<th><?php echo __('Type of field') ?></th>
-			<th><?php echo __('Visible name of field') ?></th>
-			<th><?php echo __('Max length') ?></th>
-			<th><?php echo __('Params') ?></th>
-			<th><?php echo __('Required field') ?></th>
-			<th><?php echo __('Marker of field') ?></th>
-			<th style="width:160px;"><?php echo __('Actions') ?></th>
-		</tr>
-	
+    <!-- Error notifications -->
+    <?php if (!empty($_SESSION['FpsForm']['errors'])): ?>
+        <script type="text/javascript">
+            showHelpWin(
+                '<ul class="error"><?= addslashes($_SESSION['FpsForm']['errors']) ?></ul>', 
+                '<?= addslashes(__('Errors')) ?>'
+            );
+        </script>
+        <?php unset($_SESSION['FpsForm']); ?>
+    <?php endif; ?>
 
-	<?php foreach($fields as $field): ?>
-		<?php
-			$params = (!empty($field['params'])) ? unserialize($field['params']) : array();
-			$values = (!empty($params['values'])) ? $params['values'] : '-';
-			$field_marker = 'add_field_' . $field['id'];
-			
-			$required = (!empty($params['required'])) 
-			? '<span style="color:red;">' . __('Yes') . '</span>' 
-			: '<span style="color:blue;">' . __('No') . '</span>';
-		?>
-		
-
-
-				<tr>
-					<td><?php echo h($field['type']); ?></td>
-					<td><?php echo h($field['label']); ?></td>
-					<td><?php echo (!empty($field['size'])) ? h($field['size']) : '-'; ?></td>
-					<td><?php echo (!empty($values)) ? h($values) : ''; ?></td>
-					<td><?php echo $required; ?></td>
-					<td><?php echo h(strtolower($field_marker)); ?></td>
-					<td>
-						<a class="delete" title="Delete" href="additional_fields.php?m=<?php echo $_GET['m'] ?>&ac=del&id=<?php echo $field['id'] ?>" onClick="return confirm('Are you sure?');"></a>
-						<a class="edit" title="Edit" href="javascript://" onClick="openPopup('edit_<?php echo $field['id'] ?>')"></a>
-					</td>
-				</tr>
-
-	<?php endforeach; ?>
-	</table>
-</div>
-<?php else: ?>
-
-<div class="warning">
-	<div class="h3"><?php echo __('Additional fields not found') ?></div>
-</div>
-<input type="button" value="<?php echo __('Add') ?>" onclick="openPopup('addCat');" class="save-button" />
-<?php endif; ?>			
-	
-	
-	<?php if (!empty($_SESSION['FpsForm']['errors'])): ?>
-		<script type="text/javascript">showHelpWin('<?php echo '<ul class="error">' . $_SESSION['FpsForm']['errors'] . '</ul>'; ?>', '<?php echo __('Errors') ?>');</script>
-		<?php unset($_SESSION['FpsForm']); ?>
-	<?php endif; ?>
-<?php endif; ?>
-
-
-
-
-<?php
-
-function FpsEdit() {
-	global $FpsDB;
-	
-	
-	if (empty($_GET['id'])) redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-	$id = intval($_GET['id']);
-	if ($id < 1) redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-	
-	
-	if (isset($_POST['send'])) {
-		$error = null;
-		$allow_types = array('text', 'checkbox', 'textarea');
-		
-		
-		//type of field
-		$type = (!empty($_POST['type']) && in_array(trim($_POST['type']), $allow_types))
-		? trim($_POST['type']) : 'text';
-		if (empty($_POST['label'])) $error .= '<li>' . __('Empty field "visible name"') . '</li>';
-		if (empty($_POST['size']) && $type != 'checkbox') $error .= '<li>' . __('Empty field "max length"') . '</li>';
-		if (!empty($_POST['size']) && !is_numeric($_POST['size'])) $error .= '<li>' . __('Wrong chars in "max length"') . '</li>';
-		
-		
-		//params
-		$params = array();
-		$params['values'] = (!empty($_POST['params'])) ? trim($_POST['params']) : __('Yes') . '|' . __('No');
-		if (!empty($_POST['required'])) $params['required'] = 1;
-		if ($type != 'checkbox') unset($params['values']);
-		$params = serialize($params);
-		
-		
-		//label
-		$label = (!empty($_POST['label'])) ? trim($_POST['label']) : 'Add. field';
-		
-		//size
-		$size = (!empty($_POST['size'])) ? intval($_POST['size']) : 70;
-		
-		if (!empty($error)) {
-			$_SESSION['FpsForm'] = array('errors' => $error);
-			redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-		}
-		$data = array(
-			'type' => $type,
-			'label' => $label,
-			'size' => $size,
-			'params' => $params,
-			'id' => $id,
-		);
-		$FpsDB->save($_GET['m'] . '_add_fields', $data);
-		
-		//clean cache
-		$Cache = new Cache;
-		$Cache->clean(CACHE_MATCHING_ANY_TAG, array('module_' . $_GET['m']));
-		redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-	}
+    <?php
+    include_once ROOT . '/admin/template/footer.php';
 }
 
+/**
+ * Handle field addition
+ */
+function handleAdd(string $module): void
+{
+    global $FpsDB;
 
+    if (!isset($_POST['send'])) {
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
 
-function FpsAdd() {
-	global $FpsDB;
-	
-	
-	if (isset($_POST['send'])) {
-		$error = null;
-		$allow_types = array('text', 'checkbox', 'textarea');
-		
-		
-		//type of field
-		$type = (!empty($_POST['type']) && in_array(trim($_POST['type']), $allow_types))
-		? trim($_POST['type']) : 'text';
-		if (empty($_POST['label'])) $error .= '<li>' . __('Empty field "visible name"') . '</li>';
-		if (empty($_POST['size']) && $type != 'checkbox') $error .= '<li>' . __('Empty field "max length"') . '</li>';
-		if (!empty($_POST['size']) && !is_numeric($_POST['size'])) $error .= '<li>' . __('Wrong chars in "max length"') . '</li>';
-		
-		
-		//params
-		$params = array();
-		$params['values'] = (!empty($_POST['params'])) ? trim($_POST['params']) : __('Yes') . '|' . __('No');
-		if (!empty($_POST['required'])) $params['required'] = 1;
-		if ($type != 'checkbox') unset($params['values']);
-		$params = serialize($params);
-		
-		
-		//label
-		$label = (!empty($_POST['label'])) ? trim($_POST['label']) : 'Add. field';
-		
-		//size
-		$size = (!empty($_POST['size'])) ? intval($_POST['size']) : 70;
-		
-		
-		if (!empty($error)) {
-			$_SESSION['FpsForm'] = array('errors' => $error);
-			redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-		}
-		
-		
-		$data = array(
-			'type' => $type,
-			'label' => $label,
-			'size' => $size,
-			'params' => $params,
-		);
-		$FpsDB->save($_GET['m'] . '_add_fields', $data);
-		
-		//clean cache
-		$Cache = new Cache;
-		$Cache->clean(CACHE_MATCHING_ANY_TAG, array('module_' . $_GET['m']));
-		redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-	}
+    $errors = [];
+    $allowed_types = ['text', 'checkbox', 'textarea', 'select', 'radio'];
+
+    // Validate type
+    $type = $_POST['type'] ?? 'text';
+    if (!in_array($type, $allowed_types)) {
+        $type = 'text';
+    }
+
+    // Validate label
+    $label = trim($_POST['label'] ?? '');
+    if (empty($label)) {
+        $errors[] = __('Empty field "visible name"');
+    }
+
+    // Validate size
+    $size = null;
+    if ($type !== 'checkbox') {
+        $size = (int)($_POST['size'] ?? 0);
+        if ($size < 1) {
+            $errors[] = __('Invalid field "max length"');
+        }
+    }
+
+    // Prepare params
+    $params = [];
+    if (in_array($type, ['checkbox', 'select', 'radio'])) {
+        $params['values'] = trim($_POST['params'] ?? __('Yes') . '|' . __('No'));
+    }
+    
+    if (!empty($_POST['required'])) {
+        $params['required'] = true;
+    }
+
+    if (!empty($errors)) {
+        $_SESSION['FpsForm'] = ['errors' => implode('', array_map(fn($e) => "<li>$e</li>", $errors))];
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
+
+    // Save to database
+    $data = [
+        'type' => $type,
+        'label' => $label,
+        'size' => $size,
+        'params' => serialize($params),
+    ];
+
+    if (!$FpsDB->save($module . '_add_fields', $data)) {
+        $_SESSION['errors'] = __('Error saving field');
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
+
+    // Clean cache
+    $Cache = new Cache();
+    $Cache->clean(CACHE_MATCHING_ANY_TAG, ['module_' . $module]);
+    
+    $_SESSION['message'] = __('Field added successfully');
+    redirect('/admin/additional_fields.php?m=' . $module);
 }
 
+/**
+ * Handle field editing
+ */
+function handleEdit(string $module): void
+{
+    global $FpsDB;
 
+    $id = (int)($_GET['id'] ?? 0);
+    if ($id < 1) {
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
 
+    if (!isset($_POST['send'])) {
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
 
-function FpsDelete() {
-	global $FpsDB;
-	
-	
-	if (empty($_GET['id'])) redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-	$id = intval($_GET['id']);
-	if ($id < 1) redirect('/admin/additional_fields.php?m=' . $_GET['m']);
-	
-	
-	$FpsDB->query("DELETE FROM `" . $FpsDB->getFullTableName($_GET['m'] . '_add_fields') 
-	. "` WHERE `id` = '" . $id . "' LIMIT 1");
-	redirect('/admin/additional_fields.php?m=' . $_GET['m']);
+    $errors = [];
+    $allowed_types = ['text', 'checkbox', 'textarea', 'select', 'radio'];
+
+    // Validate type
+    $type = $_POST['type'] ?? 'text';
+    if (!in_array($type, $allowed_types)) {
+        $type = 'text';
+    }
+
+    // Validate label
+    $label = trim($_POST['label'] ?? '');
+    if (empty($label)) {
+        $errors[] = __('Empty field "visible name"');
+    }
+
+    // Validate size
+    $size = null;
+    if ($type !== 'checkbox') {
+        $size = (int)($_POST['size'] ?? 0);
+        if ($size < 1) {
+            $errors[] = __('Invalid field "max length"');
+        }
+    }
+
+    // Prepare params
+    $params = [];
+    if (in_array($type, ['checkbox', 'select', 'radio'])) {
+        $params['values'] = trim($_POST['params'] ?? __('Yes') . '|' . __('No'));
+    }
+    
+    if (!empty($_POST['required'])) {
+        $params['required'] = true;
+    }
+
+    if (!empty($errors)) {
+        $_SESSION['FpsForm'] = ['errors' => implode('', array_map(fn($e) => "<li>$e</li>", $errors))];
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
+
+    // Update database
+    $data = [
+        'type' => $type,
+        'label' => $label,
+        'size' => $size,
+        'params' => serialize($params),
+        'id' => $id,
+    ];
+
+    if (!$FpsDB->save($module . '_add_fields', $data)) {
+        $_SESSION['errors'] = __('Error updating field');
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
+
+    // Clean cache
+    $Cache = new Cache();
+    $Cache->clean(CACHE_MATCHING_ANY_TAG, ['module_' . $module]);
+    
+    $_SESSION['message'] = __('Field updated successfully');
+    redirect('/admin/additional_fields.php?m=' . $module);
 }
 
+/**
+ * Handle field deletion
+ */
+function handleDelete(string $module): void
+{
+    global $FpsDB;
 
+    $id = (int)($_GET['id'] ?? 0);
+    if ($id < 1) {
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
 
-include_once 'template/footer.php';
-?>
+    // Delete from database
+    $result = $FpsDB->delete($module . '_add_fields', ['id' => $id]);
+    
+    if (!$result) {
+        $_SESSION['errors'] = __('Error deleting field');
+        redirect('/admin/additional_fields.php?m=' . $module);
+    }
+
+    // Clean cache
+    $Cache = new Cache();
+    $Cache->clean(CACHE_MATCHING_ANY_TAG, ['module_' . $module]);
+    
+    $_SESSION['message'] = __('Field deleted successfully');
+    redirect('/admin/additional_fields.php?m=' . $module);
+}
