@@ -248,3 +248,56 @@ function getAdmFrontMenuParams(): array
 }
 
 ?>
+<?php
+// admin/inc/security_utils.php
+
+/**
+ * Generate CSRF token
+ */
+function generateCsrfToken(): string
+{
+    if (empty($_SESSION['csrf_tokens'])) {
+        $_SESSION['csrf_tokens'] = [];
+    }
+    
+    $token = bin2hex(random_bytes(32));
+    $_SESSION['csrf_tokens'][$token] = time();
+    
+    // Clean old tokens (older than 1 hour)
+    foreach ($_SESSION['csrf_tokens'] as $storedToken => $timestamp) {
+        if (time() - $timestamp > 3600) {
+            unset($_SESSION['csrf_tokens'][$storedToken]);
+        }
+    }
+    
+    return $token;
+}
+
+/**
+ * Validate CSRF token
+ */
+function validateCsrfToken(string $token): bool
+{
+    if (empty($_SESSION['csrf_tokens'][$token])) {
+        return false;
+    }
+    
+    // Token is valid for 1 hour
+    if (time() - $_SESSION['csrf_tokens'][$token] > 3600) {
+        unset($_SESSION['csrf_tokens'][$token]);
+        return false;
+    }
+    
+    // Remove used token
+    unset($_SESSION['csrf_tokens'][$token]);
+    return true;
+}
+
+/**
+ * Add CSRF token to form
+ */
+function csrfField(): string
+{
+    $token = generateCsrfToken();
+    return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($token) . '">';
+}
