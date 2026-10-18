@@ -72,6 +72,10 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 - README fixes: the front-end stack no longer lists jQuery Migrate
   (removed earlier) and the password description now matches the
   bcrypt storage with transparent md5 upgrade.
+- The front-end moderation panel's edit form (news, stat and loads
+  modules) returned HTTP 500 on PHP 8 when the material had no
+  attachments: `count()` was called on the `null` result of
+  `getAttaches()`; it is now guarded with `!empty()`.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated

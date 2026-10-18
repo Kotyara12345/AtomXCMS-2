@@ -786,7 +786,7 @@ Class StatModule extends Module {
 		
 		$attaches = $markers->getAttaches();
 		$attDelButtons = '';
-        if (count($attaches)) {
+        if (!empty($attaches)) {
             foreach ($attaches as $key => $attach) {
                 $attDelButtons .= '<input type="checkbox" name="' . $attach->getAttach_number()
                 . 'dattach"> ' . $attach->getAttach_number() . '. (' . $attach->getFilename() . ')' . "<br />\n";
