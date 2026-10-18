@@ -38,7 +38,38 @@ if (file_exists('install')) {
             !empty($set['db']['pass'])
         )
     ) {
-		die('Before use your site, delete INSTALL dir! <br />Перед использованием удалите папку INSTALL');	
+		die('<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>AtomX CMS - вместе в будущее</title>
+<link rel="shortcut icon" href="sys/img/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="install/css/style.css" />
+</head>
+<body>
+<div id="head">
+	<div id="logo"></div>
+</div>
+<div id="subhead"></div>
+
+<div id="container">
+	<div id="descr">
+		<h2>Внимание!</h2>
+		Сайт уже установлен. Перед использованием удалите папку <b>INSTALL</b> (или переименуйте её).<br /><br />
+		The site is already installed. Before use your site, delete the <b>INSTALL</b> dir (or rename it).
+	</div>
+</div>
+<div id="footer1">
+	<div style="float:left;">
+		<a href="http://atomx.net/">OFF. SITE</a>
+		<a href="http://home.atomx.net/">ABOUT</a>
+		<a href="http://atomx.net/forum/">SUPPORT</a>
+		<a href="http://atomx.net/documa/">WIKI</a>
+	</div>
+	<div style="clear:both;"></div>
+</div>
+</body>
+</html>');	
 	}
 	header('Location: install'); die();
 }
