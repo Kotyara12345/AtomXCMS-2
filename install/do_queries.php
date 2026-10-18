@@ -635,7 +635,7 @@ if (empty($errors['query'])) {
 
 	try {
 		$DB->query("INSERT INTO `{$set['db']['prefix']}users` (`id`, `name`, `passw`, `email`, `status`, `puttime`) 
-		VALUES (1, '" . $_SESSION['adm_name'] . "', '" . md5($_SESSION['adm_pass']) . "', '".$_SESSION['adm_email']."', '4', NOW())");
+		VALUES (1, '" . $_SESSION['adm_name'] . "', '" . atm_password_hash($_SESSION['adm_pass']) . "', '".$_SESSION['adm_email']."', '4', NOW())");
 	} catch (Exception $e) {
 		$errors['query'] = __('Some error occurred during database creation')
             . ' <br /> ' . __('Please, start from beginning') . '.<br /><br />';

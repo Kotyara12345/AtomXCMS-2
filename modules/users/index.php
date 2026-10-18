@@ -347,7 +347,7 @@ Class UsersModule extends Module {
 		// Все поля заполнены правильно - продолжаем регистрацию
 		$data = array(
 			'name'  	=> $name,
-			'passw' 	=> md5( $password ),
+			'passw' 	=> atm_password_hash( $password ),
 			'email' 	=> $email,
 			'timezone' 	=> $timezone,
 			'url' 		=> $url,
@@ -517,8 +517,8 @@ Class UsersModule extends Module {
 		if ($dir = opendir( ROOT . '/sys/tmp/activate')) {
 			$tmp = 24*60*60;
 			while (false !== ($file = readdir($dir))) {
-				if (is_file($file))
-					if ((time() - filemtime($file)) > $tmp) unlink($file);
+				$fpath = ROOT . '/sys/tmp/activate/' . $file; if (is_file($fpath))
+					if ((time() - filemtime($fpath)) > $tmp) unlink($fpath);
 			}
 			closedir($dir);
 		}
@@ -527,7 +527,7 @@ Class UsersModule extends Module {
 		// Как происходит процедура восстановления пароля? Пользователь ввел свой логин
 		// и e-mail, мы проверяем существование такого пользователя в таблице БД. Потом
 		// генерируем с помощью функции getNewPassword() новый пароль, создаем файл с именем
-		// md5( $newPassword ) в директории activate. Файл содержит ID пользователя.
+		// md5( $newPassword ) в директории activate. Файл содержит ID пользователя и хэш нового пароля.
 		// В качестве кода активации выступает хэш пароля - md5( $newPassword ).
 		// Когда пользователь перейдет по ссылке в письме для активации своего нового пароля,
 		// мы проверяем наличие в директории activatePassword файла с именем кода активации,
@@ -537,8 +537,9 @@ Class UsersModule extends Module {
 		$newPassword = $this->_getNewPassword();
 		$code = md5($newPassword);
 		// file_put_contents(ROOT . '/sys/tmp/activate/'.$code, $id );
+		touchDir(ROOT . '/sys/tmp/activate/', 0777);
 		$fp = fopen( ROOT . '/sys/tmp/activate/' . $code, "w" );
-		fwrite($fp, $id);
+		fwrite($fp, $id . "\n" . atm_password_hash($newPassword));
 		fclose($fp);
 
 
@@ -583,7 +584,7 @@ Class UsersModule extends Module {
 			unlink($f_path);
 			$id_user = (int)trim($file[0]);
             $user = $this->Model->getById($id_user);
-            $user->setPassw($code);
+            $user->setPassw((!empty($file[1])) ? trim($file[1]) : $code); // new format: hash in file; legacy: code == md5(new password)
             $user->save();
 			$message = __('New pass is ready');
 			if ($this->Log) $this->Log->write('activate new passw', 'user id(' . $id_user . ')');
@@ -847,8 +848,9 @@ Class UsersModule extends Module {
         $user = $this->Model->getById($_SESSION['user']['id']);
 
 		if ( $changePassword ) {
-			$user->setPassw(md5($newpassword));
-			$_SESSION['user']['passw'] = md5( $newpassword );
+			$newHash = atm_password_hash($newpassword);
+			$user->setPassw($newHash);
+			$_SESSION['user']['passw'] = $newHash;
 		}
 		if ( $changeEmail ) {
 			$user->setEmail($email);
@@ -1179,7 +1181,7 @@ Class UsersModule extends Module {
 
 		// Все поля заполнены правильно - записываем изменения в БД
 		if ( $changePassword ) {
-			$user->setPassw(md5($newpassword));
+			$user->setPassw(atm_password_hash($newpassword));
 		}
 		if ( $changeEmail ) {
 			$user->setEmail($email);
@@ -2834,7 +2836,7 @@ Class UsersModule extends Module {
 					'min_lenght' => Config::read('min_password_lenght'),
 					'required' => true,
                     'function' => function($errors) use ($Register) {
-                        if ( md5($_POST['password']) != $_SESSION['user']['passw'] )
+                        if ( !atm_password_verify($_POST['password'] ?? '', $_SESSION['user']['passw']) )
                             return __('Wrong current pass');
                     },
 				),

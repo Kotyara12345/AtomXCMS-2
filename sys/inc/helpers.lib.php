@@ -604,6 +604,34 @@ function h($param) {
 
 
 /**
+* Password hashing helpers.
+*
+* New hashes are created with password_hash() (bcrypt by default).
+* Legacy md5 hashes (32 hex chars) coming from older AtomX databases
+* are still accepted, so existing installations keep working: the hash
+* is silently upgraded after the next successful password check.
+*/
+function atm_password_hash($password) {
+	return password_hash($password, PASSWORD_DEFAULT);
+}
+
+function atm_password_verify($password, $hash) {
+	$hash = (string)$hash;
+	if ($hash === '') return false;
+	if (preg_match('#^[0-9a-f]{32}$#i', $hash)) {
+		return hash_equals(strtolower($hash), md5((string)$password));
+	}
+	return password_verify((string)$password, $hash);
+}
+
+function atm_password_needs_rehash($hash) {
+	$hash = (string)$hash;
+	if (preg_match('#^[0-9a-f]{32}$#i', $hash)) return true;
+	return password_needs_rehash($hash, PASSWORD_DEFAULT);
+}
+
+
+/**
 * @return timestamp on microseconds
 */
 function getMicroTime($base_time = false) {

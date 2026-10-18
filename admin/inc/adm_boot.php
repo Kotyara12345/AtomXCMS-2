@@ -91,10 +91,17 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 
 		if (empty($errors)) {
 
-			$user = $FpsDB->select('users', DB_FIRST, array('cond' => array('name' => $login, 'passw' => md5($pass))));
-			if (!count($user)) {
+			$user = $FpsDB->select('users', DB_FIRST, array('cond' => array('name' => $login)));
+			if (!count($user) || !atm_password_verify($pass, $user[0]['passw'])) {
 				$errors .= '<li>Не верный Пароль или Логин</li>';
 			} else {
+				// Upgrade legacy md5 hashes transparently on a successful login
+				if (atm_password_needs_rehash($user[0]['passw'])) {
+					$newHash = atm_password_hash($pass);
+					$FpsDB->query("UPDATE `" . $FpsDB->getFullTableName('users') . "` SET passw='" . $FpsDB->escape($newHash) . "' WHERE id=" . (int)$user[0]['id']);
+					$user[0]['passw'] = $newHash;
+					$FpsDB->cleanSqlCache();
+				}
 				//turn access
 				$ACL->turn(array('panel', 'entry'), true, $user[0]['status']);
 			}

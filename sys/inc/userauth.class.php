@@ -46,10 +46,16 @@ class UserAuth
         // Проверяем переменные cookie на недопустимые символы
         $user_id = intval($_COOKIE['userid']);
         if ($user_id < 1) return false;
-        // Т.к. пароль зашифрован с помощью md5, то он представляет собой
-        // 32-значное шестнадцатеричное число
-        $password = substr( $_COOKIE['password'], 0, 32 );
-        $password = preg_replace( "#[^0-9a-f]#i", '', $password );
+        // The cookie contains the password hash from the users table:
+        // a legacy md5 value (32 hex chars) or a password_hash() value.
+        $password = (string)$_COOKIE['password'];
+        if (strlen($password) < 32 || strlen($password) > 255) {
+            $path = '/';
+            setcookie( 'autologin', '', time() - 1, $path );
+            setcookie( 'userid', '', time() - 1, $path );
+            setcookie( 'password', '', time() - 1, $path );
+            return false;
+        }
 
 
 		$res = $FpsDB->select('users', DB_FIRST, array(

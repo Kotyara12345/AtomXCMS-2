@@ -309,14 +309,24 @@ class UsersModel extends FpsModel
         $Register = Register::getInstance();
 		$entity = $Register['DB']->query("SELECT *, UNIX_TIMESTAMP(last_visit) as unix_last_visit
 			FROM `" . $Register['DB']->getFullTableName('users') . "`  WHERE name='"
-			.$Register['DB']->escape( $name )."' AND passw='".$Register['DB']->escape( md5( $password ) )
+			.$Register['DB']->escape( $name )
 			."' LIMIT 1");
 		
 		if (!empty($entity[0])) {
             $entity = $this->getAllAssigned($entity);
 			$entityClassName = $Register['ModManager']->getEntityNameFromModel(get_class($this));
 			$entity = new $entityClassName($entity[0]);
-			return (!empty($entity)) ? $entity : false;
+			if (!empty($entity) && atm_password_verify($password, $entity->getPassw())) {
+				// Upgrade legacy md5 hashes transparently on a successful login
+				if (atm_password_needs_rehash($entity->getPassw())) {
+					$newHash = atm_password_hash($password);
+					$Register['DB']->query("UPDATE `" . $Register['DB']->getFullTableName('users') . "`
+						SET passw='" . $Register['DB']->escape($newHash) . "' WHERE id=" . (int)$entity->getId());
+					$entity->setPassw($newHash);
+					$Register['DB']->cleanSqlCache();
+				}
+				return $entity;
+			}
 		}
 		return false;
 	}
