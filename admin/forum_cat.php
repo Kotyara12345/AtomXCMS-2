@@ -99,7 +99,7 @@ echo $popups_content;
 		<div id="add_users_list"></div>
 	</div>
 </div>
-<script type="text/javascript">
+<script>
 function findUsersWindow(url) {
 	$('#add_users_list').html('');
 	$('#sp_rules_find_users input[type="text"]').val('');

@@ -6,10 +6,10 @@
           <ul class="spisok-all">
           <li>
             <span class="siu_title"><strong>{{ 'Login'|lang }}:</strong></span>
-            <span class="siu_data"><input type="text" name="username" maxlength="30" value="" /></span>
+            <span class="siu_data"><input type="text" name="username" maxlength="30" value="" autocomplete="username" /></span>
 			<br />
 			<span class="siu_title"><strong>{{ 'Password'|lang }}:</strong></span>
-            <span class="siu_data"><input type="password" name="password" maxlength="30" />{{ context.form_key }}</span>
+            <span class="siu_data"><input type="password" name="password" maxlength="30" autocomplete="current-password" />{{ context.form_key }}</span>
 			<br />
 			<span class="siu_title"><strong>{{ 'Remember'|lang }}:</strong></span>
             <span class="siu_data"><input type="checkbox" name="autologin" value="1" /></span>

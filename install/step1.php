@@ -41,15 +41,15 @@ if (isset($_POST['send'])) {
 	}	
 }
 
-?><!doctype html>
-<html>
+?><!DOCTYPE html>
+<html lang="ru">
 <head>
+<meta charset="utf-8">
 <title>AtomX CMS - вместе в будущее</title>
-<meta content="text/html; charset=utf-8" http-equiv="content-type">
 <link rel="shortcut icon" href="../sys/img/favicon.ico" type="image/x-icon">
-<link type="text/css" rel="StyleSheet" href="css/style.css" />
-<script language="JavaScript" type="text/javascript" src="../sys/js/jquery.js"></script>
-<script language="JavaScript" type="text/javascript" src="../sys/js/jquery-migrate.js"></script>
+<link rel="stylesheet" href="css/style.css" />
+<script src="../sys/js/jquery.js"></script>
+<script src="../sys/js/jquery-migrate.js"></script>
 </head>
 <body>
 <div id="head">
@@ -130,7 +130,7 @@ if (isset($_POST['send'])) {
 </div>
 
 <div id="footer2"></div>
-<script type="text/javascript">
+<script>
 function checkSQPrefix(val) {
 	if (/^[a-z_]*$/.test(val)) {
 		$('#SQLpref').html('&nbsp;');

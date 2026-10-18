@@ -200,10 +200,10 @@ include_once ROOT . '/admin/template/header.php';
 		<tr>
 			<td colspan="2">
 		
-		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/chart/chart.umd.min.js"></script>
-		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/datepicker/datepicker.js"></script>
-		<link type="text/css" rel="StyleSheet" href="<?php echo WWW_ROOT ?>/sys/js/datepicker/datepicker.css" />
-		<script type="text/javascript">
+		<script src="<?php echo WWW_ROOT ?>/sys/js/chart/chart.umd.min.js"></script>
+		<script src="<?php echo WWW_ROOT ?>/sys/js/datepicker/datepicker.js"></script>
+		<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/sys/js/datepicker/datepicker.css" />
+		<script>
 		$(document).ready(function(){
 			$('.tcal').datetimepicker({
 				timepicker:false,

@@ -171,7 +171,7 @@ function editAnk(&$page_title) {
 	
 	
 	if (!empty($_SESSION['edit_ank']['errors'])) {
-		$content .= '<script type="text/javascript">showHelpWin(\'' . $_SESSION['edit_ank']['errors'] . '\', \'Ошибки\');</script>';
+		$content .= '<script>showHelpWin(\'' . $_SESSION['edit_ank']['errors'] . '\', \'Ошибки\');</script>';
 	}
 	unset($_SESSION['edit_ank']);
 	$_SESSION['adm_form_key'] = md5(rand() . rand());

@@ -247,7 +247,9 @@ class Document_Parser {
 		$markers['counter'] = get_url('/sys/img/counter.png?rand=' . rand(0,999999), false, false);
 		$markers['template_path'] = get_url('/template/' . getTemplateName(), false, false);
 		$markers['www_root'] = WWW_ROOT;
-		$markers['lang'] = getLang();
+		$lang = getLang();
+		$markers['lang'] = $lang;
+		$markers['html_lang'] = ($lang === 'rus') ? 'ru' : (($lang === 'eng') ? 'en' : $lang);
 		
 		
 		$markers['fps_rss'] = $this->getRss();

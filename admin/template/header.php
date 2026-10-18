@@ -1,33 +1,32 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta charset="UTF-8" />
 	<title><?php echo $pageTitle; ?></title>
 	<meta name="description" content="" />
 	<meta name="keywords" content="" />
-	<meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
-	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
-	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery-migrate.js"></script>
+	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
+	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery-migrate.js"></script>
 	
-	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.validate.js"></script>
-	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery-ui.min.js"></script>
-	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/admin/js/drunya.lib.js"></script>
+	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.validate.js"></script>
+	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery-ui.min.js"></script>
+	<script src="<?php echo WWW_ROOT ?>/admin/js/drunya.lib.js"></script>
 
-	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/redactor/redactor.js"></script>
-	<link type="text/css" rel="StyleSheet" href="<?php echo WWW_ROOT ?>/sys/js/redactor/css/redactor.css" />
+	<script src="<?php echo WWW_ROOT ?>/sys/js/redactor/redactor.js"></script>
+	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/sys/js/redactor/css/redactor.css" />
 	
-	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.cookie.js"></script>
-	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.hotkeys.js"></script>
-	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jstree/jstree.min.js"></script>
-	<link type="text/css" rel="StyleSheet" href="<?php echo WWW_ROOT ?>/sys/js/jstree/themes/default/style.min.css" />
+	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.cookie.js"></script>
+	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.hotkeys.js"></script>
+	<script src="<?php echo WWW_ROOT ?>/sys/js/jstree/jstree.min.js"></script>
+	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/sys/js/jstree/themes/default/style.min.css" />
 	
-	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/fancybox/jquery.fancybox.js"></script>
-	<link type="text/css" rel="StyleSheet" href="<?php echo WWW_ROOT ?>/sys/js/fancybox/css/fancy.css" />
+	<script src="<?php echo WWW_ROOT ?>/sys/js/fancybox/jquery.fancybox.js"></script>
+	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/sys/js/fancybox/css/fancy.css" />
 	
-	<link rel="StyleSheet" type="text/css" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css" />
-	<!--<link rel="StyleSheet" href="<?php echo WWW_ROOT ?>/admin/template/css/font-awesome.min.css" />-->
+	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css" />
+	<!--<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/font-awesome.min.css" />-->
 	
-	<script type="text/javascript">
+	<script>
 	
 	
 	$(document).ready(function(){
@@ -231,7 +230,7 @@
 	<div id="wrapper">
 
 		<!-- AdminBar -->
-		<script type="text/javascript">
+		<script>
 
 		document.top_menu = new drunyaMenu([
 		['<?php echo __('General'); ?>',

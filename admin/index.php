@@ -95,7 +95,7 @@ include 'template/header.php';
 
 
 
-<script type="text/javascript">
+<script>
     $(document).ready(function() {
         var resizeHandler = function() {
             if (/chrome/i.test(navigator.userAgent)) {

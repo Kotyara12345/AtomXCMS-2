@@ -389,17 +389,17 @@ echo '<form action="' . $_SERVER['REQUEST_URI'] . '" method="POST">';
 
 
 
-<script type="text/javascript" src="js/codemirror/codemirror.js"></script>
-<script type="text/javascript" src="js/codemirror/mode/htmlmixed/htmlmixed.js"></script>
-<script type="text/javascript" src="js/codemirror/mode/vbscript/vbscript.js"></script>
-<script type="text/javascript" src="js/codemirror/mode/css/css.js"></script>
+<script src="js/codemirror/codemirror.js"></script>
+<script src="js/codemirror/mode/htmlmixed/htmlmixed.js"></script>
+<script src="js/codemirror/mode/vbscript/vbscript.js"></script>
+<script src="js/codemirror/mode/css/css.js"></script>
 <!--
-<script type="text/javascript" src="js/codemirror/mode/javascript/javascript.js"></script>
-<script type="text/javascript" src="js/codemirror/mode/xml/xml.js"></script>
+<script src="js/codemirror/mode/javascript/javascript.js"></script>
+<script src="js/codemirror/mode/xml/xml.js"></script>
 -->
-<link rel="StyleSheet" type="text/css" href="js/codemirror/codemirror.css" />
-<link rel="StyleSheet" type="text/css" href="js/codemirror/theme/solarized.css" />
-<script type="text/javascript">
+<link rel="stylesheet" href="js/codemirror/codemirror.css" />
+<link rel="stylesheet" href="js/codemirror/theme/solarized.css" />
+<script>
 $(document).ready(function(){
 	var wd = parseInt($('.list.pages-form').css('width'), 10) - 20;
     var editor = CodeMirror.fromTextArea(document.getElementById("tmpl"), {
@@ -423,7 +423,7 @@ $(document).ready(function(){
 
 
 
-<script type="text/javascript">
+<script>
 $('#listener').hover(function(){
     $(this).stop().animate({height:'200px', overflow:'auto'}, 400);
     $(this).css('overflow','auto');

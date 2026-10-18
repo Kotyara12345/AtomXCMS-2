@@ -531,7 +531,7 @@ include_once ROOT . '/admin/template/header.php';
 
 
 
-<script type="text/javascript">
+<script>
 
 $(document).ready(function(){
 	redactor_ = $('#mainTextarea').redactor({

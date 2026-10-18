@@ -311,7 +311,7 @@ if ($_GET['ac'] == 'index'):
 	
 	
 	<?php if (!empty($_SESSION['FpsForm']['errors'])): ?>
-		<script type="text/javascript">showHelpWin('<?php echo '<ul class="error">' . $_SESSION['FpsForm']['errors'] . '</ul>'; ?>', '<?php echo __('Errors') ?>');</script>
+		<script>showHelpWin('<?php echo '<ul class="error">' . $_SESSION['FpsForm']['errors'] . '</ul>'; ?>', '<?php echo __('Errors') ?>');</script>
 		<?php unset($_SESSION['FpsForm']); ?>
 	<?php endif; ?>
 <?php endif; ?>

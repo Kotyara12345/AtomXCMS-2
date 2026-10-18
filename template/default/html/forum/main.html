@@ -1,27 +1,27 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="{{ html_lang }}">
 <head>
+<meta charset="UTF-8" />
 <title>{{ title }}</title>
 
 <meta name="description" content="{{ meta_description }}" />
 <meta name="keywords" content="{{ meta_keywords }}" />
-<meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
 
-<meta name='author' content='Andrey Brykin' />
-<meta name='robots' content='index, follow' />
-<meta name='rating' content='general' />
-<meta name='generator' content='AtomX Engine {{ version }}' />
+<meta name="author" content="Andrey Brykin" />
+<meta name="robots" content="index, follow" />
+<meta name="rating" content="general" />
+<meta name="generator" content="AtomX Engine {{ version }}" />
 
 <link rel="icon" href="{{ template_path }}/favicon.ico" type="image/x-icon" />
 <link rel="shortcut icon" href="{{ template_path }}/favicon.ico" type="image/x-icon" />
-<link type="text/css" rel="StyleSheet" href="{{ template_path }}/css/style.css" />
-<script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/js/jquery.js"></script>
-<script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/js/jquery-migrate.js"></script>
-<script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/js/send_message.js"></script>
+<link rel="stylesheet" href="{{ template_path }}/css/style.css" />
+<script src="{{ www_root }}/sys/js/jquery.js"></script>
+<script src="{{ www_root }}/sys/js/jquery-migrate.js"></script>
+<script src="{{ www_root }}/sys/js/send_message.js"></script>
 <!--<script src="{{ www_root }}/sys/js/jquery.form.min.js"></script>-->
 {{ editor_head }}
-<!-- <script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/js/textarearesizer.js"></script> -->
-<script type="text/javascript">
+<!-- <script src="{{ www_root }}/sys/js/textarearesizer.js"></script> -->
+<script>
 {% if fps_user_id %}
 	check_pm('{{ fps_user_id }}');
 {% endif %}
@@ -33,9 +33,9 @@ $('textarea.text-area:not(.processed)').TextAreaResizer();
 */
 </script>
 <!-- FancyBOX -->
-<link type="text/css" rel="StyleSheet" href="{{ www_root }}/sys/js/fancybox/css/fancy.css" />
-<script type="text/javascript" src="{{ www_root }}/sys/js/fancybox/jquery.fancybox.js"></script>
-<script type="text/javascript">
+<link rel="stylesheet" href="{{ www_root }}/sys/js/fancybox/css/fancy.css" />
+<script src="{{ www_root }}/sys/js/fancybox/jquery.fancybox.js"></script>
+<script>
 $(document).ready(function() {
 	$("a.gallery").attr("data-fancybox", "gallery");
 });
@@ -84,9 +84,9 @@ $(document).ready(function() {
 <div><a href="{{ get_url('/users/add_form/') }}">{{ 'Registration'|lang }}</a></div>
 <div class="activewindow login"><a href="{{ get_url('/users/login_form/') }}">{{ 'Enter'|lang }}</a>
 <div style="width: 258px;"><span>
-<form id="mloginForm"  action="{{ get_url('/users/login/?ajax') }}" method="post">
-	{{ 'Login'|lang }}: <input type="text" class="loginad" name="username">
-	{{ 'Password'|lang }}: <input type="password" class="passad" name="password">
+<form id="mloginForm" action="{{ get_url('/users/login/?ajax') }}" method="post">
+	{{ 'Login'|lang }}: <input type="text" class="loginad" name="username" autocomplete="username">
+	{{ 'Password'|lang }}: <input type="password" class="passad" name="password" autocomplete="current-password">
 	{{ 'The autologin'|lang }}: <input type="checkbox" name="autologin" value="1">
 	<button type="submit" onclick="sendu('mloginForm'); return false" class="buttonadm">{{ 'Enter'|lang }}</button>
 	<input type="hidden" value="submit" name="submitForm">

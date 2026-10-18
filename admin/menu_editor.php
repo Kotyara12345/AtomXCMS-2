@@ -302,7 +302,7 @@ include_once ROOT . '/admin/template/header.php';
 
 
 
-<script type="text/javascript">
+<script>
 $(function(){
 	$('#sort').sortable({
 		items:"li",
