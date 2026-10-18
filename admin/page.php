@@ -627,205 +627,155 @@ $(document).ready(function(){
 
 
 $(function () {
+	// The server still answers in the legacy jsTree 1.x format
+	// ({attr:{id,rel}, data:"title", state:"closed"}); convert it to jsTree 3 nodes.
+	function convertNodes(items) {
+		if (!items || !items.length) return [];
+		return $.map(items, function (item) {
+			var node = {
+				id: (item.attr && item.attr.id) ? String(item.attr.id).replace('node_', '') : undefined,
+				text: item.data,
+				type: (item.attr && item.attr.rel) ? item.attr.rel : 'default'
+			};
+			// "closed" means the node may have children - let jsTree load them on demand
+			if (item.state === 'closed') node.children = true;
+			return node;
+		});
+	}
+
+	function treeInstance() {
+		return $("#pageTree").jstree(true);
+	}
+
+	function refreshTree(nodeId) {
+		var inst = treeInstance();
+		if (!inst) return;
+		if (!nodeId || nodeId === '#') inst.refresh();
+		else inst.refresh(nodeId);
+	}
+
 $("#pageTree")
-	// Write log
-	.bind("before.jstree", function (e, data) {
-		$("#alog").append(data.func + "<br />");
-	})
-	.jstree({ 
-		// List of active plugins
-		"themes" : {
-			"theme" : "classic",
-			"dots" : true,
-			"icons" : true,
-			"url" : "../sys/js/jstree/themes/classic/style.css"
-		},
-		"plugins" : [ 
-			"themes","json_data","ui","crrm","cookies","dnd","search","types","contextmenu" 
-		],
-
-		// I usually configure the plugin that handles the data first
-		// This example uses JSON as it is most common
-		"json_data" : { 
-			// This tree is ajax enabled - as this is most common, and maybe a bit more complex
-			// All the options are almost the same as jQuery's AJAX (read the docs)
-			"ajax" : {
-				// the URL to fetch the data
-				"url" : "page.php",
-				// the `data` function is executed in the instance's scope
-				// the parameter is the node being loaded 
-				// (may be -1, 0, or undefined when loading the root nodes)
-				"data" : function (n) { 
-					// the result is fed to the AJAX request `data` option
-					return { 
-						"operation" : "get_children", 
-						"id" : n.attr ? n.attr("id").replace("node_","") : 0
-					}; 
-				}
-			}
-		},
-		// Configuring the search plugin
-		"search" : {
-			// As this has been a common question - async search
-			// Same as above - the `ajax` config option is actually jQuery's AJAX object
-			"ajax" : {
-				"url" : "page.php",
-				// You get the search string as a parameter
-				"data" : function (str) {
-					return { 
-						"operation" : "search", 
-						"search_str" : str 
-					}; 
-				}
-			}
-		},
-		// Using types - most of the time this is an overkill
-		// read the docs carefully to decide whether you need types
-		"types" : {
-			// I set both options to -2, as I do not need depth and children count checking
-			// Those two checks may slow jstree a lot, so use only when needed
-			"max_depth" : -2,
-			"max_children" : -2,
-			// I want only `drive` nodes to be root nodes 
-			// This will prevent moving or creating any other type as a root node
-			"valid_children" : [ "drive","default" ],
-			"types" : {
-				// The default type
-				"default" : {
-					// I want this type to have no children (so only leaf nodes)
-					// In my case - those are files
-					//"valid_children" : "none",
-					// If we specify an icon for the default type it WILL OVERRIDE the theme icons
-					"icon" : {
-						"image" : "../sys/js/jstree/img/file.png"
+	.jstree({
+		core: {
+			multiple: false,
+			check_callback: true,
+			data: function (node, cb) {
+				$.ajax({
+					url: "page.php",
+					type: "POST",
+					dataType: "json",
+					data: {
+						operation: "get_children",
+						id: (node.id === "#") ? 0 : node.id
 					}
-				},
-				// The `folder` type
-				"folder" : {
-					// can have files and other folders inside of it, but NOT `drive` nodes
-					"valid_children" : [ "default", "folder" ],
-					"icon" : {
-						"image" : "../sys/js/jstree/img/folder.png"
-					}
-				},
-				// The `drive` nodes 
-				"drive" : {
-					// can have files and folders inside, but NOT other `drive` nodes
-					"valid_children" : [ "default", "folder" ],
-					"icon" : {
-						"image" : "../sys/js/jstree/img/root.png"
-					},
-					// those prevent the functions with the same name to be used on `drive` nodes
-					// internally the `before` event is used
-					"start_drag" : false,
-					"move_node" : false,
-					"delete_node" : false,
-					"remove" : false
-				}
+				}).done(function (data) {
+					cb(convertNodes(data));
+				}).fail(function () {
+					cb([]);
+				});
 			}
 		},
-		// UI & core - the nodes to initially select and open will be overwritten by the cookie plugin
-
-		// the UI plugin - it handles selecting/deselecting/hovering nodes
-		"ui" : {
-			// this makes the node with ID node_4 selected onload
-			"initially_select" : [ "node_4" ]
+		plugins: ["dnd", "types", "contextmenu", "state"],
+		types: {
+			"#": { valid_children: ["drive", "folder", "default"] },
+			default: { valid_children: ["drive", "folder", "default"] },
+			folder: { valid_children: ["drive", "folder", "default"] },
+			drive: { valid_children: ["drive", "folder", "default"] }
 		},
-		// the core plugin - not many options here
-		"core" : { 
-			// just open those two nodes up
-			// as this is an AJAX enabled tree, both will be downloaded from the server
-			"initially_open" : [ "node_2" , "node_3" ] 
-		}
+		contextmenu: {
+			items: function ($node) {
+				var items = $.jstree.defaults.contextmenu.items.call(this, $node);
+				delete items.ccp;
+				return items;
+			}
+		},
+		state: { key: "atomx_pages_tree" }
 	})
-	.bind("create.jstree", function (e, data) {
+	.bind("ready.jstree", function () {
+		// Same default branch as the legacy tree: open the root and the first pages
+		var inst = treeInstance();
+		if (!inst) return;
+		inst.open_node("1", function () {
+			$.each(["2", "3"], function (i, id) {
+				if (inst.get_node(id)) inst.open_node(id);
+			});
+		});
+	})
+	.bind("create_node.jstree", function (e, data) {
 		$.post(
-			"page.php", 
-			{ 
-				"operation" : "create_node", 
-				"id" : data.rslt.parent.attr("id").replace("node_",""), 
-				"position" : data.rslt.position,
-				"title" : data.rslt.name,
-				"type" : data.rslt.obj.attr("rel")
-			}, 
+			"page.php",
+			{
+				operation: "create_node",
+				id: (data.parent === "#") ? 1 : data.parent,
+				position: data.position,
+				title: data.node.text,
+				type: data.node.type
+			},
 			function (r) {
-				if(r.status) {
-					$(data.rslt.obj).attr("id", "node_" + r.id);
+				var inst = treeInstance();
+				if (r.status) {
+					if (inst && r.id) inst.set_id(data.node, String(r.id));
 				} else {
-					$.jstree.rollback(data.rlbk);
-                    if (r.errors && r.errors.length) {
-                        alert(r.errors.join("\n"));
-                    }
+					if (r.errors && r.errors.length) {
+						alert(r.errors.join("\n"));
+					}
+					refreshTree("#");
 				}
 			}
 		);
 	})
-	.bind("remove.jstree", function (e, data) {
-		data.rslt.obj.each(function () {
-			$.ajax({
-				async : false,
-				type: 'POST',
-				url: "page.php",
-				data : { 
-					"operation" : "remove_node", 
-					"id" : this.id.replace("node_","")
-				}, 
-				success : function (r) {
-					if(!r.status) {
-						data.inst.refresh();
-					}
-				}
-			});
-		});
-	})
-	.bind("rename.jstree", function (e, data) {
+	.bind("rename_node.jstree", function (e, data) {
 		$.post(
-			"page.php", 
-			{ 
-				"operation" : "rename_node", 
-				"id" : data.rslt.obj.attr("id").replace("node_",""),
-				"title" : data.rslt.new_name
-			}, 
+			"page.php",
+			{
+				operation: "rename_node",
+				id: data.node.id,
+				title: data.text
+			},
 			function (r) {
-				if(!r.status) {
-					$.jstree.rollback(data.rlbk);
+				var inst = treeInstance();
+				if (!r.status) {
+					if (inst && typeof data.old !== 'undefined') inst.set_text(data.node, data.old);
+					else refreshTree(data.node.parent);
 				}
+			}
+		);
+	})
+	.bind("delete_node.jstree", function (e, data) {
+		$.post(
+			"page.php",
+			{
+				operation: "remove_node",
+				id: data.node.id
+			},
+			function (r) {
+				if (!r.status) refreshTree(data.parent);
 			}
 		);
 	})
 	.bind("move_node.jstree", function (e, data) {
-		data.rslt.o.each(function (i) {
-			$.ajax({
-				async : false,
-				type: 'POST',
-				url: "page.php",
-				data : { 
-					"operation" : "move_node", 
-					"id" : $(this).attr("id").replace("node_",""), 
-					"ref" : data.rslt.cr === -1 ? 1 : data.rslt.np.attr("id").replace("node_",""), 
-					"position" : data.rslt.cp + i,
-					"title" : data.rslt.name,
-					"copy" : data.rslt.cy ? 1 : 0
-				},
-				success : function (r) {
-					if(!r.status) {
-						$.jstree.rollback(data.rlbk);
-					}
-					else {
-						$(data.rslt.oc).attr("id", "node_" + r.id);
-						if(data.rslt.cy && $(data.rslt.oc).children("UL").length) {
-							data.inst.refresh(data.inst._get_parent(data.rslt.oc));
-						}
-					}
-					//$("#analyze").click();
+		$.post(
+			"page.php",
+			{
+				operation: "move_node",
+				id: data.node.id,
+				ref: (data.parent === "#") ? 1 : data.parent,
+				position: data.position,
+				title: data.node.text,
+				copy: 0
+			},
+			function (r) {
+				var inst = treeInstance();
+				if (!r.status) {
+					refreshTree("#");
+				} else if (inst && r.id && String(r.id) !== String(data.node.id)) {
+					inst.set_id(data.node, String(r.id));
 				}
-			});
-		});
+			}
+		);
 	})
-	.bind("select_node.jstree", function (event, data) { 
-		// `data.rslt.obj` is the jquery extended node that was clicked
-		var id = data.rslt.obj.attr("id").replace("node_","");
-		fillForm(id);
+	.bind("select_node.jstree", function (event, data) {
+		fillForm(data.node.id);
 	});
 
 });
@@ -844,7 +794,7 @@ function fillForm(id){
 		$(form).find('input[type="text"], input[type="hidden"]').each(function(){
 			$(this).val('');
 		});
-		$(form).find('input[name="visible"]').attr('checked', false);
+		$(form).find('input[name="visible"]').prop('checked', false);
 		$(form).find('textarea[name="content"]').val('');
 		$('div.redactor_editor').html('');
 		
@@ -863,14 +813,14 @@ function fillForm(id){
 		$(form).find('input[name="url"]').val(data.url);
 		
 		if (data.visible == 1)
-			$(form).find('input[name="visible"]').attr('checked', 'checked');
+			$(form).find('input[name="visible"]').prop('checked', true);
 		else
-			$(form).find('input[name="visible"]').attr('checked', false);
+			$(form).find('input[name="visible"]').prop('checked', false);
 			
 		if (data.publish == 1)
-			$(form).find('input[name="publish"]').attr('checked', 'checked');
+			$(form).find('input[name="publish"]').prop('checked', true);
 		else
-			$(form).find('input[name="publish"]').attr('checked', false);
+			$(form).find('input[name="publish"]').prop('checked', false);
 			
 		$(form).find('input[name="position"]').val(data.position);
 		$(form).find('input[name="meta_title"]').val(data.meta_title);
@@ -912,7 +862,8 @@ function submitForm(){
             if (data.errors && data.errors.length) {
                 alert(data.errors.join("\n"));
             } else {
-				$("#pageTree").jstree('refresh', -1);
+				var tree = $("#pageTree").jstree(true);
+				if (tree) tree.refresh();
 				if (typeof data.id != 'undefined') setTimeout('fillForm('+data.id+')', 1000);
 			}
 			

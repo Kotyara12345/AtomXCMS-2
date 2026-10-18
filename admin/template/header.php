@@ -7,9 +7,10 @@
 	<meta name="keywords" content="" />
 	<meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
 	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
+	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery-migrate.js"></script>
 	
 	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.validate.js"></script>
-	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery-ui-1.8.14.custom.min.js"></script>
+	<script language="JavaScript" type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery-ui.min.js"></script>
 	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/admin/js/drunya.lib.js"></script>
 
 	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/redactor/redactor.js"></script>
@@ -18,6 +19,7 @@
 	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.cookie.js"></script>
 	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jquery.hotkeys.js"></script>
 	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jstree/jstree.min.js"></script>
+	<link type="text/css" rel="StyleSheet" href="<?php echo WWW_ROOT ?>/sys/js/jstree/themes/default/style.min.css" />
 	
 	<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/fancybox/jquery.fancybox.js"></script>
 	<link type="text/css" rel="StyleSheet" href="<?php echo WWW_ROOT ?>/sys/js/fancybox/css/fancy.css" />
@@ -29,7 +31,7 @@
 	
 	
 	$(document).ready(function(){
-		$("a.gallery").fancybox();
+		$("a.gallery").attr("data-fancybox", "gallery");
 		//setTimeout(function(){
 		//	$('#overlay').height($('#wrapper').height());
 		//}, 2000);

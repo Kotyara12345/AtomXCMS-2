@@ -127,7 +127,7 @@ function setModerator(contId, userId, userName){
 
 	
 	
-$('.collection .item .close').live('click', function(el){
+$(document).on('click', '.collection .item .close', function(el){
 	$(this).parent('.item').remove();
 });
 </script>

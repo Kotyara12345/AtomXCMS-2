@@ -109,7 +109,7 @@ if (!empty($stats)) {
 	$t_visitors = 0;
 	$t_views = $stats[0]['views'];
 	$t_visitors = $stats[0]['cookie'];
-	$views_on_visit = number_format(($t_views / $t_visitors), 1);
+	$views_on_visit = ($t_visitors > 0) ? number_format(($t_views / $t_visitors), 1) : 0;
 	$bot_views = $stats[0]['yandex_bot_views'] + $stats[0]['google_bot_views'] + $stats[0]['other_bot_views'];
 }
 
@@ -200,12 +200,7 @@ include_once ROOT . '/admin/template/header.php';
 		<tr>
 			<td colspan="2">
 		
-		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jqplot/graphlib.js"></script>
-		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jqplot/plugins/jqplot.canvasTextRenderer.min.js"></script>
-		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jqplot/plugins/jqplot.canvasAxisLabelRenderer.min.js"></script>
-		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jqplot/plugins/jqplot.dateAxisRenderer.min.js"></script>
-		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/jqplot/plugins/jqplot.highlighter.min.js"></script>
-		<link href="<?php echo WWW_ROOT ?>/sys/js/jqplot/style.css" type="text/css" rel="stylesheet">
+		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/chart/chart.umd.min.js"></script>
 		<script type="text/javascript" src="<?php echo WWW_ROOT ?>/sys/js/datepicker/datepicker.js"></script>
 		<link type="text/css" rel="StyleSheet" href="<?php echo WWW_ROOT ?>/sys/js/datepicker/datepicker.css" />
 		<script type="text/javascript">
@@ -215,78 +210,83 @@ include_once ROOT . '/admin/template/header.php';
 				format:'Y/m/d',
 				closeOnDateSelect: true
 			});
-			var data = '<?php echo $json_data; ?>';
-			data = eval(data);
+			var data = <?php echo $json_data; ?>;
 			if (!data[0].length || !data[1].length) {
 				$('#graph').hide();
 				return false;
 			}
-			//data = '['+data+']';
-			//alert(data);
-		  var plot2 = $.jqplot ('graph', data, {
-			  // Give the plot a title.
-			  title: 'Views and hosts',
-			  // You can specify options for all axes on the plot at once with
-			  // the axesDefaults object.  Here, we're using a canvas renderer
-			  // to draw the axis label which allows rotated text.
-			  axesDefaults: {
-				labelRenderer: $.jqplot.CanvasAxisLabelRenderer,
-				gridLineColor: "#ff0000",
-				border: '#ff0000'
-			  },
-			  // An axes object holds options for all axes.
-			  // Allowable axes are xaxis, x2axis, yaxis, y2axis, y3axis, ...
-			  // Up to 9 y axes are supported.
-			  axes: {
-				// options for each axis are specified in seperate option objects.
-				xaxis: {
-				  renderer:$.jqplot.DateAxisRenderer,
-				  tickOptions:{
-					//formatString:'%b&nbsp;%#d'
-					formatString:'%b-%d'
-				  }
-				},
-				yaxis: {
-				  label: "Quantity",
-				  labelRenderer: $.jqplot.CanvasAxisLabelRenderer
-				}
-			  },
-			  highlighter: {
-				show: true,
-				sizeAdjust: 7.5
-			  },
-			  cursor: {
-				show: false
-			  },
-			series:[
-			  {
-				// Change our line width and use a diamond shaped marker.
-				lineWidth:1,
-				fill: false,
-				fillAndStroke: true,
-				color:'#777',
-				fillColor: '#a4a2a2',
-				fillAlpha: 0.5,
-				label:'Views',
-				markerOptions: { style:'dimaond'}
-			  },
-			  {
-				// Use a thicker, 5 pixel line and 10 pixel
-				// filled square markers.
-				lineWidth:5,
-				label:'Hosts',
-				color:'#96c703',
-				fillColor: '#567703',
-				markerOptions: { style:"filledSquare", size:10 }
-			  }
-			],
-			grid: {
-				background: '#f4f2f2'
+
+			// Build a common date axis for both series
+			var labels = [], views = {}, hosts = {};
+			$.each(data[0], function (i, point) {
+				if (!(point[0] in views)) { views[point[0]] = point[1]; labels.push(point[0]); }
+			});
+			$.each(data[1], function (i, point) {
+				hosts[point[0]] = point[1];
+				if ($.inArray(point[0], labels) === -1) labels.push(point[0]);
+			});
+			labels.sort();
+
+			function series(map) {
+				return $.map(labels, function (date) {
+					return (date in map) ? map[date] : null;
+				});
 			}
+
+			new Chart(document.getElementById('statChart'), {
+				type: 'line',
+				data: {
+					labels: $.map(labels, function (date) { return date.substr(5, 5); }),
+					datasets: [
+						{
+							label: 'Views',
+							data: series(views),
+							borderColor: '#777',
+							backgroundColor: 'rgba(164,162,162,0.5)',
+							borderWidth: 1,
+							pointStyle: 'rectRot',
+							pointRadius: 4,
+							fill: true,
+							tension: 0.2,
+							spanGaps: true
+						},
+						{
+							label: 'Hosts',
+							data: series(hosts),
+							borderColor: '#96c703',
+							backgroundColor: 'rgba(86,119,3,0.35)',
+							borderWidth: 2,
+							pointStyle: 'rect',
+							pointRadius: 4,
+							fill: true,
+							tension: 0.2,
+							spanGaps: true
+						}
+					]
+				},
+				options: {
+					responsive: true,
+					maintainAspectRatio: false,
+					plugins: {
+						title: {
+							display: true,
+							text: 'Views and hosts'
+						}
+					},
+					scales: {
+						y: {
+							beginAtZero: true,
+							title: {
+								display: true,
+								text: 'Quantity'
+							}
+						}
+					}
+				}
 			});
 		});
 		</script>
-		<div style="graph-wrapper"><div style="graph-container" id="graph"></div></div>
+		<div class="graph-wrapper"><div id="graph" style="position:relative; height:350px;"><canvas id="statChart"></canvas></div></div>
 			</td>
 		</tr>
 		<?php endif; ?>

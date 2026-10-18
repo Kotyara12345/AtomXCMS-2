@@ -446,7 +446,7 @@ $('#autocomplete_inp').keypress(function(e){
  
 <!-- Special users rules -->
 <script>
-$('#users_selector').live('change', function(){
+$(document).on('change', '#users_selector', function(){
 	$('#special_rules_container > table').hide();
 	var value = $('#users_selector').val();
 	
