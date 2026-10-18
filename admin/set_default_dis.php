@@ -41,4 +41,4 @@ if (is_array($template_standart)) {
     }
 }
 $_SESSION['message'] = __('The template is restored');
-redirect('/admin/default_dis.php');
+redirect('/admin/design.php');

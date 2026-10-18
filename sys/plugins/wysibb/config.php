@@ -3,10 +3,10 @@ $editor_set = array (
   0 => 
   array (
     'title' => 'WysiBB (светлая схема)',
-    'editor_head' => '<script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
-<script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/plugins/wysibb/public/fapos2.js"></script>
+    'editor_head' => '<script src="{{ www_root }}/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
+<script src="{{ www_root }}/sys/plugins/wysibb/public/fapos2.js"></script>
 <link rel="stylesheet" href="{{ www_root }}/sys/plugins/wysibb/public/wbbtheme.css" />',
-    'editor_body' => '<script language="JavaScript" type="text/javascript">
+    'editor_body' => '<script>
 $(document).ready(function() {
 	var wbbOpt = {
 		smileList: [
@@ -28,10 +28,10 @@ $(document).ready(function() {
   1 => 
   array (
     'title' => 'WysiBB (темная схема)',
-    'editor_head' => '<script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
-<script language="JavaScript" type="text/javascript" src="{{ www_root }}/sys/plugins/wysibb/public/fapos2.js"></script>
+    'editor_head' => '<script src="{{ www_root }}/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
+<script src="{{ www_root }}/sys/plugins/wysibb/public/fapos2.js"></script>
 <link rel="stylesheet" href="{{ www_root }}/sys/plugins/wysibb/public/wbbtheme_dark.css" />',
-    'editor_body' => '<script language="JavaScript" type="text/javascript">
+    'editor_body' => '<script>
 $(document).ready(function() {
 	var wbbOpt = {
 		smileList: [

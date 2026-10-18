@@ -1245,7 +1245,7 @@ Class UsersModule extends Module {
         $postsModel = $this->Register['ModManager']->getModelName('Posts');
         $postsModel = new $postsModel();
         $posts = $postsModel->getCollection(array('id_author' => $id), array('limit' => 1, 'order' => 'time DESC'));
-		if (!empty($posts[0]) && count($posts[0]) > 0) {
+		if (!empty($posts[0])) {
 			$lastPost = $posts[0]->getTime();
 		} else {
 			$lastPost = '';

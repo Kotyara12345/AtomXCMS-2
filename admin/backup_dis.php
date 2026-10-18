@@ -26,11 +26,6 @@
 include_once '../sys/boot.php';
 include_once ROOT . '/admin/inc/adm_boot.php';
 
-$pageTitle = '';
-$pageNav = '';
-$pageNavr = '';
-include_once ROOT . '/admin/template/header.php';
-
 
 
 $template_standart  = glob(ROOT . '/template/' . Config::read('template') . '/css/*.stand');
@@ -43,7 +38,3 @@ if (is_array($template_standart)) {
 }
 $_SESSION['message'] = __('Backup complete');
 redirect('/admin');
-
-
-
-include_once 'template/footer.php'; ?>

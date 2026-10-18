@@ -24,9 +24,9 @@ if ($this->Cache->check($cache_key)) {
 	$html = '<?xml version="1.0" encoding="UTF-8"?>';
 	$html .= '<rss version="2.0">';
 	$html .= '<channel>';
-	$html .= '<title>' . h($this->Register['Config']->read('title', $this->module)) . '</title>';
+	$html .= '<title>' . h($this->getCompleteMetaTag($this->Register['Config']->read('title', $this->module))) . '</title>';
 	$html .= '<link>' . $sitename . $this->module . '/</link>';
-	$html .= '<description>' . h($this->Register['Config']->read('description', $this->module)) . '</description>';
+	$html .= '<description>' . h($this->getCompleteMetaTag($this->Register['Config']->read('description', $this->module))) . '</description>';
 	$html .= '<pubDate>' . date('r') . '</pubDate>';
 	$html .= '<generator>FPS RSS Generator (AtomX CMS)</generator>';
 

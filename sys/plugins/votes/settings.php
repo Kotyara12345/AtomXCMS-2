@@ -232,7 +232,7 @@ class VotesSettings {
 		$content .= $out;
 		
 		if (!empty($_SESSION['form_errors'])) {
-			$content .= '<script type="text/javascript">showHelpWin(\'' . $_SESSION['form_errors'] . '\', \'Ошибки\');</script>';
+			$content .= '<script>showHelpWin(\'' . $_SESSION['form_errors'] . '\', \'Ошибки\');</script>';
 			unset($_SESSION['form_errors']);
 		}
 		
