@@ -7,8 +7,8 @@
 AtomX is a fast, modern and sterling Content Management System.
 
 This fork keeps the classic AtomX code base, ported to PHP 8.5 and moved
-to a current front-end stack (jQuery 3, HTML5 markup) instead of the
-bundles the original shipped with.
+to a current front-end stack (jQuery 3, HTML5 markup, responsive layout)
+instead of the bundles the original shipped with.
 
 #### System Requirements
 
@@ -72,6 +72,9 @@ panel keeps them after regenerating the configuration.
 * Legacy front-end libraries (jqplot, jsTree 1.x, jQuery UI 1.8,
   Fancybox 1.x, old CodeMirror builds) were removed and replaced with the
   stack listed above.
+* The default front-end theme is responsive: a mobile viewport meta tag,
+  fluid width instead of the fixed 1000-px layout and phone breakpoints
+  that stack the menu, search, sidebar, forms and forum tables.
 
 #### Contributing
 
@@ -104,7 +107,8 @@ AtomX - быстрая, современная и надежная систем�
 
 Этот форк сохраняет классическую кодовую базу AtomX, портированную на
 PHP 8.5 и переведенную на актуальный фронтенд-стек (jQuery 3,
-HTML5-разметка) вместо библиотек, которые поставлялись в оригинале.
+HTML5-разметка, адаптивная вёрстка) вместо библиотек, которые
+поставлялись в оригинале.
 
 #### Системные требования
 
@@ -168,6 +172,10 @@ location / {
 * Устаревшие фронтенд-библиотеки (jqplot, jsTree 1.x, jQuery UI 1.8,
   Fancybox 1.x, старые сборки CodeMirror) удалены и заменены стеком,
   указанным выше.
+* Тема оформления по умолчанию стала адаптивной: мета-тег viewport,
+  «резиновая» ширина вместо фиксированных 1000 px и мобильные
+  брейкпоинты — меню, поиск, боковая панель, формы и таблицы форума
+  складываются в одну колонку на телефонах.
 
 #### Участие в проекте
 

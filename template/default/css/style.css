@@ -1234,7 +1234,7 @@ background: rgba(177, 199, 150, 1);
 
 @media screen and (max-width: 950px) {
 	body {
-	    min-width: 650px;
+	    min-width: 0;
 	}
 
 	.headpanel {
@@ -1244,10 +1244,21 @@ background: rgba(177, 199, 150, 1);
 		display: none;
 	}
 	.global {
-		min-width: 650px;
+		min-width: 0;
 	}
 	.twoblocks {
 	    padding-right: 0px;
+	}
+	.content .materials {
+		float: none;
+		width: auto;
+	}
+	.content .rightbloks {
+		float: none;
+		width: auto;
+		min-height: 0;
+		margin: 12px 0 0 0;
+		clear: both;
 	}
 	.infohead {
 		width: 400px;
@@ -1365,5 +1376,292 @@ background: rgba(177, 199, 150, 1);
 
 	.header {
 		height: 160px;
+	}
+}
+
+
+/*--------------------------------------------------------------MOBILE---------------------------------------------------------------------------*/
+
+@media screen and (max-width: 700px) {
+	body {
+		min-width: 0;
+		padding-top: 30px;
+		-webkit-text-size-adjust: 100%;
+		background-attachment: scroll;
+	}
+	.global {
+		min-width: 0;
+		padding: 0 6px 1px;
+	}
+	.headpanel {
+		min-width: 0;
+	}
+	.headpanel .userlinksap {
+		margin-right: 2px;
+	}
+	.headpanel div {
+		font-size: 13px;
+	}
+	.headpanel div a {
+		padding: 0 5px;
+	}
+	.header {
+		height: auto;
+	}
+	.logohead {
+		float: none;
+		margin: 10px auto 0 auto;
+		height: 70px;
+	}
+	.infohead {
+		float: none;
+		width: auto;
+		height: auto;
+		padding-top: 0;
+	}
+	.sots {
+		height: auto;
+		margin: 4px 0;
+		text-align: center;
+	}
+	.sots a {
+		height: auto;
+		line-height: 32px;
+		padding: 0 7px;
+		font-size: 14px;
+	}
+	.sidertop {
+		height: auto;
+		padding-bottom: 6px;
+	}
+	.sidertop .fpsMainMenu {
+		float: none;
+		width: auto;
+		min-width: 0;
+		height: auto;
+		padding-left: 0;
+		overflow: hidden;
+	}
+	.sidertop .fpsMainMenu li a {
+		height: 40px;
+		line-height: 40px;
+		padding: 0 9px;
+		font-size: 14px;
+	}
+	.search {
+		float: none;
+		width: auto;
+		margin: 6px 8px 0 8px;
+		clear: both;
+	}
+	.search input[type="text"] {
+		width: calc(100% - 50px);
+	}
+	.content {
+		margin: 0 0 10px 0;
+		padding: 8px;
+	}
+	.content .spedbar {
+		max-width: 100%;
+		height: auto;
+		white-space: normal;
+	}
+	.content img {
+		max-width: 100%;
+	}
+	.twoblocks {
+		padding-right: 0;
+	}
+	.content .materials {
+		float: none;
+		width: auto;
+	}
+	.content .rightbloks {
+		float: none;
+		width: auto;
+		min-height: 0;
+		margin: 12px 0 0 0;
+		clear: both;
+	}
+	.content .material .mat-title {
+		height: auto;
+		line-height: 1.4;
+		padding: 6px 8px;
+	}
+	.content .material .mat-title a {
+		max-width: calc(100% - 24px);
+	}
+	.content .material .mat-content .topinfo .left,
+	.content .material .mat-content .topinfo .right {
+		float: none;
+		display: inline-block;
+	}
+	.content .material .mat-content .topinfo span {
+		padding: 3px 7px;
+		font-size: 12px;
+	}
+	.content .material .mat-content .announce,
+	.mat-content .main_text {
+		font-size: 13px;
+		word-wrap: break-word;
+		overflow-wrap: break-word;
+	}
+	.mat-content .main_text table {
+		display: block;
+		overflow-x: auto;
+	}
+	.mat-content .infomats .infomatsright {
+		display: block;
+		width: auto;
+		border-left: 0;
+		border-top: 1px solid #999;
+	}
+	input[type="text"], input[type="password"], input[type="email"],
+	input[type="file"], textarea, select {
+		max-width: 100%;
+		box-sizing: border-box;
+	}
+	textarea[name="description"] {
+		width: 100% !important;
+	}
+	.content .answertextarea {
+		display: block;
+		width: auto;
+	}
+	.content .answertextarea textarea {
+		width: 100%;
+	}
+	.content ul.spisok-all li .siu_title {
+		display: block;
+		width: auto;
+		text-align: left;
+		margin: 4px 0;
+	}
+	.content ul.spisok-all li .siu_data {
+		display: block;
+		width: auto;
+		max-width: 100%;
+		margin: 4px 0;
+	}
+	.content ul.spisok-all li .siu_data input,
+	.content ul.spisok-all li .siu_data textarea {
+		width: 100%;
+	}
+	.content ul.spisok-all li .siu_data input[type="file"] {
+		width: 100%;
+	}
+	.bigadd-form form .chat-addform div textarea {
+		width: 100% !important;
+		max-width: 100% !important;
+	}
+	.chat-addfrom .chat_captcha {
+		margin: 5px 0;
+	}
+	#attachments, .attaches-info {
+		max-width: 100%;
+	}
+	.content div .material .mat-content ul.userslinks {
+		display: block;
+		width: auto;
+	}
+	.content div .material .mat-content .userinfo {
+		display: block;
+		width: auto;
+	}
+	.content div .material .mat-content .userinfo .upuserinfo .userReputation {
+		float: none;
+		width: auto;
+		margin: 8px 0;
+	}
+	.content div .material .mat-content .userinfo .bottomuserinfo .spisokinfouser li .siu_title {
+		float: none;
+		display: block;
+		width: auto;
+		text-align: left;
+		padding-right: 0;
+	}
+	.userlist li .user-info {
+		position: static;
+		width: auto;
+		margin: 4px 0 0 75px;
+	}
+	.userlist li .text {
+		position: static;
+		left: auto;
+		top: auto;
+		width: auto;
+		height: auto;
+		margin: 0 0 0 75px;
+		padding-top: 4px;
+	}
+	.userlist li .listuserbuttons {
+		position: static;
+		margin: 4px 0 0 75px;
+		text-align: left;
+	}
+	.comment-block .text2 {
+		width: auto;
+	}
+	.forumblock div .forstatus,
+	.forumblock div .fornewmess,
+	.forumblock div .fornewposts {
+		display: none;
+	}
+	.forumblock div .forname,
+	.forumblock div .fornametemes {
+		width: auto;
+	}
+	.forumblock div .forteme,
+	.forumblock div .foranswer,
+	.forumblock div .foranswerteme,
+	.forumblock div .forviuwteme {
+		width: 44px;
+	}
+	.forumblock div .forautorteme {
+		width: 60px;
+	}
+	.forumblock .forumhead div,
+	.forumblock .forumcontent div {
+		height: auto;
+		padding: 3px 4px;
+		font-size: 12px;
+		line-height: normal;
+	}
+	.forumblock .forumcontent .forname .foruminfo,
+	.forumblock .forumcontent .fornametemes .forinfoteme {
+		max-width: 100%;
+	}
+	.forumblock .poststarterinfo {
+		display: block;
+		width: auto;
+		min-width: 0;
+		min-height: 0;
+		padding: 6px;
+	}
+	.forumblock .posttextuser {
+		display: block;
+		width: auto;
+		padding: 0 6px 6px 6px;
+	}
+	.fps-fwin {
+		left: 8px;
+		right: 8px;
+		top: 80px;
+	}
+	.drag_window {
+		left: auto;
+		right: 0;
+		top: 40px;
+		width: auto;
+		max-width: 100%;
+	}
+	.footer {
+		height: auto;
+		margin: 10px 8px;
+	}
+	.footer div {
+		padding: 6px 5px 5px 8px;
+		margin-left: 0;
+		font-size: 13px;
 	}
 }

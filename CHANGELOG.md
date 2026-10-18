@@ -23,6 +23,11 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   activation link.
 - Front-end libraries and page skeletons updated (HTML5 markup, modern
   vendor bundles).
+- The default front-end theme is responsive now: the page skeletons carry
+  a viewport meta tag, the fixed 1000px `min-width` is replaced with a
+  fluid layout, the sidebar stacks under the content on tablets and
+  phones, and mobile breakpoints (≤700px) stack the menu, search and
+  forms for phones.
 - The "site is already installed" warning page is styled with the
   installer's look.
 
