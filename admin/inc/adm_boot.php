@@ -130,7 +130,6 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 	<meta name="keywords" content="" />
 	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css" />
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
-	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery-migrate.js"></script>
 </head>
 <body>
 	<script>

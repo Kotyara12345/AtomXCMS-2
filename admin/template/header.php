@@ -6,7 +6,6 @@
 	<meta name="description" content="" />
 	<meta name="keywords" content="" />
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
-	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery-migrate.js"></script>
 	
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.validate.js"></script>
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery-ui.min.js"></script>
