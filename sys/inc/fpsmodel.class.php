@@ -408,7 +408,7 @@ abstract class FpsModel
     public function getBindParams($attrName = false)
     {
         if (!$attrName) return $this->BindedParams;
-        return ($this->BindedParams[$attrName]) ? $this->BindedParams[$attrName] : false;
+        return (!empty($this->BindedParams[$attrName])) ? $this->BindedParams[$attrName] : false;
     }
 
 	

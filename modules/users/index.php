@@ -2026,8 +2026,8 @@ Class UsersModule extends Module {
 		}
 
 		// Обрезаем лишние пробелы
-		$name      = trim( $_POST['username'] );
-		$password  = trim( $_POST['password'] );
+		$name      = trim($_POST['username'] ?? '');
+		$password  = trim($_POST['password'] ?? '');
 
 			
 		// Проверять существование такого пользователя есть смысл только в том

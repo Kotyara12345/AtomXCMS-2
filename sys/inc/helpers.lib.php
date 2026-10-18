@@ -421,6 +421,23 @@ function get_url($url, $notRoot = false, $useLang = true)
 
 
 /**
+ * Host of the current request including a non-standard port.
+ * Unlike $_SERVER['SERVER_NAME'] it keeps the port, so absolute
+ * redirects (Refresh headers) stay on the same host:port.
+ *
+ * @return string host with optional port
+ */
+function get_server_host() 
+{
+	if (!empty($_SERVER['HTTP_HOST'])) {
+		return $_SERVER['HTTP_HOST'];
+	}
+	return !empty($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'localhost';
+}
+
+
+
+/**
  * Uses for valid create HTML tag A
  * and fill into him correctli url.
  * When you use this function you

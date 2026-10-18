@@ -383,7 +383,7 @@ Class ForumModule extends Module {
 			
 			
 			$subforums = $forum->getSubforums();
-			if (count($subforums) > 0) {
+			if ($subforums && count($subforums) > 0) {
 				foreach($subforums as $subforum) {
 					$subforum = $this->_parseForumTable($subforum);
 				}

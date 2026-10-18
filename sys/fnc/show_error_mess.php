@@ -26,7 +26,7 @@
 // и делает редирект на нужную страницу с задержкой
 function showErrorMessage( $message = '', $error = '', $redirect = false, $queryString = '' ) {
 	if ($redirect === true) {
-		header('Refresh: ' . Config::read('redirect_delay') . '; url=http://' . $_SERVER['SERVER_NAME'] . get_url($queryString));
+		header('Refresh: ' . Config::read('redirect_delay') . '; url=http://' . get_server_host() . get_url($queryString));
 	}
 
     $Register = Register::getInstance();
