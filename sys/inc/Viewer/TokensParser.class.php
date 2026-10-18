@@ -125,17 +125,17 @@ class Fps_Viewer_TokensParser
 	
     protected function lexString()
     {
-        if (preg_match($this->regexes['interpolation_start'], $this->code, $match, null, $this->cursor)) {
+        if (preg_match($this->regexes['interpolation_start'], $this->code, $match, 0, $this->cursor)) {
             $this->brackets[] = array($this->options['interpolation'][0], $this->lineno);
             $this->pushToken(Fps_Viewer_Token::INTERPOLATION_START_TYPE);
             $this->moveCursor($match[0]);
             $this->pushState(self::STATE_INTERPOLATION);
 
-        } else if (preg_match(self::REGEX_DQ_STRING_PART, $this->code, $match, null, $this->cursor) && strlen($match[0]) > 0) {
+        } else if (preg_match(self::REGEX_DQ_STRING_PART, $this->code, $match, 0, $this->cursor) && strlen($match[0]) > 0) {
             $this->pushToken(Fps_Viewer_Token::STRING_TYPE, stripcslashes($match[0]));
             $this->moveCursor($match[0]);
 
-        } else if (preg_match(self::REGEX_DQ_STRING_DELIM, $this->code, $match, null, $this->cursor)) {
+        } else if (preg_match(self::REGEX_DQ_STRING_DELIM, $this->code, $match, 0, $this->cursor)) {
 
             list($expect, $lineno) = array_pop($this->brackets);
             if ($this->code[$this->cursor] != '"') {
@@ -153,7 +153,7 @@ class Fps_Viewer_TokensParser
 	
     protected function lexUrl()
     {
-        if (empty($this->brackets) && preg_match($this->regexes['lex_url'], $this->code, $match, null, $this->cursor)) {
+        if (empty($this->brackets) && preg_match($this->regexes['lex_url'], $this->code, $match, 0, $this->cursor)) {
             $this->pushToken(Fps_Viewer_Token::URL_END_TYPE);
             $this->moveCursor($match[0]);
             $this->popState();
@@ -167,7 +167,7 @@ class Fps_Viewer_TokensParser
     protected function lexComment()
     {
 		$start = $this->cursor;
-        while (!(empty($this->brackets) && preg_match($this->regexes['lex_comment'], $this->code, $match, null, $this->cursor))) {
+        while (!(empty($this->brackets) && preg_match($this->regexes['lex_comment'], $this->code, $match, 0, $this->cursor))) {
 			$this->cursor++;
 		}
 		$end = $this->cursor;
@@ -184,7 +184,7 @@ class Fps_Viewer_TokensParser
 	
     protected function lexVar()
     { 
-        if (empty($this->brackets) && preg_match($this->regexes['lex_var'], $this->code, $match, null, $this->cursor)) {
+        if (empty($this->brackets) && preg_match($this->regexes['lex_var'], $this->code, $match, 0, $this->cursor)) {
             $this->pushToken(Fps_Viewer_Token::VAR_END_TYPE);
             $this->moveCursor($match[0]);
             $this->popState();
@@ -255,7 +255,7 @@ class Fps_Viewer_TokensParser
 	
     protected function lexBlock()
     {
-        if (empty($this->brackets) && preg_match($this->regexes['lex_block'], $this->code, $match, null, $this->cursor)) {
+        if (empty($this->brackets) && preg_match($this->regexes['lex_block'], $this->code, $match, 0, $this->cursor)) {
             $this->pushToken(Fps_Viewer_Token::BLOCK_END_TYPE);
             $this->moveCursor($match[0]);
             $this->popState();
@@ -270,7 +270,7 @@ class Fps_Viewer_TokensParser
     protected function lexExpression()
     {
         // whitespace
-        if (preg_match('/\s+/uA', $this->code, $match, null, $this->cursor)) {
+        if (preg_match('/\s+/uA', $this->code, $match, 0, $this->cursor)) {
             $this->moveCursor($match[0]);
 
             if ($this->cursor >= $this->end) {
@@ -279,17 +279,17 @@ class Fps_Viewer_TokensParser
         }
 		
         // operators
-        if (preg_match($this->regexes['operators'], $this->code, $match, null, $this->cursor)) {
+        if (preg_match($this->regexes['operators'], $this->code, $match, 0, $this->cursor)) {
             $this->pushToken(Fps_Viewer_Token::OPERATOR_TYPE, $match[0]);
             $this->moveCursor($match[0]);
         }
         // names
-        elseif (preg_match(self::REGEX_NAME, $this->code, $match, null, $this->cursor)) {
+        elseif (preg_match(self::REGEX_NAME, $this->code, $match, 0, $this->cursor)) {
             $this->pushToken(Fps_Viewer_Token::NAME_TYPE, $match[0]);
             $this->moveCursor($match[0]);
         }
         // numbers
-        elseif (preg_match(self::REGEX_NUMBER, $this->code, $match, null, $this->cursor)) {
+        elseif (preg_match(self::REGEX_NUMBER, $this->code, $match, 0, $this->cursor)) {
             $number = (float) $match[0];  // floats
             if (ctype_digit($match[0]) && $number <= PHP_INT_MAX) {
                 $number = (int) $match[0]; // integers lower than the maximum
@@ -320,12 +320,12 @@ class Fps_Viewer_TokensParser
             ++$this->cursor;
         }
         // strings
-        elseif (preg_match(self::REGEX_STRING, $this->code, $match, null, $this->cursor)) {
+        elseif (preg_match(self::REGEX_STRING, $this->code, $match, 0, $this->cursor)) {
             $this->pushToken(Fps_Viewer_Token::STRING_TYPE, stripcslashes(substr($match[0], 1, -1)));
             $this->moveCursor($match[0]);
         }
         // opening double quoted string
-        elseif (preg_match(self::REGEX_DQ_STRING_DELIM, $this->code, $match, null, $this->cursor)) {
+        elseif (preg_match(self::REGEX_DQ_STRING_DELIM, $this->code, $match, 0, $this->cursor)) {
             $this->brackets[] = array('"', $this->lineno);
             $this->pushState(self::STATE_STRING);
             $this->moveCursor($match[0]);

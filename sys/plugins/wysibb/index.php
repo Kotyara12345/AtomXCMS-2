@@ -34,7 +34,7 @@ class WysiBB {
 		}
 	
 		foreach ($markers as $marker => $value) {
-			$params = preg_replace('#{{\s*' . $marker . '\s*}}#i', $value, $params);
+			$params = preg_replace('#{{\s*' . $marker . '\s*}}#i', (string) $value, $params);
 		}
 		return $params;
 	}

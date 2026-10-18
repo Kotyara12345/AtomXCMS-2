@@ -583,7 +583,7 @@ function pr($param) {
 function h($param) {
 
 	if (!is_array($param)) {
-		$param = htmlspecialchars($param);
+		$param = htmlspecialchars((string) $param);
 		$symbols = array(
 			'&#125;' => '&amp;#125;',
 			'&#123;' => '&amp;#123;',

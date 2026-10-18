@@ -47,6 +47,11 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 - Various runtime warnings and errors on PHP 8.5 found during a full
   live pass (undefined array keys, dynamic properties, null arguments,
   and more).
+- Remaining PHP 8.1+ deprecation warnings caused by `null` arguments:
+  the helper `h()`, the WysiBB plugin, the template lexer, GeSHi and
+  the extensions API client now pass proper values to
+  `htmlspecialchars()`, `preg_replace()`, `preg_match()` and
+  `file_get_contents()`.
 - Sections returned 404 for visitors when the site is served by Nginx
   (Nginx ignores `.htaccess`): the required rewrite rule is now
   documented in the README. The router also accepts paths with a
