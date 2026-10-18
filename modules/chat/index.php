@@ -75,11 +75,8 @@ class ChatModule extends Module {
 				
 				foreach ($data as $key => &$record) {
 				
-					$record['message'] = $this->Register['PrintText']->smile(h($record['message']));
-					$record['message'] = $this->Register['PrintText']->parseUrlBb(h($record['message']));
-					$record['message'] = $this->Register['PrintText']->parseBBb(h($record['message']));
-					$record['message'] = $this->Register['PrintText']->parseUBb(h($record['message']));
-					$record['message'] = $this->Register['PrintText']->parseSBb(h($record['message']));
+					// Escape the message once, then parse BB codes, links and smiles into safe HTML
+					$record['message'] = $this->Register['PrintText']->parseBBCodes($record['message'], $record, 'chat');
 				
 					/* view ip adres if admin */
 					if ($this->ACL->turn(array('chat', 'delete_materials'), false)) {

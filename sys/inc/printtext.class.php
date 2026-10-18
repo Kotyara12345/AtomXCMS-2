@@ -388,6 +388,9 @@ class PrintText {
 		$attachment = null;
 		$module = (!empty($module)) ? $module : $Register['module'];
 		
+		// Chat messages and other non-entity callers have no attachments
+		if (!is_object($entity)) return $message;
+		
 		$attaches = ($module == 'forum') ? $entity->getAttacheslist() : $entity->getAttaches();
 		if (!$attaches) return $message;
 		
@@ -581,8 +584,9 @@ class PrintText {
 		$str = Plugins::intercept('before_smiles_parse', $str);
 
 		$Register = Register::getInstance();
-		$path = $Register['Config']->read('smiles_set');
-		$path = ROOT . '/sys/img/smiles/' . (!empty($path) ? $path : 'fapos') . '/info.php';
+		$set = $Register['Config']->read('smiles_set');
+		$set = (!empty($set)) ? $set : 'fapos';
+		$path = ROOT . '/sys/img/smiles/' . $set . '/info.php';
 		
 		include $path;
 		
@@ -591,7 +595,7 @@ class PrintText {
 		if (isset($smilesList) && is_array($smilesList)) {
 			foreach ($smilesList as $smile) {
 				$from[] = $smile['from'];
-				$to[] = '<img alt="' . $smile['from'] . '" title="' . $smile['from'] . '" src="' . WWW_ROOT . '/sys/img/smiles/fapos/' . $smile['to'] . '" />';
+				$to[] = '<img alt="' . $smile['from'] . '" title="' . $smile['from'] . '" src="' . WWW_ROOT . '/sys/img/smiles/' . $set . '/' . $smile['to'] . '" />';
 			}
 		}
 		$str = str_replace($from, $to, $str);
