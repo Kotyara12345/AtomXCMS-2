@@ -47,6 +47,11 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   documented in the README. The router also accepts paths with a
   leading slash (e.g. from `try_files $uri /index.php?url=$uri`
   setups) instead of falling back to the wrong page.
+- `.htaccess` no longer returns HTTP 500 on Apache builds without the
+  compression modules: `AddOutputFilterByType` directives are wrapped in
+  `<IfModule mod_filter.c><IfModule mod_deflate.c>` guards, so the file
+  parses when either module is missing (e.g. the OSPanel
+  "Apache + Nginx" combo ships with mod_deflate disabled).
 - README fixes: the front-end stack no longer lists jQuery Migrate
   (removed earlier) and the password description now matches the
   bcrypt storage with transparent md5 upgrade.
