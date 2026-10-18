@@ -42,6 +42,14 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 - Various runtime warnings and errors on PHP 8.5 found during a full
   live pass (undefined array keys, dynamic properties, null arguments,
   and more).
+- Sections returned 404 for visitors when the site is served by Nginx
+  (Nginx ignores `.htaccess`): the required rewrite rule is now
+  documented in the README. The router also accepts paths with a
+  leading slash (e.g. from `try_files $uri /index.php?url=$uri`
+  setups) instead of falling back to the wrong page.
+- README fixes: the front-end stack no longer lists jQuery Migrate
+  (removed earlier) and the password description now matches the
+  bcrypt storage with transparent md5 upgrade.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated

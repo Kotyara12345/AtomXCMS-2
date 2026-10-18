@@ -22,7 +22,7 @@ bundles the original shipped with.
 
 * HTML5 markup and UTF-8 encoding on every page - front-end, admin panel
   and installation wizard.
-* jQuery 3.7.1 + jQuery Migrate 3.4.1, jQuery UI 1.14.1
+* jQuery 3.7.1, jQuery UI 1.14.1
 * jQuery Validate 1.21, jQuery datetimepicker 2.5, jQuery.cookie shim
 * Fancybox 3.5.7 galleries
 * jsTree 3.3.16 (page tree, menu editor)
@@ -38,6 +38,26 @@ bundles the original shipped with.
 * Type http://yourdomain.org/install/ in the browser.
 * After the installation rename or delete install directory.
 
+#### Nginx
+
+The bundled `.htaccess` carries the pretty-URL rewrite rules and works
+on Apache only. On Nginx, add the rule below to the site's `server`
+block - inside an existing `location /`, or as a new block if the
+configuration has none:
+
+```nginx
+location / {
+    if (!-e $request_filename) {
+        rewrite ^/(.*)$ /index.php?url=$1 last;
+    }
+}
+```
+
+Without it Nginx answers sections like `/news/` or `/foto/` with its own
+404 page, never reaching PHP. On OSPanel/OpenServer, put the same lines
+into the engine template (`userdata/config/Nginx_*_vhost.conf`) so the
+panel keeps them after regenerating the configuration.
+
 #### What Changed in This Fork
 
 * The database layer is rewritten on top of PDO; the legacy mysql_* API
@@ -46,8 +66,9 @@ bundles the original shipped with.
   the installation wizard.
 * Sessions use HttpOnly and SameSite cookies, the admin sign-in form is
   protected by a CSRF token and the session id is regenerated on login.
-* User passwords are still stored as md5 hashes - kept on purpose so
-  databases created by earlier versions keep working.
+* Passwords are stored with `password_hash()` (bcrypt). Hashes created
+  by older versions (md5) keep working and are transparently re-hashed
+  on the next successful sign-in.
 * Legacy front-end libraries (jqplot, jsTree 1.x, jQuery UI 1.8,
   Fancybox 1.x, old CodeMirror builds) were removed and replaced with the
   stack listed above.
@@ -97,7 +118,7 @@ HTML5-разметка) вместо библиотек, которые пост
 
 * HTML5-разметка и кодировка UTF-8 на каждой странице - фронтенд,
   админ-панель и мастер установки.
-* jQuery 3.7.1 + jQuery Migrate 3.4.1, jQuery UI 1.14.1
+* jQuery 3.7.1, jQuery UI 1.14.1
 * jQuery Validate 1.21, jQuery datetimepicker 2.5, шим jQuery.cookie
 * Галереи Fancybox 3.5.7
 * jsTree 3.3.16 (дерево страниц, редактор меню)
@@ -113,6 +134,25 @@ HTML5-разметка) вместо библиотек, которые пост
 * Откройте в браузере http://yourdomain.org/install/.
 * После установки переименуйте или удалите каталог install.
 
+#### Работа под Nginx
+
+Файл `.htaccess` с правилами «красивых» URL работает только на Apache.
+На Nginx добавьте правило ниже в `server`-блок сайта - внутрь
+существующего `location /` либо отдельным блоком, если его нет:
+
+```nginx
+location / {
+    if (!-e $request_filename) {
+        rewrite ^/(.*)$ /index.php?url=$1 last;
+    }
+}
+```
+
+Без этого Nginx на разделы вида `/news/` или `/foto/` отвечает своей
+страницей 404, не доходя до PHP. В OSPanel/OpenServer пропишите те же
+строки в шаблоне движка (`userdata/config/Nginx_*_vhost.conf`), чтобы
+панель сохранила их после перегенерации конфигурации.
+
 #### Что изменилось в этом форке
 
 * Слой работы с базой данных переписан на PDO; устаревший API mysql_*
@@ -122,9 +162,9 @@ HTML5-разметка) вместо библиотек, которые пост
 * Сессии используют cookie с флагами HttpOnly и SameSite, форма входа в
   админ-панель защищена CSRF-токеном, идентификатор сессии
   перегенерируется при входе.
-* Пароли пользователей по-прежнему хранятся в виде md5-хешей - это
-  сделано намеренно, чтобы базы данных прежних версий продолжали
-  работать.
+* Пароли хранятся в виде хешей `password_hash()` (bcrypt). Хеши прежних
+  версий (md5) продолжают работать и прозрачно обновляются на bcrypt
+  при следующем успешном входе.
 * Устаревшие фронтенд-библиотеки (jqplot, jsTree 1.x, jQuery UI 1.8,
   Fancybox 1.x, старые сборки CodeMirror) удалены и заменены стеком,
   указанным выше.

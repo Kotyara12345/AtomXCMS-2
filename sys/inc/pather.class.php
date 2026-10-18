@@ -103,7 +103,7 @@ Class Pather {
 
 		$url = rtrim($url, '/');
         $pathParams = explode('/', $url);
-        $pathParams = array_filter($pathParams);
+        $pathParams = array_values(array_filter($pathParams)); // re-index: empty segments (e.g. leading slash) must not shift keys
 
 
         $start_mod = Config::read('start_mod');
