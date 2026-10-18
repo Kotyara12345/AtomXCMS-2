@@ -79,7 +79,12 @@ panel keeps them after regenerating the configuration.
   settings → "Server protocols"). HTTP/2 adds an `H2Upgrade` rule to the
   site root `.htaccess`; HTTP/3 advertises `Alt-Svc` via PHP and
   `.htaccess`. Both switches are safe on hostings without support - the
-  site simply keeps working over the lower protocol version.
+  site simply keeps working over the lower protocol version. Note that
+  the protocols themselves are served by the web server: for HTTP/2 it
+  must negotiate `h2` over TLS (the `http2` parameter of the `listen`
+  directive in Nginx, `Protocols h2 http/1.1` in Apache), and HTTP/3
+  requires a server or CDN with QUIC support - configure this in the
+  hosting control panel.
 
 #### Contributing
 
@@ -187,7 +192,11 @@ location / {
   корневой `.htaccess` правило `H2Upgrade`; HTTP/3 анонсируется
   заголовком `Alt-Svc` (из PHP и через правила `.htaccess`). Оба
   переключателя безопасны на хостингах без поддержки — сайт просто
-  продолжит работать по старшей доступной версии протокола.
+  продолжит работать по старшей доступной версии протокола. Сам
+  протокол включает веб-сервер: для HTTP/2 он должен согласовывать
+  `h2` по TLS (параметр `http2` у директивы `listen` в Nginx,
+  `Protocols h2 http/1.1` в Apache), а для HTTP/3 нужен сервер или CDN
+  с поддержкой QUIC — это настраивается в панели хостинга.
 
 #### Участие в проекте
 
