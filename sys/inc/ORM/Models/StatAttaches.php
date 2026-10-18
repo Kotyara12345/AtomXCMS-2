@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class StatAttachesModel extends FpsModel
 {
 	

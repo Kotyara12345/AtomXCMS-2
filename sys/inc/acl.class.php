@@ -26,6 +26,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class ACL {
 
 	private $rules;

@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class StatAddFieldsEntity extends FpsEntity
 {
 	

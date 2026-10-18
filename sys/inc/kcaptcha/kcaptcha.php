@@ -16,10 +16,18 @@
 
 # See kcaptcha_config.php for customization
 
+#[\AllowDynamicProperties]
 class KCAPTCHA{
 
+	/**
+	 * Generated captcha text
+	 *
+	 * @var string
+	 */
+	public $keystring = '';
+
 	// generates keystring and image
-	function KCAPTCHA(){
+	public function __construct(){
 
 		require(dirname(__FILE__).'/kcaptcha_config.php');
 		$fonts=array();
@@ -40,7 +48,7 @@ class KCAPTCHA{
 			while(true){
 				$this->keystring='';
 				for($i=0;$i<$length;$i++){
-					$this->keystring.=$allowed_symbols{mt_rand(0,strlen($allowed_symbols)-1)};
+					$this->keystring.=$allowed_symbols[mt_rand(0,strlen($allowed_symbols)-1)];
 				}
 				if(!preg_match('/cp|cb|ck|c6|c9|rn|rm|mm|co|do|cl|db|qp|qb|dp|ww/', $this->keystring)) break;
 			}
@@ -61,13 +69,13 @@ class KCAPTCHA{
 				$transparent = (imagecolorat($font, $i, 0) >> 24) == 127;
 
 				if(!$reading_symbol && !$transparent){
-					$font_metrics[$alphabet{$symbol}]=array('start'=>$i);
+					$font_metrics[$alphabet[$symbol]]=array('start'=>$i);
 					$reading_symbol=true;
 					continue;
 				}
 
 				if($reading_symbol && $transparent){
-					$font_metrics[$alphabet{$symbol}]['end']=$i;
+					$font_metrics[$alphabet[$symbol]]['end']=$i;
 					$reading_symbol=false;
 					$symbol++;
 					continue;
@@ -86,7 +94,7 @@ class KCAPTCHA{
 			$odd=mt_rand(0,1);
 			if($odd==0) $odd=-1;
 			for($i=0;$i<$length;$i++){
-				$m=$font_metrics[$this->keystring{$i}];
+				$m=$font_metrics[$this->keystring[$i]];
 
 				$y=(($i%2)*$fluctuation_amplitude - $fluctuation_amplitude/2)*$odd
 					+ mt_rand(-round($fluctuation_amplitude/3), round($fluctuation_amplitude/3))
@@ -105,7 +113,7 @@ class KCAPTCHA{
 									$py=$sy+$y;
 									if($py>$height) break;
 									for($px=min($left,$width-1);$px>$left-200 && $px>=0;$px-=1){
-						        		$color=imagecolorat($img, $px, $py) & 0xff;
+						        		$color=imagecolorat($img, $px, (int)$py) & 0xff;
 										if($color+$opacity<170){ // 170 - threshold
 											if($shift>$left-$px){
 												$shift=$left-$px;
@@ -125,7 +133,7 @@ class KCAPTCHA{
 				}else{
 					$shift=1;
 				}
-				imagecopy($img, $font, $x-$shift, $y, $m['start'], 1, $m['end']-$m['start'], $fontfile_height);
+				imagecopy($img, $font, (int)($x - $shift), (int)$y, (int)$m['start'], 1, (int)($m['end'] - $m['start']), (int)$fontfile_height);
 				$x+=$m['end']-$m['start']-$shift;
 			}
 		}while($x>=$width-10); // while not fit in canvas
@@ -149,8 +157,8 @@ class KCAPTCHA{
 		$background=imagecolorallocate($img2, $background_color[0], $background_color[1], $background_color[2]);
 		imagefilledrectangle($img2, 0, 0, $width-1, $height-1, $background);		
 		imagefilledrectangle($img2, 0, $height, $width-1, $height+12, $foreground);
-		$credits=empty($credits)?$_SERVER['HTTP_HOST']:$credits;
-		imagestring($img2, 2, $width/2-imagefontwidth(2)*strlen($credits)/2, $height-2, $credits, $background);
+		$credits=empty($credits)?(isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : ''):$credits;
+		imagestring($img2, 2, (int)($width/2-imagefontwidth(2)*strlen($credits)/2), $height-2, $credits, $background);
 
 		// periods
 		$rand1=mt_rand(750000,1200000)/10000000;
@@ -176,10 +184,10 @@ class KCAPTCHA{
 				if($sx<0 || $sy<0 || $sx>=$width-1 || $sy>=$height-1){
 					continue;
 				}else{
-					$color=imagecolorat($img, $sx, $sy) & 0xFF;
-					$color_x=imagecolorat($img, $sx+1, $sy) & 0xFF;
-					$color_y=imagecolorat($img, $sx, $sy+1) & 0xFF;
-					$color_xy=imagecolorat($img, $sx+1, $sy+1) & 0xFF;
+					$color=imagecolorat($img, (int)$sx, (int)$sy) & 0xFF;
+					$color_x=imagecolorat($img, (int)$sx+1, (int)$sy) & 0xFF;
+					$color_y=imagecolorat($img, (int)$sx, (int)$sy+1) & 0xFF;
+					$color_xy=imagecolorat($img, (int)$sx+1, (int)$sy+1) & 0xFF;
 				}
 
 				if($color==255 && $color_x==255 && $color_y==255 && $color_xy==255){
@@ -209,7 +217,7 @@ class KCAPTCHA{
 					$newblue=$newcolor0*$foreground_color[2]+$newcolor*$background_color[2];
 				}
 
-				imagesetpixel($img2, $x, $y, imagecolorallocate($img2, $newred, $newgreen, $newblue));
+				imagesetpixel($img2, $x, $y, imagecolorallocate($img2, (int)$newred, (int)$newgreen, (int)$newblue));
 			}
 		}
 		
@@ -230,7 +238,7 @@ class KCAPTCHA{
 	}
 
 	// returns keystring
-	function getKeyString(){
+	public function getKeyString(){
 		return $this->keystring;
 	}
 }

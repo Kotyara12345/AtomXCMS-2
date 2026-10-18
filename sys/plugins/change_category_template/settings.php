@@ -5,6 +5,7 @@ $output = $obj->edit();
 
 
 
+#[\AllowDynamicProperties]
 class CategoryViewer {
 	
 	private $config;

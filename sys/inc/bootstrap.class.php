@@ -22,6 +22,7 @@
 \-----------------------------------------------*/
 
 
+#[\AllowDynamicProperties]
 class Bootstrap
 {
 
@@ -72,7 +73,6 @@ class Bootstrap
 
 		
 		if (isInstall()) {
-			$this->inputCheck();
 			$this->initProtect();
 			$this->initUser();
             $this->loadLanguages();
@@ -175,40 +175,14 @@ class Bootstrap
     /**
      * @return void
      */
-    private function inputCheck()
-    {
-        /**
-        * magic gemor
-        */
-        if (get_magic_quotes_gpc()) {
-          strips($_GET);
-          strips($_POST);
-          strips($_COOKIE);
-          strips($_REQUEST);
-          if (isset($_SERVER['PHP_AUTH_USER'])) strips($_SERVER['PHP_AUTH_USER']);
-          if (isset($_SERVER['PHP_AUTH_PW']))   strips($_SERVER['PHP_AUTH_PW']);
-        }
-    }
-
-
-
-    /**
-     * @return void
-     */
     private function setPhpSettings()
     {
-        @ini_set('session.gc_maxlifetime', 10000);
-
-        ini_set('post_max_size', "100M");
-        ini_set('upload_max_filesize', "100M");
+        @ini_set('post_max_size', "100M");
+        @ini_set('upload_max_filesize', "100M");
         if (function_exists('set_time_limit')) @set_time_limit(200);
 
-        ini_set('register_globals', 0);
-        ini_set('magic_quotes_gpc', 0);
-        ini_set('magic_quotes_runtime', 0);
-        session_set_cookie_params(3000);
-        ini_set('display_errors', 0);
-        error_reporting(E_ALL & ~E_NOTICE);
+        ini_set('display_errors', '0');
+        error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED);
 
 
 

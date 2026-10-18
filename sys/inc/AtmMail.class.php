@@ -23,6 +23,7 @@
 /**
  * Class AtmMail
  */
+#[\AllowDynamicProperties]
 class AtmMail {
 
     public $templatePath;

@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class SearchEntity extends FpsEntity
 {
 	

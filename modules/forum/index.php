@@ -679,6 +679,7 @@ Class ForumModule extends Module {
 		$themeModel->bindModel('poll');
 		$theme = $themeModel->getById($id_theme);
 		
+		if (empty($theme)) return $this->showInfoMessage(__('Topic not found'), '/forum/' );
 		if (!$theme->getForum())  return $this->showInfoMessage(__('Can not find forum'), '/forum/' );
 		
 		//turn access
@@ -3194,7 +3195,7 @@ Class ForumModule extends Module {
 		// Сперва мы должны удалить все сообщения (посты) темы;
 		// начнем с того, что удалим файлы вложений
 		$posts = $postsModel->getCollection(array('id_theme' => $id_theme));
-		if (count($posts) && is_array(posts)) {
+		if (is_array($posts) && count($posts)) {
 			foreach ($posts as $file) {
 				// Удаляем файл, если он есть
 				$attach_files = $attachesModel->getCollection(array('post_id' => $file->getId()));
@@ -3231,7 +3232,7 @@ Class ForumModule extends Module {
 		}
 		
 		
-		if (count($theme) && is_array($theme)) {
+		if (!empty($theme)) {
 			// Обновляем таблицу TABLE_USERS - надо обновить поле themes
 			$themes_cnt = $themesModel->getTotal(array('cond' => array('id_author' => $theme->getId_author())));
 			$posts_cnt = $postsModel->getTotal(array('cond' => array('id_author' => $theme->getId_author())));

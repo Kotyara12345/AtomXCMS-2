@@ -5,6 +5,7 @@
  * Represents a token stream.
  *
  */
+#[\AllowDynamicProperties]
 class Fps_Viewer_TokenStream
 {
     protected $tokens;

@@ -30,6 +30,7 @@
 * @version    1.0
 * @link       http://atomx.net
 */
+#[\AllowDynamicProperties]
 class Config {
 
 

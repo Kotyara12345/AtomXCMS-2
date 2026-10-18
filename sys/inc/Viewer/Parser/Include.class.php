@@ -2,6 +2,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_Parser_Include
 {
 	public $parser;

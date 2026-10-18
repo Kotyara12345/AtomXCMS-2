@@ -4,6 +4,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class UserAuth
 {
 

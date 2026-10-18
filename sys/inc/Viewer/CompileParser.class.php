@@ -1,6 +1,7 @@
 <?php
 
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_CompileParser
 {
 

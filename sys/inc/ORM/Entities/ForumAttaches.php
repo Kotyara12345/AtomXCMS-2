@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class ForumAttachesEntity extends FpsEntity
 {
 	

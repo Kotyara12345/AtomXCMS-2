@@ -5,6 +5,7 @@
 @Package       AtomM CMS
 */
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_Filter_Append {
 
     private $params = array();

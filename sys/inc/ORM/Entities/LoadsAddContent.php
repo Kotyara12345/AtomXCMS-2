@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class LoadsAddContentEntity extends FpsEntity
 {
 	

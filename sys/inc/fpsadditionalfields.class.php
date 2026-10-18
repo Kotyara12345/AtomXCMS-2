@@ -29,6 +29,7 @@
  * @version    0.2
  * @url        http://atomx.net
  */
+#[\AllowDynamicProperties]
 class FpsAdditionalFields {
  
 	

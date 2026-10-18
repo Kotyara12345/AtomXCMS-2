@@ -24,6 +24,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class SearchModule extends Module {
 
 	/**
@@ -300,7 +301,7 @@ class SearchModule extends Module {
 							case 'loads':
 								$text = $rec->getTitle() . ' ' . $rec->getMain() . ' ' . $rec->getTags();
 								if (mb_strlen($text) < $this->minInputStr || !is_string($text))
-									continue;
+									continue 2;
 								$entity_view = '/view/';
 								$module = $table;
 								$entity_id = $rec->getId();
@@ -319,7 +320,7 @@ class SearchModule extends Module {
 							default:
 								$text = $rec->gettitle() . ' ' . $rec->getMain() . ' ' . $rec->getTags();
 								if (mb_strlen($text) < $this->minInputStr || !is_string($text))
-									continue;
+									continue 2;
 								$entity_view = '/view/';
 								$module = $table;
 								break;

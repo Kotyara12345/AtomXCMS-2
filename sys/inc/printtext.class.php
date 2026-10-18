@@ -33,6 +33,7 @@
  * @package      CMS AtomX
  * @url          atomx.net (atomx project)
  */
+#[\AllowDynamicProperties]
 class PrintText {
 
 	public $bbCodes = array('php', 'left', 'right', 'center', 'code', 'html', 'xml', 'b', 'i', 's', 'u', 'quote', 'hide', 'size');
@@ -663,6 +664,7 @@ function getOrderedList( $matches )
 
 
 
+#[\AllowDynamicProperties]
 class Lingua_Stem_Ru {
 
     var $VERSION = "0.32";

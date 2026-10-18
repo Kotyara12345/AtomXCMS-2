@@ -22,6 +22,7 @@
 \-----------------------------------------------*/
 
 
+#[\AllowDynamicProperties]
 class Zip
 {
     public function infosZip ($src, $data=true)

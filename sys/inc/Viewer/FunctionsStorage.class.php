@@ -5,6 +5,7 @@
  *
  * Uses to store custom template functions & call them.
  */
+#[\AllowDynamicProperties]
 class Fps_Viewer_FunctionsStorage
 {
 

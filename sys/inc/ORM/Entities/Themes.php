@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class ThemesEntity extends FpsEntity
 {
 	

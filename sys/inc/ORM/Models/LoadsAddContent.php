@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class LoadsAddContentModel extends FpsModel
 {
 	

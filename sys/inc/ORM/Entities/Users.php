@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class UsersEntity extends FpsEntity
 {
 	

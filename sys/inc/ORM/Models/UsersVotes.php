@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class UsersVotesModel extends FpsModel
 {
 	public $Table  = 'users_votes';

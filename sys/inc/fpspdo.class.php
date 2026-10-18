@@ -30,6 +30,7 @@ if (!defined('DB_COUNT')) define ('DB_COUNT', 'DB_COUNT');
  * @author        Andrey Brykin
  * @url           http://atomx.net
  */
+#[\AllowDynamicProperties]
 class FpsPDO {
 
 	/**
@@ -86,16 +87,22 @@ class FpsPDO {
 
 		
 		try {
-			$this->dbh = new PDO("mysql:host=$dblocation;dbname=$dbname", $dbuser, $dbpasswd);
+			$this->dbh = new PDO("mysql:host=$dblocation;dbname=$dbname;charset=utf8", $dbuser, $dbpasswd, array(
+				PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+			));
 		} catch (PDOException $e) {
 			print "Error!: " . $e->getMessage() . "<br/>";
 			die();
 		}
 		
-		$this->dbh->query("SET NAMES 'utf8'");
-		
-		$this->dbh->query("SET GLOBAL time_zone = '+00:00';");
-		$this->dbh->query("SET @@session.time_zone = '+00:00';");
+		/*
+		 * Keep the legacy behaviour of MySQL 5.x connections:
+		 * - the engine stores all dates in UTC;
+		 * - the code base was written for the non-strict SQL mode.
+		 * "SET GLOBAL time_zone" needs the SUPER privilege and is not used anymore.
+		 */
+		$this->dbh->exec("SET @@session.time_zone = '+00:00'");
+		$this->dbh->exec("SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'");
 	}
 
 	
@@ -552,7 +559,11 @@ class FpsPDO {
 	
 	private function runQuery($query) 
 	{
-        $this->statement = $statement = $this->dbh->prepare($query);
+        try {
+            $this->statement = $statement = $this->dbh->prepare($query);
+        } catch (PDOException $e) {
+            throw new Exception('FpsPDO Driver catch PDOException: ' . $e->getMessage());
+        }
 		
 		try {
 			$statement->execute($this->queryParams);
@@ -1283,7 +1294,7 @@ class FpsPDO {
 	
 	public function getErrorInfo() {
 		$info = $this->dbh->errorInfo();
-		return $info[2];
+		return isset($info[2]) ? (string)$info[2] : '';
 	}
 
 	
@@ -1307,6 +1318,7 @@ if (!class_exists('Expr')) {
 	 * This class uses for insert SQL functions to
 	 * query. Without this your functions will be uses as simple string
 	 */
+	#[\AllowDynamicProperties]
 	class Expr {
 		
 		public $string;

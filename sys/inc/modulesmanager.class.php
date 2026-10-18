@@ -25,6 +25,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class ModulesManager
 {
 

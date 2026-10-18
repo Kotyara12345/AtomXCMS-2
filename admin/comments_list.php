@@ -45,6 +45,7 @@ list($output, $pages) = $Controll->{$action}($module);
 
 
 
+#[\AllowDynamicProperties]
 class MaterialsList {
 	public $pageTitle;
 

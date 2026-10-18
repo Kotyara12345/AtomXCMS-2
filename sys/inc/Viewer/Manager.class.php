@@ -21,6 +21,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_Manager
 {
 

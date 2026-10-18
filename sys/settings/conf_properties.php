@@ -713,7 +713,6 @@ if (!function_exists('saveWaterMarkText')) {
 		
 
 		imagepng($img, ROOT . '/sys/img/watermark_text.png', 9);
-		imagedestroy($img);
 	}
 }
 

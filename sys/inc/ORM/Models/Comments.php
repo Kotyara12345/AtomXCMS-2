@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class CommentsModel extends FpsModel
 {
 	

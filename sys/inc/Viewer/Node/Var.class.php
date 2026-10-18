@@ -2,12 +2,13 @@
 
 
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_Node_Var extends Fps_Viewer_Node_Expresion
 {
 
 	private $value;
 
-	private $attr;
+	private $attr = array();
 
     /**
      * if @var == 1 variable should be $this->getValue(context, value)

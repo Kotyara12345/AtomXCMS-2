@@ -5,6 +5,7 @@
  *
  * Uses to define a custom template functions.
  */
+#[\AllowDynamicProperties]
 class AtmCustomTemplateFunctions
 {
     public static function get()

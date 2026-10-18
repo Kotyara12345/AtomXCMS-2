@@ -1,1 +1,49 @@
-<?php/*-----------------------------------------------\| 												 || @Author:       Andrey Brykin (Drunya)          || @Email:        drunyacoder@gmail.com           || @Site:         http://atomx.net                || @Version:      1.2                             || @Project:      CMS                             || @package       CMS AtomX                       || @subpackege    Admin Panel module              || @copyright     ©Andrey Brykin 2010-2013        |\-----------------------------------------------*//*-----------------------------------------------\| 												 ||  any partial or not partial extension          ||  CMS AtomX,without the consent of the          ||  author, is illegal                            ||------------------------------------------------||  Любое распространение                         ||  CMS AtomX или ее частей,                      ||  без согласия автора, является не законным     |\-----------------------------------------------*/include_once '../sys/boot.php';include_once ROOT . '/admin/inc/adm_boot.php';$pageTitle = '';$pageNav = '';$pageNavr = '';include_once ROOT . '/admin/template/header.php';$template_standart  = glob(ROOT . '/template/' . Config::read('template') . '/css/*.stand');$template_standart  = array_merge(glob(ROOT . '/template/' . Config::read('template') . '/html/*/*.stand'), $template_standart);if (is_array($template_standart)) {	foreach ($template_standart as $file) {		unlink($file);	}}$_SESSION['message'] = __('Backup complete');redirect('/admin');include_once 'template/footer.php'; ?>
+<?php
+/*-----------------------------------------------\
+| 												 |
+| @Author:       Andrey Brykin (Drunya)          |
+| @Email:        drunyacoder@gmail.com           |
+| @Site:         http://atomx.net                |
+| @Version:      1.2                             |
+| @Project:      CMS                             |
+| @package       CMS AtomX                       |
+| @subpackege    Admin Panel module              |
+| @copyright     ©Andrey Brykin 2010-2013        |
+\-----------------------------------------------*/
+
+/*-----------------------------------------------\
+| 												 |
+|  any partial or not partial extension          |
+|  CMS AtomX,without the consent of the          |
+|  author, is illegal                            |
+|------------------------------------------------|
+|  Любое распространение                         |
+|  CMS AtomX или ее частей,                      |
+|  без согласия автора, является не законным     |
+\-----------------------------------------------*/
+
+
+include_once '../sys/boot.php';
+include_once ROOT . '/admin/inc/adm_boot.php';
+
+$pageTitle = '';
+$pageNav = '';
+$pageNavr = '';
+include_once ROOT . '/admin/template/header.php';
+
+
+
+$template_standart  = glob(ROOT . '/template/' . Config::read('template') . '/css/*.stand');
+$template_standart  = array_merge(glob(ROOT . '/template/' . Config::read('template') . '/html/*/*.stand'), $template_standart);
+
+if (is_array($template_standart)) {
+	foreach ($template_standart as $file) {
+		unlink($file);
+	}
+}
+$_SESSION['message'] = __('Backup complete');
+redirect('/admin');
+
+
+
+include_once 'template/footer.php'; ?>

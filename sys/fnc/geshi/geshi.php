@@ -256,6 +256,7 @@ define('GESHI_ERROR_INVALID_LINE_NUMBER_TYPE', 5);
  * @author    Nigel McNie <nigel@geshi.org>, Benny Baumann <BenBE@omorphia.de>
  * @copyright (C) 2004 - 2007 Nigel McNie, (C) 2007 - 2008 Benny Baumann
  */
+#[\AllowDynamicProperties]
 class GeSHi {
     /**#@+
      * @access private
@@ -4714,7 +4715,9 @@ class GeSHi {
             // TODO: a|bb|c => [ac]|bb
             static $callback_2;
             if (!isset($callback_2)) {
-                $callback_2 = create_function('$matches', 'return "[" . str_replace("|", "", $matches[1]) . "]";');
+                $callback_2 = function ($matches) {
+                    return '[' . str_replace('|', '', $matches[1]) . ']';
+                };
             }
             $list = preg_replace_callback('#\(\?\:((?:.\|)+.)\)#', $callback_2, $list);
         }

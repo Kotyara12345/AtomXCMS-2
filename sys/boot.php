@@ -21,21 +21,45 @@
 | без согласия автора, является не законным    |
 \---------------------------------------------*/
 
-session_start();
+/**
+ * Session initialization. Cookie parameters must be set before
+ * session_start(). HttpOnly + SameSite=Lax are enabled, the Secure
+ * flag is set automatically when the site works over HTTPS.
+ */
+if (session_status() === PHP_SESSION_NONE) {
+	if (function_exists('ini_set')) {
+		@ini_set('session.use_strict_mode', '1');
+		@ini_set('session.use_only_cookies', '1');
+		@ini_set('session.gc_maxlifetime', '10000');
+	}
+	if (PHP_VERSION_ID >= 70300) {
+		session_set_cookie_params(array(
+			'lifetime' => 3000,
+			'path'     => '/',
+			'domain'   => '',
+			'secure'   => (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off'),
+			'httponly' => true,
+			'samesite' => 'Lax',
+		));
+	} else {
+		session_set_cookie_params(3000);
+	}
+	session_start();
+}
 if (isset($_SESSION['db_querys'])) unset($_SESSION['db_querys']);
 
 
 /**
  * Current version of engine
  */
-define('FPS_VERSION', '2.8 Beta');
+if (!defined('FPS_VERSION')) define('FPS_VERSION', '2.8 Beta');
 
 /**
  * Path constants
  */
-define('ROOT', dirname(dirname(__FILE__)));
-define ('DS', DIRECTORY_SEPARATOR);
-define ('R', dirname(dirname(__FILE__)) . DS);
+if (!defined('ROOT')) define('ROOT', dirname(dirname(__FILE__)));
+if (!defined('DS')) define('DS', DIRECTORY_SEPARATOR);
+if (!defined('R')) define('R', dirname(dirname(__FILE__)) . DS);
 
 
 /**
@@ -43,11 +67,16 @@ define ('R', dirname(dirname(__FILE__)) . DS);
  * we must set this variable, because AtomX
  * must know this for good work.
  */
-$diff = array_diff_assoc(
-	explode(DS, dirname(dirname(__FILE__))),
-	explode('/', $_SERVER['DOCUMENT_ROOT'])
-);
-define ('WWW_ROOT', ((!empty($diff)) ? '/' . implode('/', $diff) : ''));
+if (!defined('WWW_ROOT')) {
+	$docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? str_replace('\\', '/', rtrim((string)$_SERVER['DOCUMENT_ROOT'], '/')) : '';
+	$rootPath = str_replace('\\', '/', rtrim(dirname(dirname(__FILE__)), '/'));
+	$wwwRoot = '';
+	if ($docRoot !== '' && strncasecmp($rootPath, $docRoot, strlen($docRoot)) === 0
+		&& (strlen($rootPath) === strlen($docRoot) || substr($rootPath, strlen($docRoot), 1) === '/')) {
+		$wwwRoot = substr($rootPath, strlen($docRoot));
+	}
+	define('WWW_ROOT', $wwwRoot);
+}
 
 /**
  * If set to 1, check referer in admin panel
@@ -55,7 +84,7 @@ define ('WWW_ROOT', ((!empty($diff)) ? '/' . implode('/', $diff) : ''));
  * index page of admin panel. It doesn't allow to
  * send inquiries from other hosts.
  */
-define ('ADM_REFER_PROTECTED', 0);
+if (!defined('ADM_REFER_PROTECTED')) define('ADM_REFER_PROTECTED', 0);
 
 
 

@@ -33,6 +33,7 @@ if (function_exists('ignor_user_abort')) @ignor_user_abort();
  * @subpackage  Sitemap Generator
  * @copyright   ©Andrey Brykin
  */
+#[\AllowDynamicProperties]
 class FpsSitemapGen {
 
 	public $output;

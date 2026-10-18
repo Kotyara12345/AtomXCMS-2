@@ -27,6 +27,7 @@
 * @version    0.1
 * @link       http://cms.develdo.com
 */
+#[\AllowDynamicProperties]
 class Logination {
 
 	/**

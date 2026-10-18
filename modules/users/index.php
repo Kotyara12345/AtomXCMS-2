@@ -913,8 +913,8 @@ Class UsersModule extends Module {
 
 		// Получаем данные о пользователе из БД
         $user = $this->Model->getById($id);
-        if (count($user) == 0) return $this->showInfoMessage(__('Can not find user'), '/users/' );
-        if (is_object($this->AddFields) && count($user) > 0) {
+        if (empty($user)) return $this->showInfoMessage(__('Can not find user'), '/users/' );
+        if (is_object($this->AddFields)) {
             $user = $this->AddFields->mergeRecords(array($user), true);
             $user = $user[0];
         }
@@ -1225,8 +1225,8 @@ Class UsersModule extends Module {
 		
 		
 		$user = $this->Model->getById($id);
-		if (count($user) == 0) return $this->showInfoMessage(__('Can not find user'), '/users/' );
-		if (is_object($this->AddFields) && count($user) > 0) {
+		if (empty($user)) return $this->showInfoMessage(__('Can not find user'), '/users/' );
+		if (is_object($this->AddFields)) {
 			$user = $this->AddFields->mergeRecords(array($user));
             $user = $user[0];
 		}

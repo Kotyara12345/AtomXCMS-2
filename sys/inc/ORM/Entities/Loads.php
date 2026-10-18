@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class LoadsEntity extends FpsEntity
 {
 	

@@ -389,7 +389,6 @@ Class StatisticsModule
 		imagestring($im, 1, $width - (strlen($hosts) * 5), 24, $hosts, $color);
 		
 		imagepng($im, ROOT . '/sys/img/counter.png');
-		imagedestroy($im);
 	} 
 	
 

@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class ForumAttachesModel extends FpsModel
 {
 	public $Table = 'forum_attaches';

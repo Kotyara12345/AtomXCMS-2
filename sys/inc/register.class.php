@@ -2,6 +2,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class Register implements ArrayAccess, Iterator, Countable
 {
     /**
@@ -9,7 +10,7 @@ class Register implements ArrayAccess, Iterator, Countable
      * Interface ArrayAccess allowed add, unset and check
      * elements to object as an array
      */
-    private $storage;
+    private $storage = array();
 
     /**
      * @var int
@@ -90,7 +91,7 @@ class Register implements ArrayAccess, Iterator, Countable
      * @param  $offset
      * @return bool
      */
-    public function offsetExists($offset)
+    public function offsetExists($offset): bool
     {
         return array_key_exists($offset, $this->storage);
     }
@@ -100,17 +101,16 @@ class Register implements ArrayAccess, Iterator, Countable
      * @param  $value
      * @return bool
      */
-    public function offsetSet($key, $value)
+    public function offsetSet($key, $value): void
     {
         $this->storage[$key] = $value;
-        return true;
     }
 
     /**
      * @param  $key
      * @return array
      */
-    public function offsetGet($key)
+    public function offsetGet($key): mixed
     {
         return (!empty($this->storage[$key])) ? $this->storage[$key] : false;
     }
@@ -119,7 +119,7 @@ class Register implements ArrayAccess, Iterator, Countable
      * @param  $key
      * @return void
      */
-    public function offsetUnset($key)
+    public function offsetUnset($key): void
     {
         unset($this->storage[$key]);
     }
@@ -135,15 +135,15 @@ class Register implements ArrayAccess, Iterator, Countable
     /**
      * @return array
      */
-    public function current()
+    public function current(): mixed
     {
-        return $this->storage[$this->key];
+        return isset($this->storage[$this->key]) ? $this->storage[$this->key] : null;
     }
 
     /**
      * @return int
      */
-    public function key()
+    public function key(): mixed
     {
         return $this->key;
     }
@@ -151,7 +151,7 @@ class Register implements ArrayAccess, Iterator, Countable
     /**
      * @return void
      */
-    public function next()
+    public function next(): void
     {
         $this->key++;
     }
@@ -159,7 +159,7 @@ class Register implements ArrayAccess, Iterator, Countable
     /**
      * @return void
      */
-    public function rewind()
+    public function rewind(): void
     {
         $this->key = 0;
     }
@@ -167,7 +167,7 @@ class Register implements ArrayAccess, Iterator, Countable
     /**
      * @return bool
      */
-    public function valid()
+    public function valid(): bool
     {
         return array_key_exists($this->key, $this->storage);
     }
@@ -183,7 +183,7 @@ class Register implements ArrayAccess, Iterator, Countable
     /**
      * @return int
      */
-    public function count()
+    public function count(): int
     {
         return count($this->storage);
     }

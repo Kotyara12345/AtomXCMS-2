@@ -7,6 +7,7 @@
 *
 * @author     ©Andrey Brykin
 */
+#[\AllowDynamicProperties]
 class Informers {
 
 	/**

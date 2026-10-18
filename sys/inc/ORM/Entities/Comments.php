@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class CommentsEntity extends FpsEntity
 {
 	

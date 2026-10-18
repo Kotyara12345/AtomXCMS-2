@@ -26,6 +26,7 @@
  * @author        Andrey Brykin
  * @url           http://atomx.net
  */
+#[\AllowDynamicProperties]
 class AtmApiService {
 
     private static $apiUrl = 'http://home.atomx.net/';

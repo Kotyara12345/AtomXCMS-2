@@ -3,6 +3,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class Singletone
 {
     private static $instance = NULL;

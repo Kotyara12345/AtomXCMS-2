@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class NewsCategoriesModel extends FpsModel
 {
 	

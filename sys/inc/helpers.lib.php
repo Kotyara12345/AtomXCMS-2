@@ -610,14 +610,17 @@ function dumpVar($var) {
 
 
 /**
- * mysql_real_escape_string copy
+ * Escape a string for usage inside an SQL query.
+ * Uses the escape method of the current database driver (PDO),
+ * falls back to addslashes() when the connection is not available yet.
  */
 function resc($str) {
-	if (mysql_real_escape_string($str)) {
-		return mysql_real_escape_string($str);
+	$Register = Register::getInstance();
+	if (!empty($Register['DB']) && method_exists($Register['DB'], 'escape')) {
+		return $Register['DB']->escape($str);
 	}
 	
-	return $str;
+	return addslashes((string)$str);
 }
 
 

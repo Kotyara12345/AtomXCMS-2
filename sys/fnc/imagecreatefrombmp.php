@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * BMP reader polyfill. Native imagecreatefrombmp() exists since PHP 7.2
+ * (bundled GD), so the function is defined only when it is missing.
+ */
+if (!function_exists('imagecreatefrombmp')) {
 function imagecreatefrombmp($filename) {
 	//Ouverture du fichier en mode binaire
 	if (! $f1 = fopen ( $filename, "rb" ))
@@ -88,6 +93,7 @@ function imagecreatefrombmp($filename) {
 	fclose ( $f1 );
 	
 	return $res;
+}
 }
 
 ?>

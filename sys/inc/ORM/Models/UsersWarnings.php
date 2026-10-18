@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class UsersWarningsModel extends FpsModel
 {
 	public $Table  = 'users_warnings';

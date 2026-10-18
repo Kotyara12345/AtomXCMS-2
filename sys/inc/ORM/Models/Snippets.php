@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class SnippetsModel extends FpsModel
 {
 	public $Table = 'snippets';

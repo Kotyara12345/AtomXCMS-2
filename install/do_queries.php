@@ -31,7 +31,7 @@ include_once '../sys/boot.php';
 $errors = array();
 
 
-new Config('../sys/settings/config.php');
+new Config(ROOT . '/sys/settings/config.php');
 $set = Config::read('all');
 
 
@@ -45,6 +45,23 @@ if (class_exists('PDO')) {
 	$DB = FpsDataBase::get();
 }
 
+
+/*
+ * Reinstallation lock. If the administrator account already exists,
+ * the script refuses to drop and recreate the database once again.
+ * Remove the administrator account manually (or drop tables) if you
+ * really need to reinstall the site from scratch.
+ */
+try {
+	$already_installed = $DB->query("SELECT `id` FROM `{$set['db']['prefix']}users` WHERE `status` = 4 LIMIT 1");
+} catch (Exception $e) {
+	// The tables do not exist yet - this is a fresh installation.
+	$already_installed = array();
+}
+if (!empty($already_installed)) {
+	header('HTTP/1.1 403 Forbidden');
+	die('<h2 style="color:#FF0000">AtomX CMS is already installed. Installation is locked.</h2>');
+}
 
 
 $array = array();
@@ -600,16 +617,15 @@ $array[] = "CREATE TABLE IF NOT EXISTS `{$set['db']['prefix']}polls` (
 <?php
 $n = 0;
 foreach ($array as $key => $query) {
-	$DB->query($query);
-	if ($DB->getErrorInfo()) {
-		$errors['query'] = __('Some error occurred during database creation')
-            . ' <br /> ' . __('Please, start from beginning') . '. (' . $query . ')';
-		break;
-		
-		
-	} else {
+	try {
+		$DB->query($query);
 		echo '<span style="color:#46B100; font-size:10px; line-height:10px;">' . $n . '. ' . htmlspecialchars(mb_substr($query, 0, 70, 'UTF-8')) . ' ...</span><br />'; 
 		flush();
+	} catch (Exception $e) {
+		$errors['query'] = __('Some error occurred during database creation')
+            . ' <br /> ' . __('Please, start from beginning') . '. (' . $query . ') ['
+            . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . ']';
+		break;
 	}
 	$n++;
 }
@@ -617,11 +633,13 @@ foreach ($array as $key => $query) {
 
 if (empty($errors['query'])) {
 
-	$DB->query("INSERT INTO `{$set['db']['prefix']}users` (`id`, `name`, `passw`, `email`, `status`, `puttime`) 
-	VALUES (1, '" . $_SESSION['adm_name'] . "', '" . md5($_SESSION['adm_pass']) . "', '".$_SESSION['adm_email']."', '4', NOW())");
-	if ($DB->getErrorInfo()) 
+	try {
+		$DB->query("INSERT INTO `{$set['db']['prefix']}users` (`id`, `name`, `passw`, `email`, `status`, `puttime`) 
+		VALUES (1, '" . $_SESSION['adm_name'] . "', '" . md5($_SESSION['adm_pass']) . "', '".$_SESSION['adm_email']."', '4', NOW())");
+	} catch (Exception $e) {
 		$errors['query'] = __('Some error occurred during database creation')
             . ' <br /> ' . __('Please, start from beginning') . '.<br /><br />';
+	}
 }
 
 

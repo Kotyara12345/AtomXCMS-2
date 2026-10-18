@@ -1,6 +1,7 @@
 <?php
 
 
+#[\AllowDynamicProperties]
 class WysiBB {
 	public function common($params) {
 		

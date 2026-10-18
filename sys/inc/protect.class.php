@@ -21,6 +21,7 @@
 |  без согласия автора, является не законным     |
 \-----------------------------------------------*/
 
+#[\AllowDynamicProperties]
 class Protect
 {
 	private $phpErrorsLogMaxSize = 1000000;

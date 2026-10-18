@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class NewsAddFieldsModel extends FpsModel
 {
 	

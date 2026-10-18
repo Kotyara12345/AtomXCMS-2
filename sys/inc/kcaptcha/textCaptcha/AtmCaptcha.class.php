@@ -30,6 +30,7 @@
  *
  * @dependencies Config::__construct, Config::read
  */
+#[\AllowDynamicProperties]
 class AtmCaptcha
 {
 	
@@ -52,9 +53,8 @@ class AtmCaptcha
 		$text_color = imagecolorallocate($im, 30, 30, 30);
 		//imageSaveAlpha($im, true);
 		imageColorTransparent($im, $transparent);
-		imagestring($im, $font_size, ($w - (mb_strlen($text) * ($font_size / 2))) / 2, 30, $text, $text_color);
+		imagestring($im, $font_size, (int)(($w - (mb_strlen($text) * ($font_size / 2))) / 2), 30, $text, $text_color);
 		imagepng($im);
-		imagedestroy($im);
 		
 		return $qkey;
 	}

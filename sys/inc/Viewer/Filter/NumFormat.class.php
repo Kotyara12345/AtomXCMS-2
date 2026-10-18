@@ -21,6 +21,7 @@
 | без согласия автора, является не законным    |
 \---------------------------------------------*/
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_Filter_NumFormat {
 
     private $params = array();

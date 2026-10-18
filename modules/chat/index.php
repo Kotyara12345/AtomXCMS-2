@@ -21,6 +21,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class ChatModule extends Module {
 	/**
 	* @template  layout for module

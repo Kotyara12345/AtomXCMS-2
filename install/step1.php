@@ -14,10 +14,10 @@ if (isset($_POST['send'])) {
 	if (empty($_POST['adm_pass'])) $errors['adm_pass'] = 'Не заполненно поле "Пароль"';
 	if (empty($_POST['adm_email'])) $errors['adm_email'] = 'Не заполненно поле "Email"';
 	
-	@$db = mysql_connect($_POST['host'], $_POST['user'], $_POST['pass']);
+	mysqli_report(MYSQLI_REPORT_OFF);
+	$db = @mysqli_connect($_POST['host'], $_POST['user'], $_POST['pass']);
 	if (!$db) $errors['connect'] = 'Не удалось подключиться к базе. Проверте настройки!';
-	@$db = mysql_select_db($_POST['base'], $db);
-	if (!$db) $errors['select'] = 'Не удалось найти базу. Проверте имя базы!';
+	if ($db && !@mysqli_select_db($db, $_POST['base'])) $errors['select'] = 'Не удалось найти базу. Проверте имя базы!';
 	
 	if (!empty($_POST['prefix']) && !preg_match('#^[a-z_]*$#i', $_POST['prefix'])) $errors['db_prefix'] = 'Не допустимые символы в поле "Префикс"';
 	

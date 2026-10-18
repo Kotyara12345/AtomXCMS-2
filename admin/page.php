@@ -27,6 +27,7 @@ include_once ROOT . '/admin/inc/adm_boot.php';
 
 
 
+#[\AllowDynamicProperties]
 class PagesAdminController {
 	
 	public $Model;

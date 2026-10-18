@@ -24,6 +24,7 @@
 /**
  * Class Fps_Viewer_Loader
  */
+#[\AllowDynamicProperties]
 class Fps_Viewer_Loader
 {
     /**

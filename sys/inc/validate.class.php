@@ -34,6 +34,7 @@ define ('V_CAPTCHA', '#^[\dabcdefghijklmnopqrstuvwxyz]+$#i');
 define ('V_LOGIN', '#^[- _0-9a-zА-Яа-я@]+$#ui');
 
 
+#[\AllowDynamicProperties]
 class Validate {
 	
 	/**

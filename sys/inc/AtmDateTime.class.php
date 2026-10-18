@@ -26,6 +26,7 @@
  * @author        Andrey Brykin
  * @url           http://atomx.net
  */
+#[\AllowDynamicProperties]
 class AtmDateTime {
 
 	public static function getDate($date, $format = false) {

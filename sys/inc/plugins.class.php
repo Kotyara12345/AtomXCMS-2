@@ -23,6 +23,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class Plugins {
 	
 	public static $map = array();

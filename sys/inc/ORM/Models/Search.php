@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class SearchModel extends FpsModel
 {
 	public $Table = 'search_index';

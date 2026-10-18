@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class MessagesEntity extends FpsEntity
 {
 	

@@ -1,5 +1,6 @@
 <?php
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_Operator_BinaryNotIn
 {
 	private $left;

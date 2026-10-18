@@ -23,6 +23,7 @@
 /**
  * Class AtmSnippets
  */
+#[\AllowDynamicProperties]
 class AtmSnippets {
 
     /**

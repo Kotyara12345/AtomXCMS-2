@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class NewsCategoriesEntity extends FpsEntity
 {
 	

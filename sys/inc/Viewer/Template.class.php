@@ -1,5 +1,6 @@
 <?php
 
+#[\AllowDynamicProperties]
 abstract class Fps_Viewer_Template
 {
 	protected $context;

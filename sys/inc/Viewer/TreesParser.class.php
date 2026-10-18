@@ -1,5 +1,6 @@
 <?php
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_TreesParser
 {
 

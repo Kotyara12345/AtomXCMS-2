@@ -15,6 +15,7 @@ $output = $obj_votes->pllist();
 
 
 
+#[\AllowDynamicProperties]
 class VotesSettings {
 	
 	private $path;

@@ -2,6 +2,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class Fps_Viewer_Node_Group extends Fps_Viewer_Node_Expresion
 {
 	private $body = array();

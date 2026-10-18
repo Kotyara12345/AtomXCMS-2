@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class StatModel extends FpsModel
 {
 	public $Table = 'stat';

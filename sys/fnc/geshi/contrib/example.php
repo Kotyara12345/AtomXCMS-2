@@ -26,9 +26,6 @@ require $path . 'geshi.php';
 
 $fill_source = false;
 if (isset($_POST['submit'])) {
-    if (get_magic_quotes_gpc()) {
-        $_POST['source'] = stripslashes($_POST['source']);
-    }
     if (!strlen(trim($_POST['source']))) {
         $_POST['language'] = preg_replace('#[^a-zA-Z0-9\-_]#', '', $_POST['language']);
         $_POST['source'] = implode('', @file($path . 'geshi/' . $_POST['language'] . '.php'));

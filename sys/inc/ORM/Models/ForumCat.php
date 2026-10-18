@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class ForumCatModel extends FpsModel
 {
 	public $Table = 'forum_cat';

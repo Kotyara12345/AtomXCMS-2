@@ -34,6 +34,7 @@
 * @subpackage    Document parser
 * @link          http://atomx.net
 */
+#[\AllowDynamicProperties]
 class Document_Parser {
 
 	/**

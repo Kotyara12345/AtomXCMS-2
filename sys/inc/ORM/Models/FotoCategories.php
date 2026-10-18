@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class FotoCategoriesModel extends FpsModel
 {
 	

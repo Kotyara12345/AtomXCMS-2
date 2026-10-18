@@ -20,6 +20,7 @@
 \---------------------------------------------*/
 
 
+#[\AllowDynamicProperties]
 class MetaTags
 {
 	/**

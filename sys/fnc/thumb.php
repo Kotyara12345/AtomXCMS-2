@@ -84,8 +84,6 @@ function resampleImage($path, $new_path, $sizew, $sizeh = false)
 			imagejpeg($dest, $new_path, $quality_jpeg);
 			break;
 	}
-	imagedestroy($img);
-	imagedestroy($dest);
 	return true;
 }
 

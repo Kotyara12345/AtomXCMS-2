@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class PostsEntity extends FpsEntity
 {
 	

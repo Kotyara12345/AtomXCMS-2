@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class ChatModel extends FpsModel
 {
 	public $Table = '';

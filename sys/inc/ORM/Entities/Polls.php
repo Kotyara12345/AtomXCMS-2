@@ -24,6 +24,7 @@
 /**
  *
  */
+#[\AllowDynamicProperties]
 class PollsEntity extends FpsEntity
 {
 	

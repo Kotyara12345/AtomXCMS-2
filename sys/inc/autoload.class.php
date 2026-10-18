@@ -2,6 +2,7 @@
 
 
 
+#[\AllowDynamicProperties]
 class Autoload
 {
 
