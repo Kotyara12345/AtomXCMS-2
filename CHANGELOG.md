@@ -11,6 +11,13 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   installation instructions.
 - Password hashing helpers: `atm_password_hash()`, `atm_password_verify()`,
   `atm_password_needs_rehash()` in `sys/inc/helpers.lib.php`.
+- "Server protocols" section in the admin panel (System settings) with
+  optional HTTP/2 and HTTP/3 switches, including a hosting-support
+  warning and a usage hint. HTTP/2 writes an `H2Upgrade` rule into the
+  site root `.htaccess`; HTTP/3 advertises the protocol with the
+  `Alt-Svc` header (sent by PHP, and by `.htaccess` rules on Apache).
+  Both options are safe to enable on hostings without support: the site
+  simply keeps working over the lower protocol version.
 
 ### Changed
 - Passwords are now stored with `password_hash()` (bcrypt) instead of md5.

@@ -40,6 +40,7 @@ class Bootstrap
         $this->Register = Register::getInstance();
 
         $this->setPhpSettings();
+        $this->setProtocolsHeaders();
         $this->touchStartTime();
 		$this->Register['Cache'] = new Cache;
 
@@ -209,6 +210,22 @@ class Bootstrap
             mb_internal_encoding('UTF-8');
 			
 		date_default_timezone_set('UTC');
+    }
+
+
+    /**
+     * Tell browsers about HTTP/3 (QUIC) support when the option is enabled
+     * in the admin panel ("Server protocols" section). The site only
+     * advertises the protocol via the Alt-Svc header, the server itself
+     * must support HTTP/3, otherwise the header does nothing.
+     *
+     * @return void
+     */
+    private function setProtocolsHeaders()
+    {
+        if (!headers_sent() && Config::read('http3_enable') == 1) {
+            header('Alt-Svc: h3=":443"; ma=86400');
+        }
     }
 
 

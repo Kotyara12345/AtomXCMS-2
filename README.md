@@ -75,6 +75,11 @@ panel keeps them after regenerating the configuration.
 * The default front-end theme is responsive: a mobile viewport meta tag,
   fluid width instead of the fixed 1000-px layout and phone breakpoints
   that stack the menu, search, sidebar, forms and forum tables.
+* The admin panel controls HTTP/2 and HTTP/3 for the site (System
+  settings → "Server protocols"). HTTP/2 adds an `H2Upgrade` rule to the
+  site root `.htaccess`; HTTP/3 advertises `Alt-Svc` via PHP and
+  `.htaccess`. Both switches are safe on hostings without support - the
+  site simply keeps working over the lower protocol version.
 
 #### Contributing
 
@@ -176,6 +181,13 @@ location / {
   «резиновая» ширина вместо фиксированных 1000 px и мобильные
   брейкпоинты — меню, поиск, боковая панель, формы и таблицы форума
   складываются в одну колонку на телефонах.
+* В админ-панели появилось управление протоколами HTTP/2 и HTTP/3
+  (Системные настройки → «Серверные протоколы») с предупреждением о
+  поддержке хостинга и подсказкой о назначении. HTTP/2 добавляет в
+  корневой `.htaccess` правило `H2Upgrade`; HTTP/3 анонсируется
+  заголовком `Alt-Svc` (из PHP и через правила `.htaccess`). Оба
+  переключателя безопасны на хостингах без поддержки — сайт просто
+  продолжит работать по старшей доступной версии протокола.
 
 #### Участие в проекте
 

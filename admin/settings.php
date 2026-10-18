@@ -230,6 +230,11 @@ if (isset($_POST['send'])) {
 	Config::write($tmpSet);
 	
 	$_SESSION['message'] = __('Saved');
+
+	// sync the HTTP/2 and HTTP/3 rules in the site root .htaccess
+	if (!atm_updateServerProtocolsConfig($tmpSet)) {
+		$_SESSION['message'] .= '. ' . __('Warning! The .htaccess file can not be updated (no write access), the protocol rules were not applied.');
+	}
 	
 	
 	//clean cache

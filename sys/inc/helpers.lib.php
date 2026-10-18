@@ -798,3 +798,78 @@ function getOrderLink($params) {
 
 	return '<a href="' . $url . 'order=' . $new_order . ($asc ? '' : '&asc=1') . '">' . $params[1] . ($active ? ' ' . ($asc ? '↑' : '↓') : '') . '</a>';
 }
+
+
+/**
+ * Build or update the AtomXCMS managed block in the site root .htaccess
+ * according to the server protocols settings (HTTP/2 and HTTP/3).
+ *
+ * The block is added when at least one of the options is enabled and is
+ * removed when both options are disabled. HTTP/2 and HTTP/3 are server
+ * features, so the rules take effect only on servers which support them
+ * (the directives are wrapped into <IfModule> guards, unsupported
+ * directives can not break the site).
+ *
+ * @param array $config - the whole site configuration
+ * @return bool - true when .htaccess is in the needed state or the options
+ *                are disabled, false when it should be updated but can not
+ */
+function atm_updateServerProtocolsConfig($config = array()) {
+	$http2 = (!empty($config['http2_enable']));
+	$http3 = (!empty($config['http3_enable']));
+
+	$file = ROOT . '/.htaccess';
+	$beginMarker = '# AtomXCMS server protocols (auto-generated block, do not edit)';
+	$endMarker = '# End of AtomXCMS server protocols block';
+
+	if (!file_exists($file) || !is_writable($file))
+		return ($http2 || $http3) ? false : true;
+
+	$original = @file_get_contents($file);
+	if (false === $original) return false;
+
+	$eol = (false !== strpos($original, "\r\n")) ? "\r\n" : "\n";
+	$content = str_replace("\r\n", "\n", $original);
+
+	// remove the previously generated block (if any)
+	$result = array();
+	$skip = false;
+	foreach (explode("\n", $content) as $line) {
+		$trimmed = trim($line);
+		if (!$skip && 0 === strpos($trimmed, $beginMarker)) {
+			$skip = true;
+			continue;
+		}
+		if ($skip) {
+			if (0 === strpos($trimmed, $endMarker)) $skip = false;
+			continue;
+		}
+		$result[] = $line;
+	}
+	$content = implode("\n", $result);
+
+	// build the new block
+	$block = array();
+	if ($http2 || $http3) {
+		$block[] = $beginMarker;
+		if ($http2) {
+			$block[] = '<IfModule mod_http2.c>';
+			$block[] = "\t" . '# Allow switching the connection to HTTP/2 where the server supports it';
+			$block[] = "\t" . 'H2Upgrade on';
+			$block[] = '</IfModule>';
+		}
+		if ($http3) {
+			$block[] = '<IfModule mod_headers.c>';
+			$block[] = "\t" . '# Tell browsers that HTTP/3 (QUIC) is available';
+			$block[] = "\t" . 'Header always set Alt-Svc "h3=\":443\"; ma=86400"';
+			$block[] = '</IfModule>';
+		}
+		$block[] = $endMarker;
+	}
+
+	$newContent = (count($block) ? implode("\n", $block) . "\n" : '') . $content;
+	if ("\r\n" === $eol) $newContent = str_replace("\n", "\r\n", $newContent);
+
+	if ($newContent === $original) return true;
+	return (false !== @file_put_contents($file, $newContent));
+}

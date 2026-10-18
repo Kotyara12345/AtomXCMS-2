@@ -242,6 +242,24 @@ $settingsInfo = array(
 			'checked' => '1',
 			'value' => '1',
 		),
+
+		__('Server protocols (HTTP/2, HTTP/3)'),
+		'http2_enable' => array(
+			'type' => 'checkbox',
+			'title' => __('Enable HTTP/2'),
+			'description' => __('<b class="red">Attention!</b> It may not work on all hostings: the server must support HTTP/2 (Apache with the mod_http2 module, Nginx with the http2 module) and the site must work over HTTPS. If there is no such support, the option will simply have no effect and will not break anything.'),
+			'help' => __('Makes the site load faster: all the page files are transferred over a single connection (multiplexing) and the headers are compressed.'),
+			'checked' => '1',
+			'value' => '1',
+		),
+		'http3_enable' => array(
+			'type' => 'checkbox',
+			'title' => __('Enable HTTP/3 (QUIC)'),
+			'description' => __('<b class="red">Attention!</b> It may not work on all hostings: the server must support QUIC/HTTP3 and the site must work over HTTPS. Without such support visitors automatically keep using HTTP/2 or HTTP/1.1.'),
+			'help' => __('The newest protocol based on UDP/QUIC: pages open faster on slow and unstable connections, especially on mobile devices. The site tells browsers about the support via the Alt-Svc header and .htaccess rules.'),
+			'checked' => '1',
+			'value' => '1',
+		),
 	),
 
 	/* SECURE */
