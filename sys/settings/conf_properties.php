@@ -251,6 +251,7 @@ $settingsInfo = array(
 			'help' => __('Makes the site load faster: all the page files are transferred over a single connection (multiplexing) and the headers are compressed.'),
 			'checked' => '1',
 			'value' => '1',
+			'row_class' => 'protocol-switch',
 		),
 		'http3_enable' => array(
 			'type' => 'checkbox',
@@ -259,6 +260,7 @@ $settingsInfo = array(
 			'help' => __('The newest protocol based on UDP/QUIC: pages open faster on slow and unstable connections, especially on mobile devices. The site tells browsers about the support via the Alt-Svc header and .htaccess rules.'),
 			'checked' => '1',
 			'value' => '1',
+			'row_class' => 'protocol-switch',
 		),
 	),
 

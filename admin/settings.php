@@ -268,6 +268,7 @@ if (count($settingsInfo)) {
 			'options' => array(
 			),
 			'attr' => array(),
+			'row_class' => '',
 		);
 		$params = array_merge($defParams, $params);
 		
@@ -356,7 +357,8 @@ if (count($settingsInfo)) {
 		
 		
 
-		$output .= '<div class="setting-item">
+		$row_class = !empty($params['row_class']) ? ' ' . h((string)$params['row_class']) : '';
+		$output .= '<div class="setting-item' . $row_class . '">
 			<div class="left">
 				' . h($params['title']) . '
 				<span class="comment">' . $params['description'] . '</span>

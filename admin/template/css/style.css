@@ -175,6 +175,8 @@ table.side-separator, table.side-separator tr td {vertical-align:top; min-height
 
 .list > .level1 > .items .comment2 {color:#939393; padding:0px 5px; font-size:11px; font-style:italic; -moz-text-shadow:none; -webkit-text-shadow:none; text-shadow:none;}
 .list > .level1 > .items > .setting-item .right {float:left; border-left:1px solid #e1e1e1; margin-left:-1px; vertical-align:center;}
+/* Keep the control column of the protocol switches beside the description even with long help texts */
+.list > .level1 > .items > .setting-item.protocol-switch .right {max-width:calc(77% - 70px);}
 .list > .level1 > .items > .setting-item .right input[type="text"], select, textarea, .collection {width:390px;}
 .list > .level1 > .items > .setting-item .right textarea {height:auto; min-height:100px;}
 .list > .level1 > .items > .setting-item .center {padding:20px; margin: 0 auto;}
