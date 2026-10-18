@@ -129,7 +129,7 @@ class SearchModule extends Module {
 
 
 
-					$announce = str_replace($str, '<strong>' . $str . '</strong>', h($announce));
+					$announce = preg_replace('#(' . preg_quote($str, '#') . ')#iu', '<strong>$1</strong>', h($announce));
 					$entry_url = get_url('/' . $result->getModule() . $result->getEntity_view() . $result->getEntity_id());
 					$result->setEntry_url($entry_url);
 					$result->setTitle($title);
@@ -214,15 +214,14 @@ class SearchModule extends Module {
 		$meta_file = $this->getTmpPath('meta.dat');
 		if (file_exists($meta_file) && is_readable($meta_file)) {
 			$meta = unserialize(file_get_contents($meta_file));
-			if (!empty($meta['expire']) && $meta['expire'] > time()) {
+			if (!empty($meta['expire']) && $meta['expire'] > time() && $this->__indexIsFilled()) {
 				return true;
-			} else {
-				$this->__createIndex();
 			}
 		} else {
 			touchDir($this->getTmpPath());
-			$this->__createIndex();
 		}
+
+		$this->__createIndex();
 
 		$index_interval = intval($this->Register['Config']->read('index_interval', $this->module));
 		if ($index_interval < 1)
@@ -230,6 +229,19 @@ class SearchModule extends Module {
 		$meta['expire'] = (time() + ($index_interval * 84000));
 		file_put_contents($meta_file, serialize($meta));
 		return true;
+	}
+
+	/**
+	 * @return boolean
+	 *
+	 * True if the search index contains at least one record.
+	 * The index can be empty even when meta.dat says "fresh"
+	 * (for example after moving the database), so the search
+	 * must rebuild it instead of showing no results at all.
+	 */
+	private function __indexIsFilled() {
+		$records = $this->Model->getCollection(array(), array('limit' => 1, 'page' => 1));
+		return !empty($records);
 	}
 
 	/**

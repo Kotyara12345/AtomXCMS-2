@@ -235,6 +235,9 @@ class FpsPDO {
 			$result = $this->dbh->lastInsertId();
 		}
 
+		if (function_exists('atm_invalidate_search_index'))
+			atm_invalidate_search_index($table);
+
 		if ($Register['Config']->read('debug_mode') == 1)
             AtmDebug::addRow('DB Queries', array($this->getQueryDump($query), $took));
 
@@ -305,6 +308,8 @@ class FpsPDO {
 		$start = getMicroTime();
 		$this->runQuery($query);
 		$took = getMicroTime($start);
+		if (function_exists('atm_invalidate_search_index'))
+			atm_invalidate_search_index($table);
 		if (Config::read('debug_mode') == 1)
             AtmDebug::addRow('DB Queries', array($this->getQueryDump($query), $took));
 	}

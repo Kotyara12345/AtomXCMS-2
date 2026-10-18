@@ -632,6 +632,21 @@ function atm_password_needs_rehash($hash) {
 
 
 /**
+* Invalidate the site search index when the content of a searchable
+* table changes. The index is rebuilt on the next search request,
+* so new or edited materials become findable immediately.
+*
+* @param string $table
+*/
+function atm_invalidate_search_index($table) {
+	$tables = array('news', 'stat', 'loads', 'posts');
+	if (!in_array($table, $tables)) return;
+	$meta_file = ROOT . '/sys/tmp/search/meta.dat';
+	if (file_exists($meta_file)) @unlink($meta_file);
+}
+
+
+/**
 * @return timestamp on microseconds
 */
 function getMicroTime($base_time = false) {

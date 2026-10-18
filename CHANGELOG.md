@@ -76,6 +76,13 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   modules) returned HTTP 500 on PHP 8 when the material had no
   attachments: `count()` was called on the `null` result of
   `getAttaches()`; it is now guarded with `!empty()`.
+- Site search could look case-sensitive: the index was rebuilt only
+  once per the configured interval, so new or edited materials were
+  not found until the next rebuild, and after moving the site it
+  could stay empty while still considered fresh. The index is now
+  rebuilt as soon as a searchable table (news, stat, loads, forum
+  posts) changes and when it is empty; the keyword highlight in the
+  search results no longer depends on the letter case either.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated
