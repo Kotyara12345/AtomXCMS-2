@@ -325,7 +325,7 @@ Class UsersModule extends Module {
 		}
 		
 
-		$timezone = (int)$_POST['timezone'];
+		$timezone = (int)($_POST['timezone'] ?? 0);
 		if ( $timezone < -12 or $timezone > 12 ) $timezone = 0;
 
 		
@@ -814,7 +814,7 @@ Class UsersModule extends Module {
 			}
 		}
 
-		$timezone = (int)$_POST['timezone'];
+		$timezone = (int)($_POST['timezone'] ?? 0);
 		if ($timezone < -12 || $timezone > 12) $timezone = 0;
 
 		
@@ -1136,7 +1136,7 @@ Class UsersModule extends Module {
 
 
 		$status = (int)$_POST['status'];
-		$timezone = (int)$_POST['timezone'];
+		$timezone = (int)($_POST['timezone'] ?? 0);
 		if ( $timezone < -12 or $timezone > 12 ) $timezone = 0;
 
 

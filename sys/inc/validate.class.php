@@ -230,8 +230,10 @@ class Validate {
 					
 					// user function
 					if (!empty($params['function'])) {
-						if (!empty($request[$title]) && is_callable($params['function'])) 
-							$errors[] = $params['function']($errors);
+						if (!empty($request[$title]) && is_callable($params['function'])) {
+							$functionResult = $params['function']($errors);
+							if (!empty($functionResult)) $errors[] = $functionResult;
+						}
 					}
 					
 				
