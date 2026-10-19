@@ -648,16 +648,16 @@ class Module {
 	
 	
 	/**
-	 * Build a categories list of checkboxes. Used to attach a material
-	 * to several categories at once.
+	 * Build the options of a multiple categories list. Used to attach a
+	 * material to several categories at once.
 	 *
 	 * @param mixed $cats
-	 * @param array $selected ids of the checked categories
+	 * @param array $selected ids of the selected categories
 	 * @param mixed $id
 	 * @param string $sep
 	 * @return string
 	 */
-	protected function _buildCheckboxSelector($cats, $selected = array(), $id = false, $sep = '- ')
+	protected function _buildMultiSelector($cats, $selected = array(), $id = false, $sep = '- ')
 	{
 		$selected = array_map('strval', (array)$selected);
 		$out = '';
@@ -665,16 +665,46 @@ class Module {
 			$parent_id = $cat->getParent_id();
 			if (($id === false && empty($parent_id))
 			|| (!empty($id) && $parent_id == $id)) {
-				$out .= '<label class="cat-checkbox">'
-				. '<input type="checkbox" name="extra_cats[]" value="' . $cat->getId() . '"'
-				. (in_array(strval($cat->getId()), $selected) ? ' checked="checked"' : '')
-				. ' /> ' . $sep . h($cat->getTitle()) . '</label><br />' . "\n";
+				$out .= '<option value="' . $cat->getId() . '"'
+					. (in_array(strval($cat->getId()), $selected) ? ' selected="selected"' : '')
+					. '>' . $sep . h($cat->getTitle()) . '</option>' . "\n";
 				unset($cats[$key]);
-				$out .= $this->_buildCheckboxSelector($cats, $selected, $cat->getId(), $sep . '- ');
+				$out .= $this->_buildMultiSelector($cats, $selected, $cat->getId(), $sep . '- ');
 			}
 		}
 		
 		return $out;
+	}
+	
+	
+	/**
+	 * The add/edit forms have no separate "main section" field: the first
+	 * selected section becomes the main one. Validation rules and the
+	 * `category_id` field still use `cats_selector`, so fill it from the
+	 * posted sections before validation runs.
+	 *
+	 * @param int $currentMainId the current main section (on update)
+	 */
+	protected function _setMainCategoryFromSelection($currentMainId = 0)
+	{
+		if (!empty($_POST['cats_selector'])) return;
+		if (empty($_POST['extra_cats']) || !is_array($_POST['extra_cats'])) return;
+		
+		$ids = array();
+		foreach ($_POST['extra_cats'] as $categoryId) {
+			$categoryId = intval($categoryId);
+			if ($categoryId > 0) $ids[] = $categoryId;
+		}
+		if (empty($ids)) return;
+		
+		// Keep the current main section if it is still selected.
+		$currentMainId = (int)$currentMainId;
+		if ($currentMainId > 0 && in_array($currentMainId, $ids, true)) {
+			$_POST['cats_selector'] = $currentMainId;
+			return;
+		}
+		
+		$_POST['cats_selector'] = $ids[0];
 	}
 	
 	

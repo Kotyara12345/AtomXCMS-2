@@ -246,6 +246,8 @@ class Document_Parser {
 		
 		$markers['counter'] = get_url('/sys/img/counter.png?rand=' . rand(0,999999), false, false);
 		$markers['template_path'] = get_url('/template/' . getTemplateName(), false, false);
+		$templateCss = ROOT . '/template/' . getTemplateName() . '/css/style.css';
+		$markers['template_version'] = file_exists($templateCss) ? filemtime($templateCss) : time();
 		$markers['www_root'] = WWW_ROOT;
 		$lang = getLang();
 		$markers['lang'] = $lang;

@@ -273,6 +273,7 @@ if (count($settingsInfo)) {
 		$params = array_merge($defParams, $params);
 		
 		$currValue = (!empty($_config[$fname])) ? $_config[$fname] : false;
+		if ($currValue === false && isset($params['default'])) $currValue = $params['default'];
 		if (!empty($params['onview'])) {
 			if (!empty($params['onview']['division'])) {
 				$currValue = round($currValue / $params['onview']['division']);

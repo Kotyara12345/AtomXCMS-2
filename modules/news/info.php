@@ -107,6 +107,16 @@ $settingsInfo = array(
 	),
 
 	
+	__('Categories'),
+	'multicategories' => array(
+		'type' => 'checkbox',
+		'title' => __('Multiple sections'),
+		'description' => __('Allow to attach a material to several sections at once'),
+		'value' => '1',
+		'checked' => '1',
+		'default' => '1',
+	),
+	
 	__('Required field'),
 	'category_field' => array(
 		'type' => 'checkbox',

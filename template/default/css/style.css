@@ -761,6 +761,16 @@ text-overflow: ellipsis;
 .content ul.spisok-all li .siu_data input[type="radio"], .content ul.spisok-all li .siu_data input[type="checkbox"] {height: 13px;width: 13px;}
 .content ul.spisok-all li .siu_data input[type="file"] {width: 270px;}
 .content ul.spisok-all li .siu_data textarea {height: 90px;width: 600px;}
+/*-------------------------------MULTIPLE CATEGORIES------------------------*/
+.multicat {display: flex;align-items: flex-start;max-width: 100%;}
+.content ul.spisok-all li .siu_data .multicat select {flex: 0 1 320px;width: 320px;min-width: 0;max-width: 100%;padding: 3px;border: 1px solid #AAAAAA;background: #fff;font-size: 13px;line-height: 1.5;}
+.multicat-add {flex: 0 0 auto;display: inline-block;vertical-align: top;margin-left: 8px;font-size: 28px;font-weight: bold;line-height: 1.1;color: #4CAF50;text-decoration: none !important;}
+.multicat-add:hover {color: #2E7D32;text-decoration: none !important;}
+.multicat-hint {margin-top: 6px;font-size: 11px;line-height: 1.4;color: #777;width: 320px;max-width: 100%;}
+.multicat select option:checked {background: linear-gradient(#3875d7, #3875d7);color: #fff;}
+.content ul.spisok-all li.multicat-field {display: flex;align-items: flex-start;}
+.content ul.spisok-all li.multicat-field .siu_title {flex: 0 0 40%;width: 40%;}
+.content ul.spisok-all li.multicat-field .siu_data {flex: 1 1 auto;min-width: 0;}
 .content ul.spisok-all li:first-child {border:0;}
 .content ul.spisok-all li.notice {background:#e7e7f7;}
 /*-------------------------------USERS-LIST---------------------------------*/
@@ -1534,6 +1544,9 @@ background: rgba(177, 199, 150, 1);
 	.content .answertextarea textarea {
 		width: 100%;
 	}
+	.content ul.spisok-all li.multicat-field {
+		display: block;
+	}
 	.content ul.spisok-all li .siu_title {
 		display: block;
 		width: auto;
@@ -1551,6 +1564,10 @@ background: rgba(177, 199, 150, 1);
 		width: 100%;
 	}
 	.content ul.spisok-all li .siu_data input[type="file"] {
+		width: 100%;
+	}
+	.content ul.spisok-all li .siu_data .multicat select {
+		flex: 1 1 auto;
 		width: 100%;
 	}
 	.bigadd-form form .chat-addform div textarea {

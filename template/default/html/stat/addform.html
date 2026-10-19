@@ -23,14 +23,20 @@ function metaTags(element) {
 	  <div class="mat-title">{{ 'Adding articles'|lang }}</div>
 	  <div class="mat-content">
           <ul class="spisok-all">
+{% if context.multicats_enabled %}
+		  <li class="multicat-field">
+            <span class="siu_title"><strong><font color="red">*</font>{{ 'Sections'|lang }}:</strong></span>
+            <span class="siu_data">
+              <div class="multicat"><select name="extra_cats[]" multiple="multiple" size="7">{{ context.sections_selector }}</select>{% if context.cats_manage_url %}<a class="multicat-add" href="{{ context.cats_manage_url }}" target="_blank" title="{{ 'Manage sections'|lang }}">+</a>{% endif %}</div>
+              <div class="multicat-hint">{{ 'Multi select hint'|lang }}</div>
+            </span>
+          </li>
+{% else %}
 		  <li>
             <span class="siu_title"><strong><font color="red">*</font>{{ 'Main section'|lang }}:</strong></span>
             <span class="siu_data"><select name="cats_selector">{{ context.cats_selector }}</select></span>
           </li>
-		  <li>
-            <span class="siu_title"><strong>{{ 'Additional sections'|lang }}:</strong></span>
-            <span class="siu_data">{{ context.extra_cats_selector }}</span>
-          </li>
+{% endif %}
 		  <li>
             <span class="siu_title"><strong><font color="red">*</font>{{ 'Article title'|lang }}:</strong></span>
             <span class="siu_data"><input type="text" name="title" maxlength="128" value="{{ context.title }}"></span>

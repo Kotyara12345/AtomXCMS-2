@@ -686,6 +686,26 @@ function atm_ensure_categories_bind_table() {
 
 
 /**
+* Whether a module allows attaching a material to several sections at
+* once. The option is switched on/off in the module settings
+* (admin panel -> module -> Settings). When the option was never saved
+* the previous behaviour (enabled) is kept.
+*
+* @param string $module
+* @return bool
+*/
+function atm_use_multicategories($module) {
+	$Register = Register::getInstance();
+	if (empty($Register['Config']) || empty($module)) return true;
+
+	$value = $Register['Config']->read('multicategories', $module);
+	if ($value === null || $value === '' || $value === false) return true;
+
+	return (bool)$value;
+}
+
+
+/**
 * @return timestamp on microseconds
 */
 function getMicroTime($base_time = false) {

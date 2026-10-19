@@ -28,6 +28,15 @@
  */
 Class NewsModule extends Module {
 
+	public function __construct($params)
+	{
+		parent::__construct($params);
+		
+		// multiple sections support can be switched off in the module settings
+		$this->useBoundCategories = $this->useBoundCategories
+			&& atm_use_multicategories($this->module);
+	}
+
 	/**
 	* @module_title  title of module
 	*/
@@ -585,10 +594,17 @@ Class NewsModule extends Module {
         if (isset($_SESSION['FpsForm'])) unset($_SESSION['FpsForm']);
 
 		
+		$data['multicats_enabled'] = $this->useBoundCategories;
+		
 		$SectionsModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
 		$sql = $SectionsModel->getCollection();
-		$data['cats_selector'] = $this->_buildSelector($sql, ((!empty($data['cats_selector'])) ? $data['cats_selector'] : false));
-		$data['extra_cats_selector'] = $this->_buildCheckboxSelector($sql, $extraCats);
+		if ($this->useBoundCategories) {
+			$data['sections_selector'] = $this->_buildMultiSelector($sql, $extraCats);
+			$data['cats_manage_url'] = $this->ACL->turn(array('panel', 'entry'), false)
+				? get_url('/admin/category.php?mod=' . $this->module, false, false) : '';
+		} else {
+			$data['cats_selector'] = $this->_buildSelector($sql, ((!empty($data['cats_selector'])) ? $data['cats_selector'] : false));
+		}
 		
 		
 		//comments and hide
@@ -628,6 +644,8 @@ Class NewsModule extends Module {
 		//turn access
 		$this->ACL->turn(array($this->module, 'add_materials'));
 
+		// the first selected section becomes the main one
+		if ($this->useBoundCategories) $this->_setMainCategoryFromSelection();
 
         $errors = $this->Register['Validate']->check($this->Register['action']);
         $form_fields = $this->Register['Validate']->getFormFields($this->Register['action']);
@@ -849,8 +867,15 @@ Class NewsModule extends Module {
 		
 		$sectionsModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
 		$cats = $sectionsModel->getCollection();
-		$selectedCatId = ($markers->getIn_cat()) ? $markers->getIn_cat() : $markers->getCategory_id();
-		$cats_change = $this->_buildSelector($cats, $selectedCatId);
+		$selectedCatId = (int)(($markers->getIn_cat()) ? $markers->getIn_cat() : $markers->getCategory_id());
+		
+		$selectedCats = array();
+		if ($this->useBoundCategories) {
+			// all sections of the material: the main one and the additional ones
+			$selectedCats = $boundCats;
+			if ($selectedCatId > 0) $selectedCats[] = $selectedCatId;
+			$selectedCats = array_values(array_unique(array_map('intval', $selectedCats)));
+		}
 		
 		
 		//comments and hide
@@ -877,8 +902,14 @@ Class NewsModule extends Module {
 		
 
 
-		$markers->setCats_selector($cats_change);
-		$markers->setExtra_cats_selector($this->_buildCheckboxSelector($cats, $boundCats));
+		$markers->setMulticats_enabled($this->useBoundCategories);
+		if ($this->useBoundCategories) {
+			$markers->setSections_selector($this->_buildMultiSelector($cats, $selectedCats));
+			$markers->setCats_manage_url($this->ACL->turn(array('panel', 'entry'), false)
+				? get_url('/admin/category.php?mod=' . $this->module, false, false) : '');
+		} else {
+			$markers->setCats_selector($this->_buildSelector($cats, $selectedCatId));
+		}
 		$markers->setAttaches_delete($attDelButtons);
 		$markers->setMax_attaches($this->Register['Config']->read('max_attaches', $this->module));
 
@@ -920,6 +951,9 @@ Class NewsModule extends Module {
 			return $this->showInfoMessage(__('Permission denied'), '/' . $this->module . '/');
 		}
 
+
+		// the first selected section becomes the main one
+		if ($this->useBoundCategories) $this->_setMainCategoryFromSelection($target->getCategory_id());
 
         $errors = $this->Register['Validate']->check($this->Register['action']);
 
@@ -1418,7 +1452,7 @@ Class NewsModule extends Module {
 					'required' => true,
 					'pattern' => V_INT,
 					'max_lenght' => 11,
-					'title' => 'Category',
+					'title' => __('Sections'),
 				),
 				'description' => array(
 					'required' => 'editable',
@@ -1465,7 +1499,7 @@ Class NewsModule extends Module {
 					'required' => true,
 					'pattern' => V_INT,
 					'max_lenght' => 11,
-					'title' => 'Category',
+					'title' => __('Sections'),
 				),
 				'description' => array(
 					'required' => 'editable',

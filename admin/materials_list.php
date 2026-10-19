@@ -180,44 +180,132 @@ class MaterialsList {
 		$this->pageTitle .= ' - ' . __('Edit');
 	
 		$output = '';
+		$error = '';
 		$Register = Register::getInstance();
 		$model = $Register['ModManager']->getModelInstance($_GET['m']);
 
 		
 		$id = intval($_GET['id']);
 		$entity = $model->getById($id);
+		if (empty($entity)) redirect('/admin/materials_list.php?m=' . $module);
 		
+		$selectedCats = array();
+		$title = $entity->getTitle();
+		$main = $entity->getMain();
+		$email = $entity->getSourse_email();
+		
+		// only news and articles have sections; the multi categories
+		// support can be switched off in the module settings
+		$supportsCats = in_array($module, array('news', 'stat'), true);
+		$useMultiCats = $supportsCats && atm_use_multicategories($module);
+		$singleCatId = 0;
 		
 		
 		if (!empty($_POST)) {
-			$entity->setTitle($_POST['title']);
-			$entity->setMain($_POST['main']);
-			$entity->setSourse_email($_POST['email']);
+			$selectedCats = array();
+			if (!empty($_POST['extra_cats']) && is_array($_POST['extra_cats'])) {
+				foreach ($_POST['extra_cats'] as $catId) {
+					$catId = intval($catId);
+					if ($catId > 0) $selectedCats[$catId] = $catId;
+				}
+			}
+			$selectedCats = array_values($selectedCats);
 			
+			$title = isset($_POST['title']) ? $_POST['title'] : $title;
+			$main = isset($_POST['main']) ? $_POST['main'] : $main;
+			$email = isset($_POST['email']) ? $_POST['email'] : $email;
 			
-			$entity->save();
-			$_SESSION['message'] = __('Saved');
+			if ($supportsCats) {
+				if ($useMultiCats) {
+					if (empty($selectedCats)) $error = __('Select at least one section');
+				} else {
+					$singleCatId = isset($_POST['category_id']) ? intval($_POST['category_id']) : 0;
+					if ($singleCatId < 1) $error = __('Select at least one section');
+				}
+			}
 			
-			redirect('/admin/materials_list.php?m=' . $module);
+			if (empty($error)) {
+				$entity->setTitle($title);
+				$entity->setMain($main);
+				$entity->setSourse_email($email);
+				
+				if ($useMultiCats) {
+					// keep the current main section if it is still selected
+					$mainCatId = (int)$entity->getCategory_id();
+					if (!in_array($mainCatId, $selectedCats, true)) $mainCatId = $selectedCats[0];
+					$entity->setCategory_id($mainCatId);
+				} elseif ($supportsCats) {
+					$entity->setCategory_id($singleCatId);
+				}
+				$entity->save();
+				
+				if ($useMultiCats) {
+					$this->saveBoundCategories($module, $id, array_values(array_diff($selectedCats, array($mainCatId))));
+				}
+				
+				$Cache = new Cache;
+				$Cache->clean(CACHE_MATCHING_ANY_TAG, array('module_' . $module));
+				$Register['DB']->cleanSqlCache();
+				
+				$_SESSION['message'] = __('Saved');
+				redirect('/admin/materials_list.php?m=' . $module);
+			}
 		}
 		
+		$catsOptions = '';
+		if ($supportsCats) {
+			$categories = $Register['ModManager']->getModelInstance($module . 'Categories')->getCollection();
+		}
+		if ($useMultiCats) {
+			if (empty($selectedCats)) {
+				$selectedCats = $this->getBoundCategories($module, $id);
+				$selectedCats[] = (int)$entity->getCategory_id();
+			}
+			$selectedCats = array_values(array_unique(array_map('intval', $selectedCats)));
+			$catsOptions = $this->buildCategoryOptions($categories, $selectedCats);
+		} elseif ($supportsCats) {
+			if (empty($_POST)) $singleCatId = (int)$entity->getCategory_id();
+			$catsOptions = $this->buildCategoryOptions($categories, array($singleCatId));
+		}
 		
+		if (!empty($error)) {
+			$output .= '<div class="setting-item"><div class="left"></div><div class="right">'
+				. '<span style="color:#c00;font-weight:bold;">' . h($error) . '</span>'
+				. '</div><div class="clear"></div></div>';
+		}
 		
 		$output .= '
 		<div class="setting-item"><div class="left">
 			' . __('Title') . '
 		</div><div class="right">
-			<input type="text" name="title" value="'.h($entity->getTitle()).'" />
+			<input type="text" name="title" value="'.h($title).'" />
 		</div><div class="clear"></div></div>
 		<div class="setting-item"><div class="left">
 			' . __('Text of material') . '
 		</div><div class="right">
-			<textarea style="height:200px;" name="main">'.h($entity->getMain()).'</textarea>
+			<textarea id="editor" style="height:300px;width:100%;" name="main">'.h($main).'</textarea>
+		</div><div class="clear"></div></div>';
+		
+		if ($useMultiCats) {
+			$output .= '<div class="setting-item"><div class="left">
+			' . __('Sections') . '
+		</div><div class="right">
+			<select name="extra_cats[]" multiple="multiple" size="10" style="min-width:320px;height:auto;padding:4px;">' . $catsOptions . '</select>
+			<div style="margin-top:4px;font-size:11px;color:#777;">' . __('Multi select hint') . '</div>
 		</div><div class="clear"></div></div>
-		<div class="setting-item"><div class="left">
+		<style>select[name="extra_cats[]"] option:checked {background: linear-gradient(#3875d7, #3875d7);color: #fff;}</style>';
+		} elseif ($supportsCats) {
+			$output .= '<div class="setting-item"><div class="left">
+			' . __('Main section') . '
+		</div><div class="right">
+			<select name="category_id" style="width:320px;height:auto;padding:4px;">' . $catsOptions . '</select>
+		</div><div class="clear"></div></div>';
+		}
+		
+		$output .= '<div class="setting-item"><div class="left">
 			' . __('Email') . '
 		</div><div class="right">
-			<input type="text" name="email" value="'.h($entity->getSourse_email()).'" />
+			<input type="text" name="email" value="'.h($email).'" />
 		</div><div class="clear"></div></div>
 		<div class="setting-item">
 			<div class="left">
@@ -226,10 +314,84 @@ class MaterialsList {
 				<input class="save-button" type="submit" name="send" value="' . __('Save') . '" />
 			</div>
 			<div class="clear"></div>
-		</div>';
+		</div>
+		<link rel="stylesheet" href="' . WWW_ROOT . '/sys/plugins/wysibb/public/wbbtheme.css" />
+		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
+		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/fapos2.js"></script>
+		<script>
+		$(document).ready(function() {
+			$("#editor").wysibb();
+		});
+		</script>';
 		
 		
 		return array($output, '');
+	}
+	
+	
+	/**
+	 * Categories tree of the module as a <select> options list.
+	 */
+	private function buildCategoryOptions($cats, $selected = array(), $parentId = 0, $level = 0)
+	{
+		$out = '';
+		$selected = array_map('intval', (array)$selected);
+		foreach ($cats as $key => $cat) {
+			$catParent = $cat->getParent_id();
+			$matches = ($parentId === 0) ? empty($catParent) : ($catParent == $parentId);
+			if ($matches) {
+				$out .= '<option value="' . intval($cat->getId()) . '"'
+					. (in_array((int)$cat->getId(), $selected) ? ' selected="selected"' : '')
+					. '>' . str_repeat('- ', $level) . h($cat->getTitle()) . '</option>' . "\n";
+				unset($cats[$key]);
+				$out .= $this->buildCategoryOptions($cats, $selected, $cat->getId(), $level + 1);
+			}
+		}
+		return $out;
+	}
+	
+	
+	/**
+	 * Additional categories of the material.
+	 */
+	private function getBoundCategories($module, $entityId)
+	{
+		$Register = Register::getInstance();
+		atm_ensure_categories_bind_table();
+		$rows = $Register['DB']->select('categories_bind', DB_ALL, array(
+			'cond' => array('module' => $module, 'entity_id' => (int)$entityId),
+			'order' => 'category_id ASC',
+		));
+		
+		$ids = array();
+		if (!empty($rows)) {
+			foreach ($rows as $row) $ids[] = (int)$row['category_id'];
+		}
+		return $ids;
+	}
+	
+	
+	/**
+	 * Store the additional categories of the material.
+	 */
+	private function saveBoundCategories($module, $entityId, $categoryIds)
+	{
+		$Register = Register::getInstance();
+		atm_ensure_categories_bind_table();
+		$Register['DB']->delete('categories_bind', array(
+			'module' => $module,
+			'entity_id' => (int)$entityId,
+		));
+		
+		$categoryIds = array_unique(array_map('intval', (array)$categoryIds));
+		foreach ($categoryIds as $categoryId) {
+			if ($categoryId < 1) continue;
+			$Register['DB']->save('categories_bind', array(
+				'module' => $module,
+				'entity_id' => (int)$entityId,
+				'category_id' => $categoryId,
+			));
+		}
 	}
 }
 
