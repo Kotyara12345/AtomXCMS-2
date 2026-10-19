@@ -83,6 +83,11 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   rebuilt as soon as a searchable table (news, stat, loads, forum
   posts) changes and when it is empty; the keyword highlight in the
   search results no longer depends on the letter case either.
+- Forum search did not cover forum section names or topic titles, and
+  a hit inside a message was listed with an empty title. The search
+  index now also includes forum categories, sections and topic titles
+  and descriptions, and a hit inside a message is titled with its
+  topic.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated

@@ -45,7 +45,7 @@ class SearchModule extends Module {
 	/**
 	 * @var array
 	 */
-	public $tables = array('posts', 'stat', 'news', 'loads');
+	public $tables = array('posts', 'forums', 'forum_cat', 'themes', 'stat', 'news', 'loads');
 
 	/**
 	 * @var boolean
@@ -58,13 +58,13 @@ class SearchModule extends Module {
 	 * Doing search and build page with results
 	 */
 	public function index() {
-		//check index
-		$this->__checkIndex();
-
-
+		// the index build and the query parser must use the same minimum length
 		$minInput = $this->Register['Config']->read('min_lenght', $this->module);
 		if (!empty($minInput))
 			$this->minInputStr = (int) $minInput;
+
+		//check index
+		$this->__checkIndex();
 
 		$html = null;
 		$error = null;
@@ -295,8 +295,16 @@ class SearchModule extends Module {
 
 
 		$this->Model->truncateTable();
+
+		// cache of topic titles (forum messages are titled with their topic)
+		$themesModel = $this->Register['ModManager']->getModelInstance('Themes');
+		$themeTitles = array();
+
 		foreach ($this->tables as $table) {
-			$className = $this->Register['ModManager']->getModelNameFromModule($table);
+			// the forum sections table ('forums') is handled by the ForumModel class
+			$className = ($table === 'forums')
+				? 'ForumModel'
+				: $this->Register['ModManager']->getModelNameFromModule($table);
 			$Model = new $className;
 			
 			for ($i = 1; $i < 10000; $i++) {
@@ -317,16 +325,56 @@ class SearchModule extends Module {
 								$entity_view = '/view/';
 								$module = $table;
 								$entity_id = $rec->getId();
+								$entity_title = $rec->getTitle();
+								break;
+
+							case 'forums':
+								// forum sections: the section name and its description
+								$text = $rec->getTitle() . ' ' . $rec->getDescription();
+								if (mb_strlen($text) < $this->minInputStr || !is_string($text))
+									continue 2;
+								$entity_view = '/view_forum/';
+								$module = 'forum';
+								$entity_id = $rec->getId();
+								$entity_title = $rec->getTitle();
+								break;
+
+							case 'forum_cat':
+								// forum categories: the category name
+								$text = $rec->getTitle();
+								if (mb_strlen($text) < $this->minInputStr || !is_string($text))
+									continue 2;
+								$entity_view = '/index/';
+								$module = 'forum';
+								$entity_id = $rec->getId();
+								$entity_title = $rec->getTitle();
+								break;
+
+							case 'themes':
+								// topics: the topic title and its description
+								$text = $rec->getTitle() . ' ' . $rec->getDescription();
+								if (mb_strlen($text) < $this->minInputStr || !is_string($text))
+									continue 2;
+								$entity_view = '/view_theme/';
+								$module = 'forum';
+								$entity_id = $rec->getId();
+								$entity_title = $rec->getTitle();
 								break;
 
 							case 'posts':
+								// messages: the message text, the result title is the topic title
 								$text = $rec->getMessage();
 								$entity_view = '/view_theme/';
 								$module = 'forum';
 								$entity_id = $rec->getId_theme();
-								break;
-
-							case 'themes':
+								$entity_title = '';
+								if ($entity_id) {
+									if (!array_key_exists($entity_id, $themeTitles)) {
+										$theme = $themesModel->getById($entity_id);
+										$themeTitles[$entity_id] = ($theme) ? $theme->getTitle() : '';
+									}
+									$entity_title = $themeTitles[$entity_id];
+								}
 								break;
 
 							default:
@@ -335,6 +383,8 @@ class SearchModule extends Module {
 									continue 2;
 								$entity_view = '/view/';
 								$module = $table;
+								$entity_id = $rec->getId();
+								$entity_title = $rec->getTitle();
 								break;
 						}
 
@@ -343,7 +393,7 @@ class SearchModule extends Module {
 						$data = array(
 							'index' => $text,
 							'entity_id' => $entity_id,
-							'entity_title' => $rec->getTitle(),
+							'entity_title' => $entity_title,
 							'entity_table' => $table,
 							'entity_view' => $entity_view,
 							'module' => $module,
