@@ -647,6 +647,45 @@ function atm_invalidate_search_index($table) {
 
 
 /**
+* Make sure the shared `categories_bind` table exists.
+*
+* The table stores the additional categories of news and articles:
+* a material can be attached to several categories at once. Fresh
+* installations get the table from the installer; installations
+* updated from an older version get it created here on demand
+* (at most one check per request).
+*/
+function atm_ensure_categories_bind_table() {
+	static $checked = false;
+	if ($checked) return;
+	$checked = true;
+
+	$Register = Register::getInstance();
+	if (empty($Register['DB'])) return;
+
+	$db = $Register['DB'];
+	$table = $db->getFullTableName('categories_bind');
+	try {
+		$exists = $db->query("SHOW TABLES LIKE '" . $db->escape($table) . "'");
+		if (!empty($exists)) return;
+
+		$db->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+  `id` int(11) NOT NULL auto_increment,
+  `module` varchar(32) NOT NULL,
+  `entity_id` int(11) NOT NULL,
+  `category_id` int(11) NOT NULL,
+  PRIMARY KEY  (`id`),
+  UNIQUE KEY `full_bind` (`module`, `entity_id`, `category_id`),
+  INDEX (`module`, `category_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+	} catch (Exception $e) {
+		// the database user may lack the CREATE privilege; the modules
+		// simply keep working without the additional categories
+	}
+}
+
+
+/**
 * @return timestamp on microseconds
 */
 function getMicroTime($base_time = false) {

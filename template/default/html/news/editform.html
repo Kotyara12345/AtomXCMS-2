@@ -24,8 +24,12 @@ function metaTags(element) {
 	  <div class="mat-content">
           <ul class="spisok-all">
 		  <li>
-            <span class="siu_title"><strong><font color="red">*</font>{{ 'Section2'|lang }}:</strong></span>
+            <span class="siu_title"><strong><font color="red">*</font>{{ 'Main section'|lang }}:</strong></span>
             <span class="siu_data"><select name="cats_selector">{{ context.cats_selector }}</select></span>
+          </li>
+		  <li>
+            <span class="siu_title"><strong>{{ 'Additional sections'|lang }}:</strong></span>
+            <span class="siu_data">{{ context.extra_cats_selector }}</span>
           </li>
 		  <li>
             <span class="siu_title"><strong><font color="red">*</font>{{ 'News title'|lang }}:</strong></span>

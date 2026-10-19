@@ -46,6 +46,8 @@ return array(
 	'Module' 		            => 'Module',
 	'Section1' 		            => 'Section',
 	'Section2' 		            => 'Section',
+	'Main section' 	            => 'Main section',
+	'Additional sections'       => 'Additional sections',
 	'Viewings' 		            => 'Viewings',
 	'Comments' 		            => 'Comments',
 	'Author' 		            => 'Author',

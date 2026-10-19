@@ -254,6 +254,17 @@ $array[] = "CREATE TABLE `{$set['db']['prefix']}news_categories` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci";
 $array[] = "INSERT INTO `{$set['db']['prefix']}news_categories` VALUES (1, 0, '', '', 'Test category', '1', '')";
 #####################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}categories_bind`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}categories_bind` (
+  `id` int(11) NOT NULL auto_increment,
+  `module` varchar(32) NOT NULL,
+  `entity_id` int(11) NOT NULL,
+  `category_id` int(11) NOT NULL,
+  PRIMARY KEY  (`id`),
+  UNIQUE KEY `full_bind` (`module`, `entity_id`, `category_id`),
+  INDEX (`module`, `category_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci";
+#####################################################################
 $array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}posts`";
 $array[] = "CREATE TABLE `{$set['db']['prefix']}posts` (
   `id` int(11) NOT NULL auto_increment,

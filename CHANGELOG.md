@@ -18,6 +18,17 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   `Alt-Svc` header (sent by PHP, and by `.htaccess` rules on Apache).
   Both options are safe to enable on hostings without support: the site
   simply keeps working over the lower protocol version.
+- News and articles can be attached to several sections at once: a
+  material keeps its main section (URLs, breadcrumbs and access rules
+  still use it) and is additionally listed in any number of other
+  sections. The "Additional sections" checkboxes were added to the
+  add/edit forms of the `news` and `stat` modules; the links are stored
+  in the shared `categories_bind` table (created by the installer, or
+  automatically on the first request of an installation updated from an
+  older version). Lists and the material page show every section of a
+  material, and it stays visible to visitors while at least one of its
+  sections is accessible. Deleting a material or a section removes the
+  related bindings.
 
 ### Changed
 - Passwords are now stored with `password_hash()` (bcrypt) instead of md5.

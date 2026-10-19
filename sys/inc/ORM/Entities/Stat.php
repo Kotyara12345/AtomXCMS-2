@@ -102,6 +102,9 @@ class StatEntity extends FpsEntity
 		$addContentModel->deleteByParentId($this->id);
 		
 
+		// additional categories of the material
+		atm_ensure_categories_bind_table();
+		$Register['DB']->delete('categories_bind', array('module' => 'stat', 'entity_id' => $this->id));
 		$Register['DB']->delete('stat', array('id' => $this->id));
         $Register['URL']->removeOldTmpFiles($this, 'stat');
 	}

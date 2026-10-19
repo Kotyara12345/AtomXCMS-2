@@ -65,6 +65,13 @@ class Module {
 	protected $cached = true;
 	
 	/**
+	* Materials of the module can be bound to several categories
+	* at once. Modules that support this enable the flag and keep
+	* the additional category ids in the `categories_bind` table.
+	*/
+	protected $useBoundCategories = false;
+	
+	/**
 	* @var (str)   comments block
 	*/
 	protected $comments = '';
@@ -638,6 +645,195 @@ class Module {
 		
 		return $out;
 	}
+	
+	
+	/**
+	 * Build a categories list of checkboxes. Used to attach a material
+	 * to several categories at once.
+	 *
+	 * @param mixed $cats
+	 * @param array $selected ids of the checked categories
+	 * @param mixed $id
+	 * @param string $sep
+	 * @return string
+	 */
+	protected function _buildCheckboxSelector($cats, $selected = array(), $id = false, $sep = '- ')
+	{
+		$selected = array_map('strval', (array)$selected);
+		$out = '';
+		foreach ($cats as $key => $cat) {
+			$parent_id = $cat->getParent_id();
+			if (($id === false && empty($parent_id))
+			|| (!empty($id) && $parent_id == $id)) {
+				$out .= '<label class="cat-checkbox">'
+				. '<input type="checkbox" name="extra_cats[]" value="' . $cat->getId() . '"'
+				. (in_array(strval($cat->getId()), $selected) ? ' checked="checked"' : '')
+				. ' /> ' . $sep . h($cat->getTitle()) . '</label><br />' . "\n";
+				unset($cats[$key]);
+				$out .= $this->_buildCheckboxSelector($cats, $selected, $cat->getId(), $sep . '- ');
+			}
+		}
+		
+		return $out;
+	}
+	
+	
+	/**
+	 * Ids of the categories the material is additionally bound to
+	 * (the main category lives in the `category_id` field).
+	 *
+	 * @param int $entityId
+	 * @return array
+	 */
+	protected function _getBoundCategoryIds($entityId)
+	{
+		$entityId = (int)$entityId;
+		if ($entityId < 1 || !$this->useBoundCategories) return array();
+		
+		atm_ensure_categories_bind_table();
+		$rows = $this->DB->select('categories_bind', DB_ALL, array(
+			'cond' => array('module' => $this->module, 'entity_id' => $entityId),
+			'order' => 'category_id ASC',
+		));
+		
+		$ids = array();
+		if (!empty($rows)) {
+			foreach ($rows as $row) {
+				$ids[] = (int)$row['category_id'];
+			}
+		}
+		return $ids;
+	}
+	
+	
+	/**
+	 * Store the categories the material is additionally bound to.
+	 * The main category must not be passed here.
+	 *
+	 * @param int $entityId
+	 * @param array $categoryIds
+	 */
+	protected function _saveBoundCategoryIds($entityId, $categoryIds)
+	{
+		$entityId = (int)$entityId;
+		if ($entityId < 1 || !$this->useBoundCategories) return;
+		
+		atm_ensure_categories_bind_table();
+		$this->DB->delete('categories_bind', array(
+			'module' => $this->module,
+			'entity_id' => $entityId,
+		));
+		
+		$categoryIds = array_unique(array_map('intval', (array)$categoryIds));
+		foreach ($categoryIds as $categoryId) {
+			if ($categoryId < 1) continue;
+			$this->DB->save('categories_bind', array(
+				'module' => $this->module,
+				'entity_id' => $entityId,
+				'category_id' => $categoryId,
+			));
+		}
+		$this->DB->cleanSqlCache();
+	}
+	
+	
+	/**
+	 * All categories of the material: the main one and the additional
+	 * ones. Returns an array of entities indexed by category id.
+	 *
+	 * @param object $entity
+	 * @return array
+	 */
+	protected function _getEntityCategories($entity)
+	{
+		$categories = array();
+		$mainId = (int)$entity->getCategory_id();
+		if ($entity->getCategory()) $categories[$mainId] = $entity->getCategory();
+		
+		if ($this->useBoundCategories) {
+			$boundIds = $this->_getBoundCategoryIds($entity->getId());
+			if ($boundIds) {
+				$categoryModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
+				foreach ($boundIds as $boundId) {
+					if (isset($categories[$boundId])) continue;
+					$category = $categoryModel->getById($boundId);
+					if ($category) $categories[$boundId] = $category;
+				}
+			}
+		}
+		
+		return $categories;
+	}
+	
+	
+	/**
+	 * Html links to the given categories (array of entities).
+	 *
+	 * @param array $categories
+	 * @return string
+	 */
+	protected function _buildCategoriesLinks($categories)
+	{
+		$links = array();
+		foreach ($categories as $category) {
+			$links[] = get_link(h($category->getTitle()), '/' . $this->module . '/category/' . $category->getId());
+		}
+		return implode(', ', $links);
+	}
+	
+	
+	/**
+	 * Fill the `categories_links` marker of every material with the
+	 * links to all its categories (main and additional), using a
+	 * couple of batch queries instead of one query per record.
+	 *
+	 * @param array $records
+	 */
+	protected function _setCategoriesLinksMarker($records)
+	{
+		if (empty($records) || !$this->useBoundCategories) return;
+		
+		atm_ensure_categories_bind_table();
+		$entityIds = array();
+		$catsByEntity = array();
+		$allCatIds = array();
+		foreach ($records as $record) {
+			$entityId = (int)$record->getId();
+			$entityIds[] = $entityId;
+			$catId = (int)$record->getCategory_id();
+			$catsByEntity[$entityId] = array($catId);
+			$allCatIds[$catId] = $catId;
+		}
+		
+		$bindTable = $this->DB->getFullTableName('categories_bind');
+		$module = $this->DB->escape($this->module);
+		$rows = $this->DB->query("SELECT `entity_id`, `category_id` FROM `{$bindTable}`"
+			. " WHERE `module` = '{$module}' AND `entity_id` IN (" . implode(', ', $entityIds) . ")"
+			. " ORDER BY `category_id` ASC");
+		foreach ($rows as $row) {
+			$entityId = (int)$row['entity_id'];
+			$catId = (int)$row['category_id'];
+			if (!isset($catsByEntity[$entityId]) || in_array($catId, $catsByEntity[$entityId])) continue;
+			$catsByEntity[$entityId][] = $catId;
+			$allCatIds[$catId] = $catId;
+		}
+		
+		$categoryModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
+		$catMap = array();
+		foreach ($categoryModel->getCollection(array('id' => array_values($allCatIds))) as $category) {
+			$catMap[$category->getId()] = $category;
+		}
+		
+		foreach ($records as $record) {
+			$categories = array();
+			foreach ($catsByEntity[(int)$record->getId()] as $catId) {
+				if (!empty($catMap[$catId])) $categories[] = $catMap[$catId];
+			}
+			$markers = (array)$record->getAdd_markers();
+			$markers['categories_links'] = $this->_buildCategoriesLinks($categories);
+			$record->setAdd_markers($markers);
+		}
+	}
 
 
     public function showInfoMessage($message, $queryString = null, $requestIsOk = false)
@@ -833,6 +1029,19 @@ class Module {
 			}
 		}
 		$ids = (count($ids)) ? implode(', ', $ids) : 'NULL';
+		
+		// A material may be attached to several categories at once.
+		// It stays visible while at least one of its categories is allowed.
+		if ($this->useBoundCategories) {
+			atm_ensure_categories_bind_table();
+			$bindTable = $this->DB->getFullTableName('categories_bind');
+			$module = $this->DB->escape($this->module);
+			return "(`category_id` IN ({$ids}) OR `id` IN ("
+				. "SELECT `entity_id` FROM `{$bindTable}`"
+				. " WHERE `module` = '{$module}' AND `category_id` IN ({$ids})"
+				. "))";
+		}
+		
 		return "`category_id` IN ({$ids})";
 	}
 	

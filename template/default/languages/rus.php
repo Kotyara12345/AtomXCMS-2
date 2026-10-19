@@ -46,6 +46,8 @@ return array(
 	'Module' 		            => 'Модуль',
 	'Section1' 		            => 'Раздел',
 	'Section2' 		            => 'Категория',
+	'Main section' 	            => 'Основной раздел',
+	'Additional sections'       => 'Дополнительные разделы',
 	'Viewings' 		            => 'Просмотров',
 	'Comments' 		            => 'Комментарии',
 	'Author' 		            => 'Автор',

@@ -607,6 +607,12 @@ function delete_category($id) {
 		}
 	}
 	
+	// delete bindings of the category (materials attached to it)
+	if (in_array(getCurrMod(), array('news', 'stat'))) {
+		atm_ensure_categories_bind_table();
+		$FpsDB->delete('categories_bind', array('module' => getCurrMod(), 'category_id' => $id));
+	}
+	
 	// delete category
 	$entity = $sectionsModel->getById($id);
 	if ($entity) $entity->delete();

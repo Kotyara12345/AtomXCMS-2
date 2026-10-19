@@ -41,6 +41,11 @@ Class NewsModule extends Module {
 	*/
 	public $module = 'news';
 	
+	/**
+	* materials can be attached to several categories at once
+	*/
+	protected $useBoundCategories = true;
+	
 	public $premoder_types = array('rejected', 'confirmed');
 	
 
@@ -152,6 +157,10 @@ Class NewsModule extends Module {
 
 			$result->setAdd_markers($markers);
 		}
+		
+		
+		// links to all categories of every material
+		$this->_setCategoriesLinksMarker($records);
 		
 		
 		$source = $this->render('list.html', array('entities' => $records));
@@ -287,6 +296,10 @@ Class NewsModule extends Module {
 		}
 		
 		
+		// links to all categories of every material
+		$this->_setCategoriesLinksMarker($records);
+		
+		
 		$source = $this->render('list.html', array('entities' => $records));
 		
 		
@@ -322,7 +335,18 @@ Class NewsModule extends Module {
 		if (empty($entity)) $this->Parser->showHttpError();
 		if ($entity->getAvailable() == 0 && !$this->ACL->turn(array('other', 'can_see_hidden'), false)) 
 			return $this->showInfoMessage(__('Permission denied'), '/' . $this->module . '/');
-		if (!$this->ACL->checkCategoryAccess($entity->getCategory()->getNo_access())) 
+		
+		// the material can be attached to several categories:
+		// it stays visible while at least one of them is accessible
+		$entityCategories = $this->_getEntityCategories($entity);
+		$canView = false;
+		foreach ($entityCategories as $entityCategory) {
+			if ($this->ACL->checkCategoryAccess($entityCategory->getNo_access())) {
+				$canView = true;
+				break;
+			}
+		}
+		if (!$canView)
 			return $this->showInfoMessage(__('Permission denied'), '/' . $this->module . '/');
 			
 			
@@ -378,6 +402,8 @@ Class NewsModule extends Module {
 		$entry_url = entryUrl($entity, $this->module);
 		$markers['entry_url'] = $entry_url;
 		$markers['main_text'] = $this->Textarier->parseBBCodes($entity->getMain(), $entity);
+		// links to all categories of the material
+		$markers['categories_links'] = $this->_buildCategoriesLinks($entityCategories);
 
 		
 		$entity->setAdd_markers($markers);
@@ -500,6 +526,10 @@ Class NewsModule extends Module {
 		}
 
 
+		// links to all categories of every material
+		$this->_setCategoriesLinksMarker($records);
+
+
 		$source = $this->render('list.html', array('entities' => $records));
 
 
@@ -538,6 +568,16 @@ Class NewsModule extends Module {
 		}
 		
 		
+		// categories the material is attached to in addition to the main one
+		$extraCats = array();
+		foreach (array('viewMessage', 'FpsForm') as $sessionKey) {
+			if (isset($_SESSION[$sessionKey]) && array_key_exists('extra_cats', $_SESSION[$sessionKey])) {
+				$extraCats = (array)$_SESSION[$sessionKey]['extra_cats'];
+				break;
+			}
+		}
+		
+		
 		$data = $this->Register['Validate']->getAndMergeFormPost($this->Register['action'], $markers);
         $data['preview'] = $this->Parser->getPreview($data['main_text']);
         $data['errors'] = $this->Register['Validate']->getErrors();
@@ -548,6 +588,7 @@ Class NewsModule extends Module {
 		$SectionsModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
 		$sql = $SectionsModel->getCollection();
 		$data['cats_selector'] = $this->_buildSelector($sql, ((!empty($data['cats_selector'])) ? $data['cats_selector'] : false));
+		$data['extra_cats_selector'] = $this->_buildCheckboxSelector($sql, $extraCats);
 		
 		
 		//comments and hide
@@ -609,10 +650,30 @@ Class NewsModule extends Module {
 			redirect('/' . $this->module . '/add_form/');
 		}
 		
+		// categories the material is attached to in addition to the main one
+		$extra_cats = array();
+		if (!empty($_POST['extra_cats']) && is_array($_POST['extra_cats'])) {
+			foreach ($_POST['extra_cats'] as $extraCatId) {
+				$extraCatId = intval($extraCatId);
+				if ($extraCatId > 0) $extra_cats[$extraCatId] = $extraCatId;
+			}
+		}
+		unset($extra_cats[intval($_POST['cats_selector'])]);
+		
+		$extra_cat_entities = array();
+		$categoryModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
 		if (!empty($_POST['cats_selector'])) {
-			$categoryModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
 			$cat = $categoryModel->getById($_POST['cats_selector']);
 			if (empty($cat)) $errors[] = '<li>' . __('Can not find category') . '</li>'."\n";
+		}
+		foreach ($extra_cats as $extraCatId) {
+			$extraCat = $categoryModel->getById($extraCatId);
+			if ($extraCat) {
+				$extra_cat_entities[$extraCatId] = $extraCat;
+			} else {
+				unset($extra_cats[$extraCatId]);
+				$errors[] = '<li>' . __('Can not find category') . '</li>'."\n";
+			}
 		}
 
 
@@ -655,6 +716,16 @@ Class NewsModule extends Module {
 
 		$max_lenght = $this->Register['Config']->read('max_lenght', $this->module);
 		$add = mb_substr($main_text, 0, $max_lenght);
+		
+		// show the material on the home page if at least one of its categories is shown there
+		$view_on_home = (!empty($cat)) ? $cat->getView_on_home() : 0;
+		foreach ($extra_cat_entities as $extraCat) {
+			if ($extraCat->getView_on_home() == 1) {
+				$view_on_home = 1;
+				break;
+			}
+		}
+		
 		$res = array(
 			'title'        => $title,
 			'main'         => $add,
@@ -668,7 +739,7 @@ Class NewsModule extends Module {
 			'sourse_site'  => $sourse_site,
 			'commented'    => $commented,
 			'available'    => $available,
-			'view_on_home' => $cat->getView_on_home(),
+			'view_on_home' => $view_on_home,
 			'premoder' 	   => 'confirmed',
 		);
 		if ($this->ACL->turn(array($this->module, 'materials_require_premoder'), false)) {
@@ -678,6 +749,9 @@ Class NewsModule extends Module {
 		$className = ucfirst($this->module) . 'Entity';
 		$new = new $className($res);
 		$last_id = $new->save();
+		
+		// additional categories of the material
+		if (!empty($extra_cats)) $this->_saveBoundCategoryIds($last_id, $extra_cats);
 		
 
 		if (is_object($this->AddFields)) {
@@ -742,6 +816,15 @@ Class NewsModule extends Module {
 		//forming categories list
 		$this->_getCatsTree($entity->getCategory()->getId());
 		
+		// additional categories of the material
+		$boundCats = $this->_getBoundCategoryIds($id);
+		foreach (array('viewMessage', 'FpsForm') as $sessionKey) {
+			if (isset($_SESSION[$sessionKey]) && array_key_exists('extra_cats', $_SESSION[$sessionKey])) {
+				$boundCats = (array)$_SESSION[$sessionKey]['extra_cats'];
+				break;
+			}
+		}
+		
 
         $data = array(
 			'title' 		=> '', 
@@ -795,6 +878,7 @@ Class NewsModule extends Module {
 
 
 		$markers->setCats_selector($cats_change);
+		$markers->setExtra_cats_selector($this->_buildCheckboxSelector($cats, $boundCats));
 		$markers->setAttaches_delete($attDelButtons);
 		$markers->setMax_attaches($this->Register['Config']->read('max_attaches', $this->module));
 
@@ -870,6 +954,16 @@ Class NewsModule extends Module {
 		$commented = (!empty($_POST['commented'])) ? 1 : 0;
 		$available = (!empty($_POST['available'])) ? 1 : 0;
         $in_cat = intval($_POST['cats_selector']);
+		
+		// categories the material is attached to in addition to the main one
+		$extra_cats = array();
+		if (!empty($_POST['extra_cats']) && is_array($_POST['extra_cats'])) {
+			foreach ($_POST['extra_cats'] as $extraCatId) {
+				$extraCatId = intval($extraCatId);
+				if ($extraCatId > 0) $extra_cats[$extraCatId] = $extraCatId;
+			}
+		}
+		unset($extra_cats[$in_cat]);
 
 		
 		// Если пользователь хочет посмотреть на сообщение перед отправкой
@@ -882,10 +976,16 @@ Class NewsModule extends Module {
 		
 		
 		
+		$catModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
 		if (!empty($in_cat)) {
-			$catModel = $this->Register['ModManager']->getModelInstance($this->module . 'Categories');
 			$category = $catModel->getById($in_cat);
 			if (!$category) $errors[] = '<li>' . __('Can not find category') . '</li>' . "\n";
+		}
+		foreach ($extra_cats as $extraCatId) {
+			if (!$catModel->getById($extraCatId)) {
+				unset($extra_cats[$extraCatId]);
+				$errors[] = '<li>' . __('Can not find category') . '</li>' . "\n";
+			}
 		}
 		
 	
@@ -935,6 +1035,9 @@ Class NewsModule extends Module {
 		);
 		$target($data);
 		$target->save();
+		
+		// additional categories of the material
+		$this->_saveBoundCategoryIds($id, $extra_cats);
 		if (is_object($this->AddFields)) {
 			$this->AddFields->save($id, $_addFields);
 		}

@@ -103,6 +103,9 @@ class NewsEntity extends FpsEntity
 		$addContentModel->deleteByParentId($this->id);
 		
 
+		// additional categories of the material
+		atm_ensure_categories_bind_table();
+		$Register['DB']->delete('categories_bind', array('module' => 'news', 'entity_id' => $this->id));
 		$Register['DB']->delete('news', array('id' => $this->id));
         $Register['URL']->removeOldTmpFiles($this, 'news');
 	}
