@@ -8,7 +8,6 @@ include_once '../sys/boot.php';
 <link rel="shortcut icon" href="../sys/img/favicon.ico" type="image/x-icon">
 <link rel="stylesheet" href="css/style.css" />
 <script src="../sys/js/jquery.js"></script>
-<script src="../sys/js/jquery-migrate.js"></script>
 </head>
 <body>
 <div id="head">
@@ -47,6 +46,16 @@ function doQueries() {
 		progressBar(3);
 		
 		$('#queries').scrollTop(1500);
+	}).fail(function(jqXHR){
+		/*
+		 * jQuery runs only the success callback on HTTP 4xx/5xx, so without
+		 * this handler a failed request leaves the loader spinning forever.
+		 */
+		$('#ajaxLoader').hide();
+		var details = jqXHR.responseText ? jqXHR.responseText.slice(0, 1000) : '';
+		$('#queries').html('<span style="color:#FF0000">Не удалось выполнить установку (HTTP ' + jqXHR.status + '). '
+			+ 'Проверьте настройки базы данных и начните установку заново с <a href="step1.php">первого шага</a>.</span>'
+			+ (details ? '<div style="margin-top:10px;">' + details + '</div>' : ''));
 	});
 }
 function progressBar(step) {

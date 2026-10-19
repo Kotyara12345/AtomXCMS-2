@@ -94,6 +94,21 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   text hung out of the bar and overlapped the info block below. The
   bar now contains the floated title link (`overflow: hidden`) and
   grows around short and multi-line titles.
+- Re-installing the CMS into a database with an existing installation
+  hung forever on the second installation step: the installer refused
+  to run (HTTP 403) instead of dropping and recreating the tables, and
+  the page never handled the failed AJAX request, so its loader spun
+  endlessly. A deliberate re-installation now works as in the original
+  CMS again, a failed request is reported on the page instead of
+  hanging, and the database queries are only run when the installation
+  was started from the first step (the administrator credentials come
+  from the session).
+- Settings written with `Config::write()` were not always seen by the
+  next request when OPcache was enabled with the default
+  `opcache.revalidate_freq` value: the compiled `config.php` could be
+  reused for up to two seconds, so the installer's AJAX step could run
+  with the previous database settings. Saving the config now
+  invalidates its OPcache entry.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated

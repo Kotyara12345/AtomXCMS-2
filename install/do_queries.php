@@ -47,20 +47,18 @@ if (class_exists('PDO')) {
 
 
 /*
- * Reinstallation lock. If the administrator account already exists,
- * the script refuses to drop and recreate the database once again.
- * Remove the administrator account manually (or drop tables) if you
- * really need to reinstall the site from scratch.
+ * The installation has to be started from the first step (step1.php):
+ * the administrator credentials are kept in the session there. A direct
+ * request to this script would otherwise drop and recreate all the tables
+ * and finish with an administrator account with empty fields.
+ *
+ * Re-installation over an existing database is allowed on purpose: the
+ * installer drops the old tables and creates a clean installation.
  */
-try {
-	$already_installed = $DB->query("SELECT `id` FROM `{$set['db']['prefix']}users` WHERE `status` = 4 LIMIT 1");
-} catch (Exception $e) {
-	// The tables do not exist yet - this is a fresh installation.
-	$already_installed = array();
-}
-if (!empty($already_installed)) {
+if (empty($_SESSION['adm_name']) || empty($_SESSION['adm_pass']) || empty($_SESSION['adm_email'])) {
 	header('HTTP/1.1 403 Forbidden');
-	die('<h2 style="color:#FF0000">AtomX CMS is already installed. Installation is locked.</h2>');
+	die('<h2 style="color:#FF0000">Установка не была начата: откройте <a href="step1.php">шаг 1</a> и заполните форму.<br />'
+		. 'Installation was not started: open <a href="step1.php">step 1</a> and fill in the form.</h2>');
 }
 
 

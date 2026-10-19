@@ -49,7 +49,6 @@ if (isset($_POST['send'])) {
 <link rel="shortcut icon" href="../sys/img/favicon.ico" type="image/x-icon">
 <link rel="stylesheet" href="css/style.css" />
 <script src="../sys/js/jquery.js"></script>
-<script src="../sys/js/jquery-migrate.js"></script>
 </head>
 <body>
 <div id="head">

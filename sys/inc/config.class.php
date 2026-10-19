@@ -56,6 +56,15 @@ class Config {
             $data = '<?php ' . "\n" . '$set = ' . var_export($set, true) . ";\n" . '?>';
 			fputs($fopen, $data);
 			fclose($fopen);
+			/*
+			 * The config is read with include(), so OPcache may keep serving
+			 * the previous version for opcache.revalidate_freq seconds. The
+			 * installer writes the database settings and reads them back a
+			 * moment later in another request (the AJAX installation step).
+			 */
+			if (function_exists('opcache_invalidate')) {
+				@opcache_invalidate(ROOT . '/sys/settings/config.php', true);
+			}
 			return true;
 		}
 		return false;
