@@ -88,6 +88,12 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   index now also includes forum categories, sections and topic titles
   and descriptions, and a hit inside a message is titled with its
   topic.
+- On phones (≤700px) the dark material title bar (news, articles,
+  forum topics, search results) collapsed to a few pixels: the bar got
+  `height: auto` while both of its children are floated, so the title
+  text hung out of the bar and overlapped the info block below. The
+  bar now contains the floated title link (`overflow: hidden`) and
+  grows around short and multi-line titles.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated
