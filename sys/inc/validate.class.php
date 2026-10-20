@@ -388,7 +388,8 @@ class Validate {
 		
 		if ($correct === true) 
 			$fields = array_map(function($n){
-				return trim($n);
+				if (is_array($n)) return $n;
+				return trim((string)$n);
 			}, $fields);
 
         if ($fields_meta === true) {
