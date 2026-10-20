@@ -115,17 +115,13 @@ class FpsSitemapGen {
 	 * build all posible links
 	 */
 	public function getLinks() {
-		// single pages
-		$this->uniqUrl[] = 'search';
-		$this->uniqUrl[] = 'chat';
-		
-	
 		// Unique pages (Module pages)
 		if (Config::read('active', 'pages')) {
-			$htmlpages = $this->DB->select('pages', DB_ALL, array());
+			$pagesModel = new PagesModel();
+			$htmlpages = $pagesModel->getCollection(array('`id` != 1', 'publish' => '1'));
 			if (count($htmlpages) > 0) {
 				foreach ($htmlpages as $htmlpage) {
-					$this->uniqUrl[] = $htmlpage['id'];
+					$this->uniqUrl[] = $pagesModel->buildUrl($htmlpage->getId());
 				}
 			}
 		}
@@ -137,7 +133,6 @@ class FpsSitemapGen {
 		foreach (array('news', 'stat', 'loads', 'foto') as $mkey) {
 			if (Config::read('active', $mkey)) {
 				$this->uniqUrl[] = $mkey;
-				if ($mkey != 'foto') $this->uniqUrl[] = $mkey . '/rss';
 			
 				$entities = $this->DB->select($mkey, DB_ALL, array());
 				$entitiesc = $this->DB->select($mkey . '_categories', DB_ALL, array());
@@ -218,7 +213,6 @@ class FpsSitemapGen {
 			if (count($themes) > 0) {
 				foreach ($themes as $theme) {
 					$this->uniqUrl[] = '/forum/view_theme/' . $theme['id'];
-					$this->uniqUrl[] = '/forum/view_theme/' . $theme['id'] . '/?page=99999/';
 					if ($theme['posts'] > 1) {
 						$per_page = Config::read('posts_per_page', 'forum');
 						$per_page = intval($per_page); 
@@ -287,8 +281,6 @@ class FpsSitemapGen {
 		// Users
 		if (Config::read('active', 'users')) {
 			$this->uniqUrl[] = '/users/';
-			$this->uniqUrl[] = '/users/add_form/';
-			$this->uniqUrl[] = '/users/login_form/';
 			
 			$users = $this->DB->select('users', DB_ALL);
 
