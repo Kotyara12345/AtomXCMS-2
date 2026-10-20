@@ -514,6 +514,7 @@ abstract class FpsModel
             if (!$entity) continue;
 
 			$announce = ($module === 'forum') ? $entity->getMessage() : $entity->getMain();
+			$announce = (string) $announce;
 			if (preg_match_all('#\{ATTACH(\d+)(\|(\d+))?(\|(left|right))?(\|([^\|\}]+))?\}#', $announce, $matches)) {
 				$ids[$entity->getId()] = array();
 				foreach ($matches[1] as $id) {
