@@ -665,6 +665,12 @@ if (empty($errors['query'])) {
 
 
 
+if (empty($errors) && function_exists('atm_update_robots_domain')) {
+	atm_update_robots_domain();
+}
+
+
+
 if (empty($errors)) :
 ?>
 </div>

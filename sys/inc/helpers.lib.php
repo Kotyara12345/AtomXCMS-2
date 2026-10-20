@@ -219,6 +219,11 @@ function createSitemap() {
 	include_once ROOT . '/sys/inc/sitemap.class.php';
 	$obj = new FpsSitemapGen;
 	$obj->createMap();
+
+	// robots.txt is static, but the Sitemap URL must use the current domain.
+	if (function_exists('atm_update_robots_domain')) {
+		atm_update_robots_domain();
+	}
 }
  
  

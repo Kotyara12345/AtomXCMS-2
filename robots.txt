@@ -1,28 +1,93 @@
+# AtomXCMS-2
+
 User-agent: *
+
+# Public images, scripts and styles must remain crawlable.
+Allow: /sys/files/
+Allow: /sys/avatars/
+Allow: /sys/img/
+Allow: /sys/js/
+Allow: /sys/fonts/
+Allow: /sys/tmp/images/
+Allow: /sys/tmp/img_cache/
+Allow: /template/*/css/
+Allow: /template/*/js/
+Allow: /template/*/img/
+Allow: /template/*/fonts/
+Allow: /template/*/customize/
+Allow: /image/
+Allow: /img.php
+
+# Technical pages and service sections.
+Disallow: /admin/
+Disallow: /install/
+Disallow: /index.php
+Disallow: /update.php
+Disallow: /redirect.php
+Disallow: /img_uploader.php
+Disallow: /auth_status.php
+Disallow: /search/
+Disallow: /chat/
+
+# System directories and template sources.
 Disallow: /sys/cache/
-Disallow: /sys/tmp/
-Disallow: /sys/logs/
 Disallow: /sys/fnc/
 Disallow: /sys/inc/
-Disallow: /sys/settings/
-Disallow: /admin/
-Disallow: /loads/download_file/
-Disallow: /forum/download_file/
-Disallow: /chat/
-Disallow: /search/
-Disallow: /template/*/html/
-
-User-agent: Yandex
-Disallow: /sys/cache/
-Disallow: /sys/tmp/
 Disallow: /sys/logs/
-Disallow: /sys/fnc/
-Disallow: /sys/inc/
 Disallow: /sys/settings/
-Disallow: /admin/
-Disallow: /loads/download_file/
-Disallow: /forum/download_file/
-Disallow: /chat/
-Disallow: /search/
+Disallow: /sys/tmp/activate/
+Disallow: /sys/tmp/chat/
+Disallow: /sys/tmp/hlu_chat/
+Disallow: /sys/tmp/hlu_forum/
+Disallow: /sys/tmp/hlu_loads/
+Disallow: /sys/tmp/hlu_news/
+Disallow: /sys/tmp/hlu_pages/
+Disallow: /sys/tmp/hlu_stat/
+Disallow: /sys/tmp/hlu_users/
+Disallow: /sys/tmp/search/
+Disallow: /sys/tmp/*.dat
 Disallow: /template/*/html/
 
+# File downloads, forms and service actions.
+Disallow: /*/download_file
+Disallow: /users/login
+Disallow: /users/add_form
+Disallow: /users/new_password_form
+Disallow: /users/send_new_password
+Disallow: /users/activate
+Disallow: /users/logout
+Disallow: /users/edit_form
+Disallow: /users/update
+Disallow: /users/send_mail
+Disallow: /users/pm
+Disallow: /users/search_niks
+Disallow: /users/rating
+Disallow: /users/onban
+Disallow: /users/offban
+Disallow: /users/add_warning
+Disallow: /users/delete_warning
+Disallow: /users/votes_story
+Disallow: /users/delete_vote
+Disallow: /users/get_count_new_pm
+Disallow: /forum/search_themes
+Disallow: /forum/vote_poll
+Disallow: /forum/move_posts
+Disallow: /forum/important
+Disallow: /forum/unimportant
+Disallow: /*_form/
+Disallow: /*/add_
+Disallow: /*/delete_
+Disallow: /*/update_
+Disallow: /*/delete/
+Disallow: /*/update/
+Disallow: /*/premoder/
+Disallow: /*/set_rating/
+Disallow: /*/add_comment/
+Disallow: /*/update_comment/
+Disallow: /*/delete_comment/
+Disallow: /*/on_home/
+Disallow: /*/off_home/
+Disallow: /*/fix_on_top/
+
+# The Sitemap URL is generated for the current domain by AtomXCMS.
+Sitemap: /sitemap.xml

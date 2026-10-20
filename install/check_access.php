@@ -85,6 +85,10 @@ if (!setChMod('../sitemap.xml') && !checkWriteablePerms('../sitemap.xml')) {
 	$out .= '<span style="color:#FF0000">/sitemap.xml</span> - Права выставлены не верно<br />';
 	$flag = false;
 }
+if (!setChMod('../robots.txt') && !checkWriteablePerms('../robots.txt')) {
+	$out .= '<span style="color:#FF0000">/robots.txt</span> - permissions are not writable<br />';
+	$flag = false;
+}
 if (!setChMod('../sys/plugins/') && !checkWriteablePerms('../sys/plugins/')) {
 	$out .= '<span style="color:#FF0000">/sys/plugins/</span> - Права выставлены не верно<br />';
 	$flag = false;
