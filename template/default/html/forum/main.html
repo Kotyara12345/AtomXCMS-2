@@ -18,6 +18,11 @@
 <link rel="stylesheet" href="{{ template_path }}/css/style.css" />
 <script src="{{ www_root }}/sys/js/jquery.js"></script>
 <script src="{{ www_root }}/sys/js/send_message.js"></script>
+<script src="{{ www_root }}/sys/js/auth_watch.js?v=2"
+        data-atm-auth-watch
+        data-user-id="{{ fps_user_id }}"
+        data-status-url="{{ www_root }}/auth_status.php"
+        data-login-url="{{ get_url('/users/login_form/') }}"></script>
 <!--<script src="{{ www_root }}/sys/js/jquery.form.min.js"></script>-->
 {{ editor_head }}
 <!-- <script src="{{ www_root }}/sys/js/textarearesizer.js"></script> -->
