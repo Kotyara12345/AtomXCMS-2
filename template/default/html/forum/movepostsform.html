@@ -28,9 +28,9 @@
 </div>
 {% endfor %}
 </div>
-<div class="mezdyblock">
+{% if pagination %}<div class="mezdyblock">
 	     <div class="paginator">
             <div class="pages">{{ pagination }}</div>
          </div>
-</div>
+</div>{% endif %}
 </form>

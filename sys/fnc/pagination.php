@@ -37,9 +37,10 @@ function pagination( $total, $perPage, $url )
     if ($page > $cntPages) $page = $cntPages;
     $Register = Register::getInstance();
     $Register['pagescnt'] = $cntPages;
+    $Register['totalitems'] = (int)$total;
 
 
-	if ($cntPages < 1) return array('', $page);
+	if ($cntPages <= 1) return array('', $page);
 	
 	
 	if (false === strpos($url, '?')) $url .= '?';

@@ -169,8 +169,14 @@ $(document).ready(function() {
 
 	<div class="twoblocks">
 		<div class="materials">
-			{% if pagination %}<div class="mezdyblock"><span class="meta">{{ meta }}</span><div class="paginator">
-			<div class="pages">{{ 'Pages:'|lang }} {{ pagination }}</div></div></div>{% endif %}
+			{% if meta %}{% if fps_totalitems > 0 %}<div class="mezdyblock">
+			<span class="meta">{{ meta }}</span>
+			{% if pagination %}<div class="paginator">
+			<div class="pages">{{ 'Pages:'|lang }} {{ pagination }}</div></div>{% endif %}
+			</div>{% endif %}{% else %}{% if pagination %}<div class="mezdyblock">
+			<div class="paginator">
+			<div class="pages">{{ 'Pages:'|lang }} {{ pagination }}</div></div>
+			</div>{% endif %}{% endif %}
             {{ content }}
 			<div class="paginator"><div class="pages">{{ comments_pagination }}</div></div>
 			{{ comments }}
@@ -197,7 +203,7 @@ $(document).ready(function() {
 			</div>
 		</div>
 		<div class="clear"></div>
-		<div class="paginator"><div class="pages">{{ pagination }}</div></div>
+		{% if pagination %}<div class="paginator"><div class="pages">{{ pagination }}</div></div>{% endif %}
 	</div>
 	<div class="clear"></div>
 	

@@ -5,9 +5,9 @@
 		<a href="{{ www_root }}/forum/view_theme/{{ theme.id }}#sendForm" class="newtembutton button">{{ 'Reply'|lang }}</a>
     {% endif %}
 	<span class="meta">{{ meta }}</span>
-	<div class="paginator">
+	{% if pagination %}<div class="paginator">
        <div class="pages">{{ pagination }}</div>
-    </div>
+    </div>{% endif %}
 	
 	<div class="forumblock">
 	  <div class="forumtitle">{{ theme.title }} {{ admin_bar }}</div>
@@ -150,10 +150,10 @@
 		<div style="display:none;"><form id="actionPack" action="" method="POST"></form></div>
 	</div>
 	{% endif %}
-	<div class="mezdyblock">
+	{% if pagination %}<div class="mezdyblock">
 	     <div class="paginator">
             <div class="pages">{{ pagination }}</div>
          </div>
-	</div>
+	</div>{% endif %}
 	
 	{{ reply_form }}

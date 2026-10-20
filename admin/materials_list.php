@@ -431,7 +431,7 @@ include_once ROOT . '/admin/template/header.php';
 		</div>
 	</div>
 </div>
-<div class="pagination"><?php echo $pages ?></div>
+<?php if (!empty($pages)) { ?><div class="pagination"><?php echo $pages ?></div><?php } ?>
 </form>
 
 

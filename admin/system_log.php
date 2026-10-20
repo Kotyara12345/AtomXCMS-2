@@ -99,7 +99,7 @@ include_once ROOT . '/admin/template/header.php';
 	?>
 </table></div>
 
-<div class="pagination"><?php echo $pages ?></div>
+<?php if (!empty($pages)) { ?><div class="pagination"><?php echo $pages ?></div><?php } ?>
 
 
 <?php

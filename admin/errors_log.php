@@ -58,7 +58,7 @@ include_once ROOT . '/admin/template/header.php';
 
 
 <div class="list">
-	<div class="title"><div class="pages"><?php echo $pages ?></div></div>
+	<div class="title"><?php if (!empty($pages)) { ?><div class="pages"><?php echo $pages ?></div><?php } ?></div>
 	<div class="add-cat-butt" onClick="window.location.href='<?php echo get_url('/admin/errors_log.php?del=1') ?>'"><div class="add"></div><?php echo __('Clean log') ?></div>
 	<table class="grid" cellspacing="0" style="width:100%;">
 		<?php if(!empty($data)): ?>

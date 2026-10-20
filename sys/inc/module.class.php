@@ -165,6 +165,7 @@ class Module {
         'comments_form' => '',
 		'fps_curr_page' => 1,
 		'fps_pagescnt' => 1,
+		'fps_totalitems' => 0,
 	);
 	
 	
@@ -388,6 +389,7 @@ class Module {
 			'comments_form' => $this->comments_form,
             'fps_curr_page' => (!empty($Register['page'])) ? intval($Register['page']) : 1,
             'fps_pagescnt' => (!empty($Register['pagescnt'])) ? intval($Register['pagescnt']) : 1,
+            'fps_totalitems' => (isset($Register['totalitems'])) ? intval($Register['totalitems']) : 0,
             'fps_user' => (!empty($_SESSION['user'])) ? $_SESSION['user'] : array(),
 			'is_home_page' => $Register['is_home_page'] ? true : false,
         );

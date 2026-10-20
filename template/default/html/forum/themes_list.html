@@ -21,9 +21,9 @@
 	<a href="{{ www_root }}/forum/add_theme_form/{{ forum.id }}" class="newtembutton button">{{ 'New topic'|lang }}</a>
 	{% endif %}
 	<span class="meta">{{ meta }}</span> 
-	<div class="paginator">
+	{% if pagination %}<div class="paginator">
        <div class="pages">{{ pagination }}</div>
-    </div>
+    </div>{% endif %}
 	<div class="forumblock">
 	  <div class="forumtitle">{{ forum.title }}</div>
 	  <div class="forumhead"><div class="forstatus"></div><div class="fornametemes">{{ getOrderLink(['title','Topics'|lang]) }}</div><div class="foranswerteme">{{ getOrderLink(['posts','Answers'|lang]) }}</div><div class="forviuwteme">{{ getOrderLink(['views','Pageviews'|lang]) }}</div><div class="forautorteme">{{ 'Author'|lang }}</div><div class="fornewposts">{{ getOrderLink(['last_post','Update'|lang]) }}</div></div>
@@ -63,9 +63,9 @@
 	  {% endif %}
 	</div>
 	 
-	<div class="paginator">
+	{% if pagination %}<div class="paginator">
        <div class="pages">{{ pagination }}</div>
-    </div>
+    </div>{% endif %}
 	<div style="clear:both;"></div>
 	
      <div class="material">
