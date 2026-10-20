@@ -967,6 +967,7 @@ Class LoadsModule extends Module {
 		// Delete attached file if an exists and we get flag from editor
 		if (!empty($_POST['delete_file']) || !empty($_FILES['attach_file']['name'])) {
 			if ($target->getDownload() && file_exists($this->attached_files_path . $target->getDownload())) {
+				atm_webp_delete($this->attached_files_path . $target->getDownload());
 				_unlink($this->attached_files_path . $target->getDownload());
 			}
 		}
@@ -1467,6 +1468,7 @@ Class LoadsModule extends Module {
 		// Перемещаем файл из временной директории сервера в директорию files
 		if (move_uploaded_file($file['tmp_name'], $this->attached_files_path . $path)) {
 			chmod( $this->attached_files_path . $path, 0644 );
+			atm_webp_after_upload($this->attached_files_path . $path);
             return $path;
 		}
 		

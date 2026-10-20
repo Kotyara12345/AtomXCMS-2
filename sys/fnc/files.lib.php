@@ -45,6 +45,7 @@ function deleteAttach($module, $entity_id, $attachNum) {
 			if (!empty($attach)) {
 				$filePath = ROOT . '/sys/files/' . $module . '/' . $attach->getFilename();
 				if (file_exists($filePath)) {
+					atm_webp_delete($filePath);
 					_unlink($filePath);
 				}
 				$attach->delete();
@@ -96,6 +97,9 @@ function downloadAttaches($module, $entity_id) {
 					}
 				}
 				chmod($files_dir . $filename, 0644);
+				if ($is_image == '1') {
+					atm_webp_after_upload($files_dir . $filename);
+				}
 				$attach_file_data = array(
 					'entity_id'     => $entity_id,
 					'user_id'       => $_SESSION['user']['id'],
@@ -156,6 +160,9 @@ function downloadAtomAttaches($module, $entity_id = '') {
 					}
 				}
 				chmod($files_dir . $filename, 0644);
+				if ($is_image == '1') {
+					atm_webp_after_upload($files_dir . $filename);
+				}
 				$attach_file_data = array(
 					'entity_id'     => $entity_id,
 					'user_id'       => $user['id'],

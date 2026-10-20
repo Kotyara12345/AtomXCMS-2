@@ -1,6 +1,6 @@
 <?php
 
-function resampleImage($path, $new_path, $sizew, $sizeh = false) 
+function resampleImage($path, $new_path, $sizew, $sizeh = false, $format = null)
 {
 	if (false == $sizeh) $sizeh = $sizew;
 	
@@ -66,6 +66,15 @@ function resampleImage($path, $new_path, $sizew, $sizeh = false)
 	if (isset($quality_jpeg)) $quality_jpeg = (intval($quality_jpeg) < 0 || intval($quality_jpeg) > 100) ? 75 : intval($quality_jpeg);
 	$quality_png = Config::read('quality_png');
 	if (isset($quality_png)) $quality_png = (intval($quality_png) < 0 || intval($quality_png) > 9) ? 9 : intval($quality_png);
+
+	if ($format === 'webp') {
+		if (!function_exists('imagewebp')) return false;
+		if ($itype === 1 || $itype === 3 || $itype === 'image/gif' || $itype === 'image/png') {
+			imagealphablending($dest, false);
+			imagesavealpha($dest, true);
+		}
+		return @imagewebp($dest, $new_path, $quality_jpeg);
+	}
 
 	switch ($itype) {
 		case 1:

@@ -344,6 +344,11 @@ class Module {
 		}
 
 		$this->_afterRender();
+
+		if (function_exists('atm_webp_rewrite_html')) {
+			$output = atm_webp_rewrite_html($output);
+		}
+
 		echo $output;
 
 		if (Config::read('debug_mode') == 1) {
@@ -882,6 +887,9 @@ class Module {
 		
 		header( 'Refresh: ' . $this->Register['Config']->read('redirect_delay') . '; url=http://' . get_server_host() . get_url($queryString));
 		$output = $this->render('infomessagegrand.html', array('data' => array('info_message' => $message, 'error_message' => null)));
+		if (function_exists('atm_webp_rewrite_html')) {
+			$output = atm_webp_rewrite_html($output);
+		}
 		echo $output;
 		die();
 	}
@@ -993,6 +1001,7 @@ class Module {
 		if ($attach) {
 			$filename = $attach->getFilename();
 			if (!empty($filename) && file_exists(ROOT . '/sys/files/' . $this->module . '/' . $filename)) {
+				atm_webp_delete(ROOT . '/sys/files/' . $this->module . '/' . $filename);
 				_unlink(ROOT . '/sys/files/' . $this->module . '/' . $filename);
 			}
 			$attach->delete();

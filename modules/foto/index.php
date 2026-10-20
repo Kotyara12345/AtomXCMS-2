@@ -791,6 +791,8 @@ Class FotoModule extends Module {
 			try {
 				$lost = $this->attached_files_path;
 				if ($entity->getFilename() && file_exists($this->attached_files_path . 'full/' . $entity->getFilename())) {
+					atm_webp_delete($lost . 'full/' . $entity->getFilename());
+					atm_webp_delete($lost . 'preview/' . $entity->getFilename());
 					_unlink($lost . 'full/' . $entity->getFilename());
 					_unlink($lost . 'preview/' . $entity->getFilename());
 				}
@@ -845,6 +847,8 @@ Class FotoModule extends Module {
 		
 		$lost = $this->attached_files_path;
 		if ($entity->getFilename() && file_exists($this->attached_files_path . 'full/' . $entity->getFilename())) {
+			atm_webp_delete($lost . 'full/' . $entity->getFilename());
+			atm_webp_delete($lost . 'preview/' . $entity->getFilename());
 			_unlink($lost . 'full/' . $entity->getFilename());
 			_unlink($lost . 'preview/' . $entity->getFilename());
 		}
@@ -1026,6 +1030,11 @@ Class FotoModule extends Module {
 			
 			$resample = resampleImage($save_path . $path, $save_sempl_path . $path, 150);
 			if ($resample) chmod($save_sempl_path . $path, 0644);
+
+			atm_webp_after_upload($save_path . $path);
+			if ($resample) {
+				atm_webp_after_upload($save_sempl_path . $path);
+			}
 			
             return $path;
         }

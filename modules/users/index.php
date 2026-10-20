@@ -380,6 +380,7 @@ Class UsersModule extends Module {
 		if (file_exists(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg')) {
 			if (copy(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg', ROOT . '/sys/avatars/' . $id . '.jpg')) {
 				chmod(ROOT . '/sys/avatars/' . $id . '.jpg', 0644 );
+				atm_webp_after_upload(ROOT . '/sys/avatars/' . $id . '.jpg');
 			}
 			unlink(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg');
 		}
@@ -831,12 +832,14 @@ Class UsersModule extends Module {
 		
 		// Если выставлен флажок "Удалить загруженный ранее файл"
 		if (isset( $_POST['unlink']) and is_file(ROOT . '/sys/avatars/' . $_SESSION['user']['id'] . '.jpg')) {
+			atm_webp_delete(ROOT . '/sys/avatars/' . $_SESSION['user']['id'] . '.jpg');
 			unlink(ROOT . '/sys/avatars/' . $_SESSION['user']['id'] . '.jpg');
 		}
 		/* copy and delete tmp image */
 		if (file_exists(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg')) {
 			if (copy(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg', ROOT . '/sys/avatars/' . $_SESSION['user']['id'] . '.jpg')) {
 				chmod( ROOT . '/sys/avatars/' . $_SESSION['user']['id'] . '.jpg', 0644 );
+				atm_webp_after_upload(ROOT . '/sys/avatars/' . $_SESSION['user']['id'] . '.jpg');
 			}
 			unlink(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg');
 		}
@@ -1171,11 +1174,13 @@ Class UsersModule extends Module {
 
 		// Если выставлен флажок "Удалить загруженный ранее файл"
 		if (isset($_POST['unlink']) and is_file(ROOT . '/sys/avatars/' . $id . '.jpg')) {
+			atm_webp_delete(ROOT . '/sys/avatars/' . $id . '.jpg');
 			unlink(ROOT . '/sys/avatars/' . $id . '.jpg');
 		}
 		if (file_exists(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg')) {
 			if (copy(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg', ROOT . '/sys/avatars/' . $id . '.jpg')) {
 				chmod(ROOT . '/sys/avatars/' . $id . '.jpg', 0644 );
+				atm_webp_after_upload(ROOT . '/sys/avatars/' . $id . '.jpg');
 			}
 			unlink(ROOT . '/sys/tmp/images/' . $tmp_key . '.jpg');
 		}

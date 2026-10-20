@@ -1,5 +1,13 @@
 <?php
 include_once 'sys/boot.php';
+
+// Serve a full-size uploaded image in WebP when the browser supports it.
+// Old browsers receive the original JPEG/PNG/GIF file.
+if (isset($_GET['src'])) {
+	atm_webp_serve($_GET['src']);
+	die();
+}
+
 $allowed_ext = array('.png', '.gif', '.jpg', '.jpeg');
 
 
@@ -32,20 +40,44 @@ if (!empty($params[0]) && !empty($params[1])) {
 	if ($sample_size < 50) $sample_size = 50;
 	
 
+	$dest_path = ROOT . '/sys/files/' . $params[0] . '/' . $params[1];
+	if (!is_file($dest_path)) die();
+
+
 	// New path
 	$tmpdir = ROOT . '/sys/tmp/img_cache/' . $sample_size . '/' . $params[0] . '/';
 	if (!file_exists($tmpdir)) mkdir($tmpdir, 0777, true);
-	
-	
-	
-	if (!file_exists($tmpdir . $params[1])) {
-		$dest_path = ROOT . '/sys/files/'.$params[0].'/'.$params[1];
-		resampleImage($dest_path, $tmpdir . $params[1], $sample_size);
+
+
+	$use_webp = atm_webp_enabled() && atm_webp_supported() && atm_webp_accepted();
+	$cache_file = $tmpdir . $params[1] . ($use_webp ? '.webp' : '');
+
+	if (!file_exists($cache_file)) {
+		$result = resampleImage($dest_path, $cache_file, $sample_size, false, $use_webp ? 'webp' : null);
+		if (!$result && is_file($cache_file)) @unlink($cache_file);
+
+		// If WebP encoding failed, fall back to the original format.
+		if (!$result && $use_webp) {
+			$use_webp = false;
+			$cache_file = $tmpdir . $params[1];
+			if (!file_exists($cache_file)) {
+				$result = resampleImage($dest_path, $cache_file, $sample_size);
+			}
+		}
+
+		if (!$result || !is_file($cache_file)) die();
 	}
-	
-	
-	header('Content-type: image/'.substr($ext, 1, 3));
-	echo file_get_contents($tmpdir . $params[1]);
+
+	$mime = atm_webp_mime($cache_file);
+	if ($mime === 'application/octet-stream') $mime = 'image/jpeg';
+
+	atm_webp_clean_cache_headers();
+	header('Content-Type: ' . $mime);
+	header('Content-Length: ' . filesize($cache_file));
+	header('Cache-Control: public, max-age=86400');
+	header('Vary: Accept');
+	header('X-Content-Type-Options: nosniff');
+	readfile($cache_file);
 }
 
 die();

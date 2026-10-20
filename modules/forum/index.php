@@ -1816,6 +1816,9 @@ Class ForumModule extends Module {
 				// Перемещаем файл из временной директории сервера в директорию files
 				if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], ROOT . '/sys/files/forum/' . $file)) {
 					chmod(ROOT . '/sys/files/forum/' . $file, 0644);
+					if ($is_image) {
+						atm_webp_after_upload(ROOT . '/sys/files/forum/' . $file);
+					}
 					$attach_file_data = array(
 						'post_id'       => $post_id,
 						'theme_id'      => $id_theme,
@@ -2130,6 +2133,7 @@ Class ForumModule extends Module {
 				if (count($attach_files) && is_array($attach_files)) {
 					foreach ($attach_files as $attach_file) {
 						if (file_exists(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
+							atm_webp_delete(ROOT . '/sys/files/forum/' . $attach_file->getFilename());
 							if (@unlink(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
 								$attach_file->delete();
 							}
@@ -2151,6 +2155,7 @@ Class ForumModule extends Module {
 		if ($attach_files) {
 			foreach ($attach_files as $attach_file) {
 				if (file_exists(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
+					atm_webp_delete(ROOT . '/sys/files/forum/' . $attach_file->getFilename());
 					if (@unlink(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
 						$attach_file->delete();
 					}
@@ -2478,6 +2483,9 @@ Class ForumModule extends Module {
 					// Перемещаем файл из временной директории сервера в директорию files
 					if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], ROOT . '/sys/files/forum/' . $file)) {
 						@chmod(ROOT . '/sys/files/forum/' . $file, 0644);
+						if ($is_image) {
+							atm_webp_after_upload(ROOT . '/sys/files/forum/' . $file);
+						}
 						$attach_file_data = array(
 							'post_id'       => $post_id,
 							'theme_id'      => $id_theme,
@@ -2719,6 +2727,7 @@ Class ForumModule extends Module {
 
 				
 				if (!empty($unlink_file) && file_exists(ROOT . '/sys/files/forum/' . $unlink_file[0]->getFilename())) {
+					atm_webp_delete(ROOT . '/sys/files/forum/' . $unlink_file[0]->getFilename());
 					if(unlink(ROOT . '/sys/files/forum/' . $unlink_file[0]->getFilename())) {	
 						$unlink_file->delete(); 
 					}
@@ -2747,6 +2756,9 @@ Class ForumModule extends Module {
 				// Перемещаем файл из временной директории сервера в директорию files
 				if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], ROOT . '/sys/files/forum/' . $file)) {
 					chmod(ROOT . '/sys/files/forum/' . $file, 0644);
+					if ($is_image) {
+						atm_webp_after_upload(ROOT . '/sys/files/forum/' . $file);
+					}
 					$attach_file_data = array(
 						'post_id'       => $id,
 						'theme_id'      => $id_theme,
@@ -2848,6 +2860,7 @@ Class ForumModule extends Module {
 				if (count($attach_files) > 0) {
 					foreach ($attach_files as $attach_file) {
 						if (file_exists(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
+							atm_webp_delete(ROOT . '/sys/files/forum/' . $attach_file->getFilename());
 							if (@unlink(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
 								$attach_file->delete();
 							}
@@ -3201,6 +3214,7 @@ Class ForumModule extends Module {
 				if (count($attach_files) && is_array($attach_files)) {
 					foreach ($attach_files as $attach_file) {
 						if (file_exists(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
+							atm_webp_delete(ROOT . '/sys/files/forum/' . $attach_file->getFilename());
 							if (@unlink(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
 								$attach_file->delete();
 							}
@@ -3223,6 +3237,7 @@ Class ForumModule extends Module {
 		if (count($attach_files) && is_array($attach_files)) {
 			foreach ($attach_files as $attach_file) {
 				if (file_exists(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
+					atm_webp_delete(ROOT . '/sys/files/forum/' . $attach_file->getFilename());
 					if (@unlink(ROOT . '/sys/files/forum/' . $attach_file->getFilename())) {
 						$attach_file->delete();
 					}

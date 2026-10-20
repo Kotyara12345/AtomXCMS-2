@@ -28,11 +28,19 @@ if ($_FILES['file']['type'] == 'image/png'
 || $_FILES['file']['type'] == 'image/pjpeg')
 {	
 	// setting file's mysterious name
-	$filename = md5(date('YmdHis')).'.jpg';
+	$ext = '.jpg';
+	$info = @getimagesize($_FILES['file']['tmp_name']);
+	if ($info && $info[2] === IMAGETYPE_PNG) {
+		$ext = '.png';
+	} else if ($info && $info[2] === IMAGETYPE_GIF) {
+		$ext = '.gif';
+	}
+	$filename = md5(uniqid('', true)) . $ext;
 	$file = $dir.$filename;
 	 
 	// copying
 	copy($_FILES['file']['tmp_name'], $file);
+	atm_webp_after_upload($file);
 	 
 	// displaying file
 	$array = array(

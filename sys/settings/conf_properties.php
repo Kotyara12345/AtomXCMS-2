@@ -115,6 +115,15 @@ $settingsInfo = array(
 			'description' => __('Auto scaled images'),
 		),
 		
+		'webp_enabled' => array(
+			'type' => 'checkbox',
+			'title' => __('Convert uploaded images to WebP'),
+			'description' => __('Creates a WebP copy of every uploaded image and serves it to browsers that support WebP. Other browsers receive the original JPEG, PNG or GIF file.')
+				. (!function_exists('imagewebp') ? ' <b class="red">' . __('GD WebP support is not available on this server.') . '</b>' : ''),
+			'checked' => '1',
+			'value' => '1',
+		),
+
 		'min_password_lenght' => array(
 			'type' => 'text',
 			'title' => __('Minimum user password length'),

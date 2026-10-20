@@ -85,6 +85,10 @@ panel keeps them after regenerating the configuration.
   directive in Nginx, `Protocols h2 http/1.1` in Apache), and HTTP/3
   requires a server or CDN with QUIC support - configure this in the
   hosting control panel.
+* Uploaded images can be converted to WebP (System settings → "Convert
+  uploaded images to WebP"). The original JPEG/PNG/GIF file is kept and
+  served automatically to browsers without WebP support; animated GIFs
+  are left untouched.
 
 #### Contributing
 
@@ -197,6 +201,10 @@ location / {
   `h2` по TLS (параметр `http2` у директивы `listen` в Nginx,
   `Protocols h2 http/1.1` в Apache), а для HTTP/3 нужен сервер или CDN
   с поддержкой QUIC — это настраивается в панели хостинга.
+* Загружаемые изображения можно конвертировать в WebP (Системные
+  настройки → «Конвертировать загружаемые изображения в WebP»).
+  Исходный файл JPEG/PNG/GIF сохраняется и автоматически отдаётся
+  браузерам без поддержки WebP; анимированные GIF не трогаются.
 
 #### Участие в проекте
 
