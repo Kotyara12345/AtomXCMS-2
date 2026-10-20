@@ -27,6 +27,7 @@ include_once '../sys/boot.php';
 include_once ROOT . '/admin/inc/adm_boot.php';
 
 
+atm_admin_remember_forget();
 if (isset($_SESSION['adm_panel_authorize'])) unset($_SESSION['adm_panel_authorize']);
 redirect('/');
 

@@ -873,6 +873,9 @@ Class UsersModule extends Module {
         $user->setSummer_time($summer_time);
         $user->save();
 
+		// the old "remember me" browsers must not sign in with the old password
+		if (!empty($changePassword)) atm_admin_remember_purge($user->getId());
+
 		// Additional fields saving
 		if (is_object($this->AddFields)) {
 			$this->AddFields->save($_SESSION['user']['id'], $_addFields);
@@ -1205,6 +1208,9 @@ Class UsersModule extends Module {
         $user->setSignature($signature);
         $user->save();
 
+
+		// the old "remember me" browsers must not sign in with the old password
+		if (!empty($changePassword)) atm_admin_remember_purge($user->getId());
 
 		// Additional fields saving
 		if (is_object($this->AddFields)) {

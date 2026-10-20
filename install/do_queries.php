@@ -265,6 +265,18 @@ $array[] = "CREATE TABLE `{$set['db']['prefix']}categories_bind` (
   INDEX (`module`, `category_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci";
 #####################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_remember`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_remember` (
+  `id` int(11) NOT NULL auto_increment,
+  `user_id` int(11) NOT NULL,
+  `token_hash` char(64) NOT NULL,
+  `expires` int(11) NOT NULL,
+  `created` int(11) NOT NULL,
+  PRIMARY KEY  (`id`),
+  UNIQUE KEY `token_hash` (`token_hash`),
+  KEY `user_id` (`user_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci";
+#####################################################################
 $array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}posts`";
 $array[] = "CREATE TABLE `{$set['db']['prefix']}posts` (
   `id` int(11) NOT NULL auto_increment,

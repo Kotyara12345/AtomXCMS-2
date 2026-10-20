@@ -71,6 +71,22 @@ if (ADM_REFER_PROTECTED == 1) {
 
 
 /*
+ * "Remember me": if the regular admin session has expired, try to
+ * restore it from the long-lived cookie.
+ */
+if ((!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize'] < time() || empty($_SESSION['user']))
+	&& !empty($_COOKIE['atm_admin_remember'])) {
+	$rememberedUser = atm_admin_remember_login();
+	if (!empty($rememberedUser)) {
+		// Protect against session fixation
+		session_regenerate_id(true);
+		$_SESSION['user'] = $rememberedUser;
+		$_SESSION['adm_panel_authorize'] = (time() + Config::read('session_time', 'secure'));
+	}
+}
+
+
+/*
  * The authorization block. The `adm_panel_authorize` session key keeps
  * the time when the current admin session expires; it is refreshed on
  * every request of the panel.
@@ -111,6 +127,14 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 				session_regenerate_id(true);
 				$_SESSION['user'] = $user[0];
 				$_SESSION['adm_panel_authorize'] = (time() + Config::read('session_time', 'secure'));
+
+				// "Remember me": keep the browser signed in after the session expires
+				if (!empty($_POST['remember'])) {
+					atm_admin_remember_create($user[0]['id']);
+				} else {
+					atm_admin_remember_forget();
+				}
+
 				redirect('/admin/');
 			}
 		}
@@ -135,7 +159,7 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 	<title>AtomX — Авторизация</title>
 	<meta name="description" content="" />
 	<meta name="keywords" content="" />
-	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css" />
+	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css?v=<?php echo filemtime(ROOT . '/admin/template/css/style.css'); ?>" />
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
 </head>
 <body>
@@ -158,7 +182,7 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 		<div class="shadow-mask"></div>
 		<div class="form">
 			<div class="title">Авторизация</div>
-			<form method="POST" action="" >
+			<form method="POST" action="<?php echo WWW_ROOT ?>/admin/index.php" id="admin-login-form" name="admin-login-form" autocomplete="on">
 				<div class="items">
 					<?php 
 					if (!empty($errors)) {
@@ -167,10 +191,11 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 					}
 					?>
 					<input type="hidden" name="csrf_token" value="<?php echo atm_admin_csrf_token(); ?>" />
-					<div class="item"><span>Логин</span><input name="login" type="text" autocomplete="username" /></div>
-					<div class="item"><span>Пароль</span><input name="passwd" type="password" autocomplete="current-password" /></div>
+					<div class="item"><span>Логин</span><input id="admin-login" name="login" type="text" value="<?php echo h(isset($_POST['login']) ? $_POST['login'] : ''); ?>" autocomplete="username" autocapitalize="none" spellcheck="false" required /></div>
+					<div class="item"><span>Пароль</span><input id="admin-passwd" name="passwd" type="password" autocomplete="current-password" required /></div>
 				</div>
-				<div class="submit"><input type="submit" name="send" value="" /></div>
+				<div class="remember"><input type="checkbox" name="remember" id="admin-remember" value="1"<?php echo !empty($_POST['remember']) ? ' checked="checked"' : ''; ?> /><label for="admin-remember">Запомнить меня</label></div>
+				<div class="submit"><input type="submit" name="send" value="Войти" /></div>
 			</form>
 		</div>
 	</div>

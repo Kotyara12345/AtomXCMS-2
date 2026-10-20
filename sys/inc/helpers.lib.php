@@ -706,6 +706,248 @@ function atm_use_multicategories($module) {
 
 
 /**
+* Create the table with the admin panel "remember me" tokens on demand.
+* Fresh installations get the table from the installer; installations
+* updated from an older version get it created here (at most one check
+* per request).
+*/
+function atm_ensure_admin_remember_table() {
+	static $checked = false;
+	if ($checked) return;
+	$checked = true;
+
+	$Register = Register::getInstance();
+	if (empty($Register['DB'])) return;
+
+	$db = $Register['DB'];
+	$table = $db->getFullTableName('admin_remember');
+	try {
+		$exists = $db->query("SHOW TABLES LIKE '" . $db->escape($table) . "'");
+		if (!empty($exists)) return;
+
+		$db->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+  `id` int(11) NOT NULL auto_increment,
+  `user_id` int(11) NOT NULL,
+  `token_hash` char(64) NOT NULL,
+  `expires` int(11) NOT NULL,
+  `created` int(11) NOT NULL,
+  PRIMARY KEY  (`id`),
+  UNIQUE KEY `token_hash` (`token_hash`),
+  KEY `user_id` (`user_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+	} catch (Exception $e) {
+		// the database user may lack the CREATE privilege; the admin
+		// panel keeps working without the "remember me" option
+	}
+}
+
+
+/**
+* How many days the admin "remember me" cookie lives. The value is
+* taken from the common "cookie_time" setting.
+*
+* @return int
+*/
+function atm_admin_remember_days() {
+	$Register = Register::getInstance();
+	$days = (int)$Register['Config']->read('cookie_time');
+	if ($days < 1 || $days > 365) $days = 30;
+	return $days;
+}
+
+
+/**
+* Cookie options for the admin "remember me" token.
+*
+* @param int $expires
+* @return array
+*/
+function atm_admin_remember_cookie_options($expires) {
+	$secure = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
+		|| (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+		|| (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])
+			&& strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
+
+	return array(
+		'expires' => (int)$expires,
+		'path' => '/',
+		'secure' => $secure,
+		'httponly' => true,
+		'samesite' => 'Lax',
+	);
+}
+
+
+/**
+* Send the "remember me" token to the browser.
+*
+* @param string $token
+* @param int $expires
+*/
+function atm_admin_remember_set_cookie($token, $expires) {
+	setcookie('atm_admin_remember', $token, atm_admin_remember_cookie_options($expires));
+	$_COOKIE['atm_admin_remember'] = $token;
+}
+
+
+/**
+* Remove the "remember me" cookie from the browser.
+*/
+function atm_admin_remember_clear_cookie() {
+	setcookie('atm_admin_remember', '', atm_admin_remember_cookie_options(time() - 3600));
+	unset($_COOKIE['atm_admin_remember']);
+}
+
+
+/**
+* Remember the browser of the user: create a new long-lived token.
+*
+* @param int $userId
+* @return bool
+*/
+function atm_admin_remember_create($userId) {
+	$userId = (int)$userId;
+	if ($userId < 1) return false;
+
+	atm_ensure_admin_remember_table();
+
+	$Register = Register::getInstance();
+	if (empty($Register['DB'])) return false;
+	$db = $Register['DB'];
+	$table = $db->getFullTableName('admin_remember');
+	$token = bin2hex(random_bytes(32));
+	$expires = time() + atm_admin_remember_days() * 86400;
+
+	try {
+		// drop the tokens that are already expired
+		$db->query("DELETE FROM `{$table}` WHERE `expires` < " . time());
+		$db->query("INSERT INTO `{$table}` SET
+			`user_id` = " . $userId . ",
+			`token_hash` = '" . $db->escape(hash('sha256', $token)) . "',
+			`expires` = " . $expires . ",
+			`created` = " . time());
+	} catch (Exception $e) {
+		return false;
+	}
+
+	atm_admin_remember_set_cookie($token, $expires);
+	return true;
+}
+
+
+/**
+* Try to restore the admin session from the "remember me" cookie.
+*
+* @return array|null user row on success
+*/
+function atm_admin_remember_login() {
+	if (empty($_COOKIE['atm_admin_remember'])) return null;
+
+	$token = (string)$_COOKIE['atm_admin_remember'];
+	if (!preg_match('/^[a-f0-9]{64}$/i', $token)) {
+		atm_admin_remember_clear_cookie();
+		return null;
+	}
+
+	atm_ensure_admin_remember_table();
+
+	$Register = Register::getInstance();
+	if (empty($Register['DB'])) return null;
+	$db = $Register['DB'];
+	$table = $db->getFullTableName('admin_remember');
+
+	try {
+		$rows = $db->query("SELECT * FROM `{$table}` WHERE `token_hash` = '"
+			. $db->escape(hash('sha256', $token)) . "' LIMIT 1");
+	} catch (Exception $e) {
+		return null;
+	}
+
+	if (empty($rows)) {
+		atm_admin_remember_clear_cookie();
+		return null;
+	}
+
+	$row = $rows[0];
+	if ((int)$row['expires'] < time()) {
+		try { $db->query("DELETE FROM `{$table}` WHERE `id` = " . (int)$row['id']); } catch (Exception $e) {}
+		atm_admin_remember_clear_cookie();
+		return null;
+	}
+
+	$user = $db->select('users', DB_FIRST, array('cond' => array('id' => (int)$row['user_id'])));
+	if (empty($user)) {
+		try { $db->query("DELETE FROM `{$table}` WHERE `id` = " . (int)$row['id']); } catch (Exception $e) {}
+		atm_admin_remember_clear_cookie();
+		return null;
+	}
+
+	// the user must still have access to the admin panel
+	if (empty($Register['ACL'])
+		|| !$Register['ACL']->turn(array('panel', 'entry'), false, $user[0]['status'], (int)$user[0]['id'])) {
+		try { $db->query("DELETE FROM `{$table}` WHERE `id` = " . (int)$row['id']); } catch (Exception $e) {}
+		atm_admin_remember_clear_cookie();
+		return null;
+	}
+
+	// sliding expiration: an active administrator stays logged in
+	$expires = time() + atm_admin_remember_days() * 86400;
+	try {
+		$db->query("UPDATE `{$table}` SET `expires` = " . $expires . " WHERE `id` = " . (int)$row['id']);
+	} catch (Exception $e) {}
+	atm_admin_remember_set_cookie($token, $expires);
+
+	return $user[0];
+}
+
+
+/**
+* Forget the current "remember me" token (logout or login without the
+* "remember me" option).
+*/
+function atm_admin_remember_forget() {
+	if (!empty($_COOKIE['atm_admin_remember'])) {
+		$token = (string)$_COOKIE['atm_admin_remember'];
+		if (preg_match('/^[a-f0-9]{64}$/i', $token)) {
+			atm_ensure_admin_remember_table();
+			$Register = Register::getInstance();
+			if (!empty($Register['DB'])) {
+				$db = $Register['DB'];
+				$table = $db->getFullTableName('admin_remember');
+				try {
+					$db->query("DELETE FROM `{$table}` WHERE `token_hash` = '"
+						. $db->escape(hash('sha256', $token)) . "'");
+				} catch (Exception $e) {}
+			}
+		}
+	}
+	atm_admin_remember_clear_cookie();
+}
+
+
+/**
+* Drop all "remember me" tokens of the user. Used when the password
+* is changed, so the old browsers cannot sign in anymore.
+*
+* @param int $userId
+*/
+function atm_admin_remember_purge($userId) {
+	$userId = (int)$userId;
+	if ($userId < 1) return;
+
+	atm_ensure_admin_remember_table();
+
+	$Register = Register::getInstance();
+	if (empty($Register['DB'])) return;
+	$db = $Register['DB'];
+	$table = $db->getFullTableName('admin_remember');
+	try {
+		$db->query("DELETE FROM `{$table}` WHERE `user_id` = " . $userId);
+	} catch (Exception $e) {}
+}
+
+
+/**
 * @return timestamp on microseconds
 */
 function getMicroTime($base_time = false) {

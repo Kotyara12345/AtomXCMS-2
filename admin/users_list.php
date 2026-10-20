@@ -488,6 +488,9 @@ function saveAnk() {
 	if (!empty($passw)) $data['passw'] = atm_password_hash($passw);
 	if (isset($_POST['activation'])) $data['activation'] = '';
 	$FpsDB->save('users', $data);
-			
+
+	// the old "remember me" browsers must not sign in with the old password
+	if (!empty($passw)) atm_admin_remember_purge($_GET['id']);
+
 	redirect('/admin/users_list.php?ac=ank&id=' . $_GET['id']);
 }
