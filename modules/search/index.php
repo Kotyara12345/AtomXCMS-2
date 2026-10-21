@@ -45,6 +45,11 @@ class SearchModule extends Module {
 	/**
 	 * @var array
 	 */
+	private $searchTerms = array();
+
+	/**
+	 * @var array
+	 */
 	public $tables = array('posts', 'forums', 'forum_cat', 'themes', 'stat', 'news', 'loads');
 
 	/**
@@ -97,7 +102,7 @@ class SearchModule extends Module {
 
 
 			if ($this->cached) {
-				$this->cacheKey .= '_' . md5($str);
+				$this->cacheKey .= '_' . md5($str . '|keyboard-layout-v3');
 				if ($this->Cache->check($this->cacheKey)) {
 					$html = $this->Cache->read($this->cacheKey);
 					return $this->_view($html);
@@ -119,17 +124,8 @@ class SearchModule extends Module {
 			
 			if (count($results) && is_array($results)) {
 				foreach ($results as $result) {
-					if (preg_match('#(.{0,100}' . $str . '.{0,100})#miu', $result->getIndex(), $match)) {
-						$announce = $match[1];
-					} else {
-						$announce = mb_substr($result->getIndex(), 0, 150);
-					}
+					$announce = $this->__highlightAnnounce($result->getIndex(), $str);
 					$title = h($result->getEntity_title());
-
-
-
-
-					$announce = preg_replace('#(' . preg_quote($str, '#') . ')#iu', '<strong>$1</strong>', h($announce));
 					$entry_url = get_url('/' . $result->getModule() . $result->getEntity_view() . $result->getEntity_id());
 					$result->setEntry_url($entry_url);
 					$result->setTitle($title);
@@ -168,7 +164,7 @@ class SearchModule extends Module {
 			$this->setCacheTag(array(
 				'search_str_' . $str,
 			));
-			$this->cacheKey .= '_' . md5($str);
+			$this->cacheKey .= '_' . md5($str . '|keyboard-layout-v3');
 			$this->Cache->write($source, $this->cacheKey, $this->cacheTags);
 		}
 
@@ -251,20 +247,28 @@ class SearchModule extends Module {
 	 * Send request and return search results
 	 */
 	private function __search($str, $modules) {
-		$words = explode(' ', $str);
-		$_words = array();
-		
-		foreach ($words as $key => $word) {
-			$word = $this->__filterText($word);
-			if (mb_strlen($word) < $this->minInputStr)
-				continue;
-			$_words[] = $word;
+		$this->searchTerms = array();
+		$str = htmlspecialchars_decode((string) $str, ENT_QUOTES);
+		$words = preg_split('#\s+#u', trim($str), -1, PREG_SPLIT_NO_EMPTY);
+		if (!$words) {
+			$words = array();
 		}
-		
-		if (count($_words) < 1) {
+
+		$terms = array();
+		foreach ($words as $word) {
+			foreach ($this->__searchWordVariants($word) as $variant) {
+				$key = mb_strtolower($variant, 'UTF-8');
+				if (!isset($terms[$key])) {
+					$terms[$key] = $variant;
+				}
+			}
+		}
+		$this->searchTerms = array_values($terms);
+
+		if (count($this->searchTerms) < 1) {
 			return array();
 		}
-		$string = resc(implode('* ', $_words) . '*');
+		$string = resc(implode('* ', $this->searchTerms) . '*');
 		
 		//query
 		$limit = intval($this->Register['Config']->read('per_page', $this->module));
@@ -274,6 +278,135 @@ class SearchModule extends Module {
 		$results = $this->Model->getSearchResults($string, $limit, $modules);
 		
 		return $results;
+	}
+
+	/**
+	 * Build search variants for both keyboard layouts.
+	 *
+	 * If a word was typed on the wrong layout, searching only the original
+	 * string finds nothing. The original word and both layout conversions are
+	 * searched, so the same query works for Russian and English content.
+	 *
+	 * @param string $word
+	 * @return array
+	 */
+	private function __searchWordVariants($word) {
+		$variants = array(
+			$word,
+			strtr($word, $this->__keyboardMap('latin')),
+			strtr($word, $this->__keyboardMap('cyrillic')),
+		);
+
+		// Also try the word without edge punctuation before converting it.
+		// This covers a layout word wrapped in quotes or followed by an ordinary
+		// comma or period, while the variants above still keep punctuation keys
+		// that are letters.
+		$withoutEdgePunctuation = preg_replace('#^[^\p{L}]+|[^\p{L}]+$#u', '', $word);
+		if ($withoutEdgePunctuation !== null
+				&& $withoutEdgePunctuation !== ''
+				&& $withoutEdgePunctuation !== $word) {
+			$variants[] = strtr($withoutEdgePunctuation, $this->__keyboardMap('latin'));
+			$variants[] = strtr($withoutEdgePunctuation, $this->__keyboardMap('cyrillic'));
+		}
+
+		$result = array();
+
+		foreach ($variants as $variant) {
+			$variant = $this->__filterText($variant);
+			if ($variant === false || mb_strlen($variant) < $this->minInputStr) {
+				continue;
+			}
+			$key = mb_strtolower($variant, 'UTF-8');
+			if (!isset($result[$key])) {
+				$result[$key] = $variant;
+			}
+		}
+
+		return array_values($result);
+	}
+
+	/**
+	 * Return a character map for the standard Russian keyboard layout.
+	 *
+	 * @param string $direction latin (English -> Russian) or cyrillic (Russian -> English)
+	 * @return array
+	 */
+	private function __keyboardMap($direction) {
+		static $latinToCyrillic = null;
+		static $cyrillicToLatin = null;
+
+		if ($latinToCyrillic === null) {
+			$latinToCyrillic = array(
+				'q' => 'й', 'w' => 'ц', 'e' => 'у', 'r' => 'к', 't' => 'е',
+				'y' => 'н', 'u' => 'г', 'i' => 'ш', 'o' => 'щ', 'p' => 'з',
+				'[' => 'х', ']' => 'ъ', 'a' => 'ф', 's' => 'ы', 'd' => 'в',
+				'f' => 'а', 'g' => 'п', 'h' => 'р', 'j' => 'о', 'k' => 'л',
+				'l' => 'д', ';' => 'ж', "'" => 'э', 'z' => 'я', 'x' => 'ч',
+				'c' => 'с', 'v' => 'м', 'b' => 'и', 'n' => 'т', 'm' => 'ь',
+				',' => 'б', '.' => 'ю', '`' => 'ё',
+				'Q' => 'Й', 'W' => 'Ц', 'E' => 'У', 'R' => 'К', 'T' => 'Е',
+				'Y' => 'Н', 'U' => 'Г', 'I' => 'Ш', 'O' => 'Щ', 'P' => 'З',
+				'{' => 'Х', '}' => 'Ъ', 'A' => 'Ф', 'S' => 'Ы', 'D' => 'В',
+				'F' => 'А', 'G' => 'П', 'H' => 'Р', 'J' => 'О', 'K' => 'Л',
+				'L' => 'Д', ':' => 'Ж', '"' => 'Э', 'Z' => 'Я', 'X' => 'Ч',
+				'C' => 'С', 'V' => 'М', 'B' => 'И', 'N' => 'Т', 'M' => 'Ь',
+				'<' => 'Б', '>' => 'Ю', '~' => 'Ё',
+			);
+			$cyrillicToLatin = array_flip($latinToCyrillic);
+		}
+
+		if ($direction === 'latin') {
+			return $latinToCyrillic;
+		}
+		if ($direction === 'cyrillic') {
+			return $cyrillicToLatin;
+		}
+
+		return array();
+	}
+
+	/**
+	 * Build an announce snippet for a result and highlight the matched term.
+	 *
+	 * @param string $text
+	 * @param string $fallback
+	 * @return string
+	 */
+	private function __highlightAnnounce($text, $fallback) {
+		$pattern = $this->__searchPattern();
+		if ($pattern === '') {
+			$pattern = preg_quote((string) $fallback, '#');
+		}
+		if ($pattern === '') {
+			return h($text);
+		}
+
+		if (preg_match('#(.{0,100}(?:' . $pattern . ').{0,100})#miu', $text, $match)) {
+			$announce = $match[1];
+		} else {
+			$announce = mb_substr($text, 0, 150);
+		}
+
+		return preg_replace('#(' . $pattern . ')#iu', '<strong>$1</strong>', h($announce));
+	}
+
+	/**
+	 * Build a regular expression pattern from all query variants.
+	 *
+	 * @return string
+	 */
+	private function __searchPattern() {
+		$patterns = array();
+		foreach ($this->searchTerms as $term) {
+			$term = (string) $term;
+			if ($term !== '') {
+				$patterns[] = preg_quote($term, '#');
+			}
+		}
+		usort($patterns, function ($a, $b) {
+			return mb_strlen($b, 'UTF-8') - mb_strlen($a, 'UTF-8');
+		});
+		return implode('|', $patterns);
 	}
 
 	/**
@@ -416,12 +549,16 @@ class SearchModule extends Module {
 	 * Cut HTML and BB tags. Also another chars
 	 */
 	private function __filterText($str) {
-		$str = preg_replace('#<[^>]*>|\[[^\]]*\]|[,\.=\'"\|\{\}/\\_\+\?\#<>:;\)\(`\-0-9]#iu', '', $str);
-		//$str = preg_replace('#(^| )[^ ]{1,2}( |$)#iu', ' ', $str);
-		//$str_to_array = explode(' ', mb_strtolower($str));
-		//$str_to_array = array_unique($str_to_array);
-		//$str = implode(' ', $str_to_array);
-		return (!empty($str)) ? $str : false;
+		$str = preg_replace('#<[^>]*>|\[[^\]]*\]#u', '', $str);
+		if ($str === null) {
+			return false;
+		}
+		$str = preg_replace('#[^\p{L}\s]+#u', '', $str);
+		if ($str === null) {
+			return false;
+		}
+		$str = trim($str);
+		return ($str !== '') ? $str : false;
 	}
 
 }
