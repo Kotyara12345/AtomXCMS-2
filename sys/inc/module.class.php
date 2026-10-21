@@ -388,6 +388,7 @@ class Module {
             'meta_title' => $this->getCompleteMetaTag($this->page_title),
             'meta_description' => $this->getCompleteMetaTag($this->page_meta_description),
             'meta_keywords' => $this->getCompleteMetaTag($this->page_meta_keywords),
+            'robots' => h($this->getRobotsMeta()),
             'canonical' => h($this->getCanonicalUrl()),
             'module_title' => $this->module_title,
             'categories' => $this->categories,
@@ -1106,26 +1107,9 @@ class Module {
      */
     protected function getCanonicalUrl()
     {
-        $Register = Register::getInstance();
-
-        // Some modules keep the current page only in a local variable and
-        // do not write it to the registry. Fall back to the request and
-        // clamp the value to the page count reported by pagination().
-        $page = 1;
-        if (!empty($Register['page'])) {
-            $page = max(1, intval($Register['page']));
-        } else {
-            if (isset($_GET['page'])) {
-                $page = max(1, intval($_GET['page']));
-            }
-            if (isset($Register['pagescnt'])) {
-                $page = min($page, max(1, intval($Register['pagescnt'])));
-            }
-        }
-
-        $hasPageParam = isset($_GET['page']) && $_GET['page'] !== '';
+        $page = $this->getCurrentPageNumber();
         $isSearch = ($this->module === 'search');
-        $isPagination = !$isSearch && ($hasPageParam || $page > 1);
+        $isPagination = $this->isPaginationPage($page);
 
         if ($isSearch) {
             $mode = Config::read('canonical_search');
@@ -1166,6 +1150,80 @@ class Module {
         }
 
         return $url;
+    }
+
+
+    /**
+     * Current pagination page.
+     *
+     * Some modules keep the current page only in a local variable and do
+     * not write it to the registry. Fall back to the request and clamp the
+     * value to the page count reported by pagination().
+     *
+     * @return int
+     */
+    protected function getCurrentPageNumber()
+    {
+        $Register = Register::getInstance();
+        $page = 1;
+
+        if (!empty($Register['page'])) {
+            $page = max(1, intval($Register['page']));
+        } else {
+            if (isset($_GET['page'])) {
+                $page = max(1, intval($_GET['page']));
+            }
+            if (isset($Register['pagescnt'])) {
+                $page = min($page, max(1, intval($Register['pagescnt'])));
+            }
+        }
+
+        return $page;
+    }
+
+
+    /**
+     * Whether the current request is a pagination page.
+     *
+     * @param int|null $page
+     * @return bool
+     */
+    protected function isPaginationPage($page = null)
+    {
+        if ($this->module === 'search') {
+            return false;
+        }
+
+        if ($page === null) {
+            $page = $this->getCurrentPageNumber();
+        }
+
+        return (isset($_GET['page']) && $_GET['page'] !== '') || $page > 1;
+    }
+
+
+    /**
+     * Robots meta tag for search and pagination pages.
+     *
+     * @return string
+     */
+    protected function getRobotsMeta()
+    {
+        $setting = null;
+        if ($this->module === 'search') {
+            $setting = Config::read('robots_search');
+        } elseif ($this->isPaginationPage()) {
+            $setting = Config::read('robots_pagination');
+        }
+
+        $allowed = array(
+            'index, follow',
+            'noindex, follow',
+            'index, nofollow',
+            'noindex, nofollow',
+        );
+
+        return in_array($setting, $allowed, true) ? $setting : 'index, follow';
     }
 
 

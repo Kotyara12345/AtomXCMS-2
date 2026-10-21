@@ -93,6 +93,9 @@ panel keeps them after regenerating the configuration.
   pages, pagination pages and search pages. Pagination can point to the
   first page or to the current page; search results can use a query-free
   canonical URL or no canonical tag at all.
+* The robots meta tag for search result and pagination pages can be set
+  to `index, follow`, `noindex, follow`, `index, nofollow` or
+  `noindex, nofollow` in SEO settings.
 
 #### Contributing
 
@@ -213,6 +216,9 @@ location / {
   страниц пагинации и страниц поиска. Для пагинации можно указать
   первую страницу или текущую; для поиска — URL без запроса или
   отключить вывод canonical.
+* Мета-тег robots для страниц результатов поиска и пагинации можно
+  выбрать в разделе SEO: `index, follow`, `noindex, follow`,
+  `index, nofollow` или `noindex, nofollow`.
 
 #### Участие в проекте
 

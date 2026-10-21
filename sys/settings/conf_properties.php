@@ -59,6 +59,32 @@ $settingsInfo = array(
 			),
 			'default' => 'base',
 		),
+
+		__('Robots meta'),
+		'robots_search' => array(
+			'type' => 'select',
+			'title' => __('Search result pages'),
+			'description' => __('Robots meta tag for search result pages.'),
+			'options' => array(
+				'index, follow' => 'index, follow',
+				'noindex, follow' => 'noindex, follow',
+				'index, nofollow' => 'index, nofollow',
+				'noindex, nofollow' => 'noindex, nofollow',
+			),
+			'default' => 'index, follow',
+		),
+		'robots_pagination' => array(
+			'type' => 'select',
+			'title' => __('Pagination pages'),
+			'description' => __('Robots meta tag for pagination pages.'),
+			'options' => array(
+				'index, follow' => 'index, follow',
+				'noindex, follow' => 'noindex, follow',
+				'index, nofollow' => 'index, nofollow',
+				'noindex, nofollow' => 'noindex, nofollow',
+			),
+			'default' => 'index, follow',
+		),
 	),
 	
 	/* SITEMAP */
