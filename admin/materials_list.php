@@ -30,18 +30,26 @@ $Register = Register::getInstance();
 
 
 $allowed_mods = $Register['ModManager']->getAllowedModules('materialsList');
-$allowed_actions = array('edit', 'delete', 'index', 'premoder');
+$allowed_actions = array('edit', 'delete', 'index', 'premoder', 'add');
 
 
 if (empty($_GET['m']) || !in_array($_GET['m'], $allowed_mods)) redirect('/admin/');
 $module = $_GET['m'];
 
 $action = (!empty($_GET['ac'])) ? $_GET['ac'] : 'index';
-if (empty($action) && !in_array($action, $allowed_actions)) $action = 'index';
+if (!in_array($action, $allowed_actions, true)) $action = 'index';
+
+$canAddMaterials = in_array($module, array('news', 'stat'), true)
+	&& $Register['ACL']->turn(array($module, 'add_materials'), false);
+if ($action === 'add' && !$canAddMaterials) {
+	$_SESSION['errors'] = __('Permission denied');
+	redirect('/admin/materials_list.php?m=' . $module);
+}
 
 
 $Controll = new MaterialsList;
 list($output, $pages) = $Controll->{$action}($module);
+$pageTitle = $Controll->pageTitle;
 
 
 
@@ -330,6 +338,201 @@ class MaterialsList {
 	
 	
 	/**
+	 * Add a news item or an article directly from the admin panel.
+	 * The action is available only to users who have the module's
+	 * "add_materials" permission.
+	 */
+	public function add($module) {
+		$this->pageTitle .= ' - ' . __('Adding material');
+
+		$output = '';
+		$error = '';
+		$Register = Register::getInstance();
+		$ACL = $Register['ACL'];
+
+		if (!in_array($module, array('news', 'stat'), true)
+			|| !$ACL->turn(array($module, 'add_materials'), false)) {
+			$_SESSION['errors'] = __('Permission denied');
+			redirect('/admin/materials_list.php?m=' . $module);
+		}
+
+		$categoryModel = $Register['ModManager']->getModelInstance($module . 'Categories');
+		$categories = $categoryModel->getCollection();
+		$useMultiCats = atm_use_multicategories($module);
+
+		$title = '';
+		$main = '';
+		$email = '';
+		$selectedCats = array();
+		$singleCatId = 0;
+
+		if (!empty($_POST)) {
+			if (!empty($_POST['extra_cats']) && is_array($_POST['extra_cats'])) {
+				foreach ($_POST['extra_cats'] as $catId) {
+					$catId = intval($catId);
+					if ($catId > 0) $selectedCats[$catId] = $catId;
+				}
+			}
+			$selectedCats = array_values($selectedCats);
+
+			$title = isset($_POST['title']) ? trim((string)$_POST['title']) : '';
+			$main = isset($_POST['main']) ? (string)$_POST['main'] : '';
+			$email = isset($_POST['email']) ? trim((string)$_POST['email']) : '';
+			$singleCatId = isset($_POST['category_id']) ? intval($_POST['category_id']) : 0;
+
+			if (!atm_admin_csrf_check(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+				$error = __('Session expired, please reload the page');
+			} else {
+				if ($useMultiCats) {
+					if (empty($selectedCats)) $error = __('Select at least one section');
+				} elseif ($singleCatId < 1) {
+					$error = __('Select at least one section');
+				}
+
+				if (empty($error) && $title === '') $error = __('Empty field "title"');
+				if (empty($error) && trim($main) === '') $error = __('Empty field "material"');
+
+				if (empty($error)) {
+					$categoriesById = array();
+					foreach ($categories as $category) {
+						$categoriesById[(int)$category->getId()] = $category;
+					}
+
+					$mainCatId = $useMultiCats ? (int)$selectedCats[0] : $singleCatId;
+					$checkIds = $useMultiCats ? $selectedCats : array($singleCatId);
+					foreach ($checkIds as $catId) {
+						if (!isset($categoriesById[(int)$catId])) {
+							$error = __('Can not find category');
+							break;
+						}
+					}
+				}
+
+				if (empty($error)) {
+					$viewOnHome = 0;
+					$checkIds = $useMultiCats ? $selectedCats : array($singleCatId);
+					foreach ($checkIds as $catId) {
+						if (!empty($categoriesById[(int)$catId])
+							&& $categoriesById[(int)$catId]->getView_on_home() == 1) {
+							$viewOnHome = 1;
+							break;
+						}
+					}
+
+					$res = array(
+						'title' => $title,
+						'main' => $main,
+						'date' => new Expr('NOW()'),
+						'author_id' => (int)$_SESSION['user']['id'],
+						'category_id' => $mainCatId,
+						'description' => '',
+						'tags' => '',
+						'sourse' => '',
+						'sourse_email' => $email,
+						'sourse_site' => '',
+						'commented' => 1,
+						'available' => 1,
+						'view_on_home' => $viewOnHome,
+						'premoder' => $ACL->turn(array($module, 'materials_require_premoder'), false)
+							? 'nochecked' : 'confirmed',
+					);
+
+					$className = ucfirst($module) . 'Entity';
+					$entity = new $className($res);
+					$newId = $entity->save();
+
+					if ($newId < 1) {
+						$error = __('Some error occurred');
+					} else {
+						if ($useMultiCats) {
+							$this->saveBoundCategories($module, $newId, array_values(array_diff($selectedCats, array($mainCatId))));
+						}
+
+						Plugins::intercept('new_entity', array(
+							'entity' => $entity,
+							'module' => $module,
+						));
+
+						$Cache = new Cache;
+						$Cache->clean(CACHE_MATCHING_ANY_TAG, array('module_' . $module));
+						$Register['DB']->cleanSqlCache();
+						if (!empty($Register['Log']))
+							$Register['Log']->write('adding ' . $module, $module . ' id(' . $newId . ')');
+
+						$_SESSION['message'] = __('Material successfully added');
+						redirect('/admin/materials_list.php?m=' . $module);
+					}
+				}
+			}
+		}
+
+		$catsOptions = $this->buildCategoryOptions(
+			$categories,
+			$useMultiCats ? $selectedCats : array($singleCatId)
+		);
+
+		if (!empty($error)) {
+			$output .= '<div class="setting-item"><div class="left"></div><div class="right">'
+				. '<span style="color:#c00;font-weight:bold;">' . h($error) . '</span>'
+				. '</div><div class="clear"></div></div>';
+		}
+
+		$output .= '
+		<input type="hidden" name="csrf_token" value="' . h(atm_admin_csrf_token()) . '" />
+		<div class="setting-item"><div class="left">
+			' . __('Title') . '
+		</div><div class="right">
+			<input type="text" name="title" value="'.h($title).'" required="required" />
+		</div><div class="clear"></div></div>
+		<div class="setting-item"><div class="left">
+			' . __('Text of material') . '
+		</div><div class="right">
+			<textarea id="editor" style="height:300px;width:100%;" name="main">'.h($main).'</textarea>
+		</div><div class="clear"></div></div>';
+
+		if ($useMultiCats) {
+			$output .= '<div class="setting-item"><div class="left">
+			' . __('Sections') . '
+		</div><div class="right">
+			<select name="extra_cats[]" multiple="multiple" size="10" style="min-width:320px;height:auto;padding:4px;">' . $catsOptions . '</select>
+			<div style="margin-top:4px;font-size:11px;color:#777;">' . __('Multi select hint') . '</div>
+		</div><div class="clear"></div></div>
+		<style>select[name="extra_cats[]"] option:checked {background: linear-gradient(#3875d7, #3875d7);color: #fff;}</style>';
+		} else {
+			$output .= '<div class="setting-item"><div class="left">
+			' . __('Main section') . '
+		</div><div class="right">
+			<select name="category_id" style="width:320px;height:auto;padding:4px;">' . $catsOptions . '</select>
+		</div><div class="clear"></div></div>';
+		}
+
+		$output .= '<div class="setting-item"><div class="left">
+			' . __('Email') . '
+		</div><div class="right">
+			<input type="text" name="email" value="'.h($email).'" />
+		</div><div class="clear"></div></div>
+		<div class="setting-item">
+			<div class="left">
+			</div>
+			<div class="right">
+				<input class="save-button" type="submit" name="send" value="' . __('Save') . '" />
+			</div>
+			<div class="clear"></div>
+		</div>
+		<link rel="stylesheet" href="' . WWW_ROOT . '/sys/plugins/wysibb/public/wbbtheme.css" />
+		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
+		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/fapos2.js"></script>
+		<script>
+		$(document).ready(function() {
+			$("#editor").wysibb();
+		});
+		</script>';
+
+		return array($output, '');
+	}
+
+
+	/**
 	 * Categories tree of the module as a <select> options list.
 	 */
 	private function buildCategoryOptions($cats, $selected = array(), $parentId = 0, $level = 0)
@@ -408,8 +611,9 @@ include_once ROOT . '/admin/template/header.php';
 <form method="POST" action="" enctype="multipart/form-data">
 <div class="list">
 	<div class="title"><?php echo $pageNav; ?></div>
+	<?php if (!in_array($action, array('add', 'edit'), true)): ?>
     <div class="add-cat-butt">
-        <select onChange="window.location.href='/admin/materials_list.php?m=<?php echo $_GET['m'] ?>&order='+this.value;">
+        <select onChange="window.location.href='/admin/materials_list.php?m=<?php echo $module ?>&order='+this.value;">
             <option><?php echo __('Ordering') ?></option>
             <option value="views"><?php echo __('Views') ?> (↓)</option>
             <option value="views&asc=1"><?php echo __('Views') ?> (↑)</option>
@@ -419,6 +623,10 @@ include_once ROOT . '/admin/template/header.php';
             <option value="date&asc=1"><?php echo __('Date') ?> (↑)</option>
         </select>
     </div>
+	<?php if ($canAddMaterials): ?>
+	<a href="<?php echo get_url('/admin/materials_list.php?m=' . $module . '&ac=add'); ?>"><div class="add-cat-butt" style="right:175px;"><div class="add"></div><?php echo __('Add material'); ?></div></a>
+	<?php endif; ?>
+	<?php endif; ?>
 	<div class="level1">
 		<div class="head">
 			<div class="title settings"><?php echo __('Title') ?></div>

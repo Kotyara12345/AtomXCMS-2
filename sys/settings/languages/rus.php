@@ -98,6 +98,7 @@ return array(
 
 	// Forms
 	'Permission denied'             => 'У вас нет для этого полномочий',
+	'Session expired, please reload the page' => 'Сессия устарела, обновите страницу и попробуйте снова',
 	'Empty field "login"'           => 'не заполнено поле "Имя"',
 	'Wrong chars in field "login"'  => 'поле "Имя" содержит недопустимые символы',
 	'Empty field "text"' 			=> 'не заполнено поле "Текст"',

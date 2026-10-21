@@ -97,6 +97,7 @@ return array(
 
 	// Forms
 	'Permission denied'             => 'You don\'t have the authority',
+	'Session expired, please reload the page' => 'The session has expired, reload the page and try again',
 	'Empty field "login"'           => 'not filled in the field "Name"',
 	'Wrong chars in field "login"'  => 'the "Name" field contains invalid characters',
 	'Empty field "text"' 			=> 'not filled in the "Text" field',
