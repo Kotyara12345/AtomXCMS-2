@@ -126,7 +126,7 @@ if (in_array($module, $sysMods)) {
 			$pageTitle = __('RSS settings');
 			break;
 		case 'hlu':
-			$pageTitle = __('HLU settings');
+			$pageTitle = __('SEO settings');
 			break;
 		case 'sitemap':
 			$pageTitle = __('Sitemap settings');
@@ -272,7 +272,7 @@ if (count($settingsInfo)) {
 		);
 		$params = array_merge($defParams, $params);
 		
-		$currValue = (!empty($_config[$fname])) ? $_config[$fname] : false;
+		$currValue = (isset($_config[$fname])) ? $_config[$fname] : false;
 		if ($currValue === false && isset($params['default'])) $currValue = $params['default'];
 		if (!empty($params['onview'])) {
 			if (!empty($params['onview']['division'])) {
@@ -333,7 +333,7 @@ if (count($settingsInfo)) {
                         if (!empty($params['options_attr']) && is_array($params['options_attr']))
                             $options_attr = array_merge($params['options_attr'], $options_attr);
 						$options_ = '';
-						$state = ($_config[$fname] == $value) ? ' selected="selected"' : '';
+						$state = ((string) $currValue === (string) $value) ? ' selected="selected"' : '';
 						
 						$attr = '';
 						if (!empty($options_attr)) {

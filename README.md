@@ -89,6 +89,10 @@ panel keeps them after regenerating the configuration.
   uploaded images to WebP"). The original JPEG/PNG/GIF file is kept and
   served automatically to browsers without WebP support; animated GIFs
   are left untouched.
+* Canonical URLs are configured in SEO settings separately for regular
+  pages, pagination pages and search pages. Pagination can point to the
+  first page or to the current page; search results can use a query-free
+  canonical URL or no canonical tag at all.
 
 #### Contributing
 
@@ -205,6 +209,10 @@ location / {
   настройки → «Конвертировать загружаемые изображения в WebP»).
   Исходный файл JPEG/PNG/GIF сохраняется и автоматически отдаётся
   браузерам без поддержки WebP; анимированные GIF не трогаются.
+* Canonical настраивается в разделе SEO отдельно для обычных страниц,
+  страниц пагинации и страниц поиска. Для пагинации можно указать
+  первую страницу или текущую; для поиска — URL без запроса или
+  отключить вывод canonical.
 
 #### Участие в проекте
 

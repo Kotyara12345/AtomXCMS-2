@@ -25,6 +25,40 @@ $settingsInfo = array(
 			'checked' => '1',
 			'value' => '1',
 		),
+
+		__('Canonical URLs'),
+		'canonical_regular' => array(
+			'type' => 'select',
+			'title' => __('Regular pages'),
+			'description' => __('Canonical URL for pages without pagination.'),
+			'options' => array(
+				'self' => __('Self-referencing URL'),
+				'disabled' => __('Do not output canonical'),
+			),
+			'default' => 'self',
+		),
+		'canonical_pagination' => array(
+			'type' => 'select',
+			'title' => __('Pagination pages'),
+			'description' => __('Canonical URL for paginated lists. Choose the first page URL to consolidate all pages, or the current page URL to index every page separately.'),
+			'options' => array(
+				'self' => __('Current page URL'),
+				'first' => __('First page URL'),
+				'disabled' => __('Do not output canonical'),
+			),
+			'default' => 'self',
+		),
+		'canonical_search' => array(
+			'type' => 'select',
+			'title' => __('Search pages'),
+			'description' => __('Canonical URL for search result pages. The search query is not included in the base URL.'),
+			'options' => array(
+				'base' => __('Search page without query'),
+				'self' => __('Current search URL'),
+				'disabled' => __('Do not output canonical'),
+			),
+			'default' => 'base',
+		),
 	),
 	
 	/* SITEMAP */

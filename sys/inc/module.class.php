@@ -388,6 +388,7 @@ class Module {
             'meta_title' => $this->getCompleteMetaTag($this->page_title),
             'meta_description' => $this->getCompleteMetaTag($this->page_meta_description),
             'meta_keywords' => $this->getCompleteMetaTag($this->page_meta_keywords),
+            'canonical' => h($this->getCanonicalUrl()),
             'module_title' => $this->module_title,
             'categories' => $this->categories,
             'comments' => $this->comments,
@@ -1091,6 +1092,160 @@ class Module {
     {
         if (array_key_exists($key, $this->pageMetaContext))
             $this->pageMetaContext[$key] = $value;
+    }
+
+
+    /**
+     * Build an absolute canonical URL for the current page.
+     *
+     * Regular pages canonicalize to themselves. Pagination and search
+     * pages use separate admin settings because their preferred canonical
+     * target depends on the site's SEO strategy.
+     *
+     * @return string
+     */
+    protected function getCanonicalUrl()
+    {
+        $Register = Register::getInstance();
+
+        // Some modules keep the current page only in a local variable and
+        // do not write it to the registry. Fall back to the request and
+        // clamp the value to the page count reported by pagination().
+        $page = 1;
+        if (!empty($Register['page'])) {
+            $page = max(1, intval($Register['page']));
+        } else {
+            if (isset($_GET['page'])) {
+                $page = max(1, intval($_GET['page']));
+            }
+            if (isset($Register['pagescnt'])) {
+                $page = min($page, max(1, intval($Register['pagescnt'])));
+            }
+        }
+
+        $hasPageParam = isset($_GET['page']) && $_GET['page'] !== '';
+        $isSearch = ($this->module === 'search');
+        $isPagination = !$isSearch && ($hasPageParam || $page > 1);
+
+        if ($isSearch) {
+            $mode = Config::read('canonical_search');
+            if (!in_array($mode, array('base', 'self', 'disabled'), true)) {
+                $mode = 'base';
+            }
+        } elseif ($isPagination) {
+            $mode = Config::read('canonical_pagination');
+            if (!in_array($mode, array('self', 'first', 'disabled'), true)) {
+                $mode = 'self';
+            }
+        } else {
+            $mode = Config::read('canonical_regular');
+            if (!in_array($mode, array('self', 'disabled'), true)) {
+                $mode = 'self';
+            }
+        }
+
+        if ($mode === 'disabled') {
+            return '';
+        }
+
+        $origin = $this->getCanonicalOrigin();
+        $path = $this->getCanonicalPath();
+        if ($origin === '' || $path === '') {
+            return '';
+        }
+
+        $url = $origin . $path;
+
+        if ($isSearch && $mode === 'self') {
+            $query = $this->getCanonicalQuery(array('page'));
+            if ($query !== '') {
+                $url .= '?' . $query;
+            }
+        } elseif ($isPagination && $mode === 'self' && $page > 1) {
+            $url .= '?page=' . $page;
+        }
+
+        return $url;
+    }
+
+
+    /**
+     * Absolute scheme and host for canonical links.
+     *
+     * @return string
+     */
+    protected function getCanonicalOrigin()
+    {
+        $host = get_server_host();
+        if (!preg_match('/^(?:[a-z0-9._\-]+|\[[0-9a-f:.]+\])(?::[0-9]+)?$/i', $host)) {
+            return '';
+        }
+
+        $https = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off');
+        if (!$https && !empty($_SERVER['REQUEST_SCHEME'])) {
+            $https = (strtolower($_SERVER['REQUEST_SCHEME']) === 'https');
+        }
+        if (!$https && !empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+            $proto = strtok($_SERVER['HTTP_X_FORWARDED_PROTO'], ',');
+            $https = ($proto !== false && strtolower(trim($proto)) === 'https');
+        }
+        if (!$https && !empty($_SERVER['SERVER_PORT']) && intval($_SERVER['SERVER_PORT']) === 443) {
+            $https = true;
+        }
+
+        return ($https ? 'https://' : 'http://') . $host;
+    }
+
+
+    /**
+     * Current request path without a query string, normalized in the same
+     * way as the CMS builds front-end URLs.
+     *
+     * @return string
+     */
+    protected function getCanonicalPath()
+    {
+        $requestUri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '/';
+        $path = parse_url($requestUri, PHP_URL_PATH);
+        if (!is_string($path) || $path === '') {
+            $path = '/';
+        }
+
+        $path = preg_replace('/[\x00-\x1F\x7F]+/', '', $path);
+        $path = preg_replace('#/+#', '/', $path);
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/' . $path;
+        }
+
+        if ($path !== '/') {
+            $path = rtrim($path, '/');
+            if (!preg_match('#\.[a-z0-9]{1,10}$#i', $path)) {
+                $path .= '/';
+            }
+        }
+
+        return $path;
+    }
+
+
+    /**
+     * Query string for a self-canonical search page.
+     *
+     * @param array $exclude
+     * @return string
+     */
+    protected function getCanonicalQuery(array $exclude = array())
+    {
+        $params = $_GET;
+        foreach ($exclude as $key) {
+            unset($params[$key]);
+        }
+
+        if (empty($params)) {
+            return '';
+        }
+
+        return http_build_query($params, '', '&', PHP_QUERY_RFC3986);
     }
 
 
