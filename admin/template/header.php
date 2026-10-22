@@ -3,6 +3,7 @@
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<link rel="icon" type="image/png" sizes="16x16" href="<?php echo WWW_ROOT ?>/admin/template/img/favicon.png?v=<?php echo filemtime(ROOT . '/admin/template/img/favicon.png'); ?>" />
 	<title><?php echo $pageTitle; ?></title>
 	<meta name="description" content="" />
 	<meta name="keywords" content="" />

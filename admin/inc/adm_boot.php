@@ -156,6 +156,7 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<meta name="robots" content="noindex, nofollow" />
+	<link rel="icon" type="image/png" sizes="16x16" href="<?php echo WWW_ROOT ?>/admin/template/img/favicon.png?v=<?php echo filemtime(ROOT . '/admin/template/img/favicon.png'); ?>" />
 	<title>AtomX — Авторизация</title>
 	<meta name="description" content="" />
 	<meta name="keywords" content="" />
