@@ -107,7 +107,7 @@ function index(&$page_title) {
 	$pages = (!empty($pages)) ? '<div class="pagination">' . $pages . '</div>' : '';
 	$content .= "<div class=\"list\">
 			<div class=\"title\">" . __('Users list') . "</div>
-			<table cellspacing=\"0\" class=\"grid\"><tr><th width=\"20%\">{$nick}</th>
+			<table cellspacing=\"0\" class=\"grid mobile-cards\"><tr class=\"mobile-table-head\"><th width=\"20%\">{$nick}</th>
 			<th width=\"25%\">{$email}</th>
 			<th width=\"20%\">{$puttime}</th>
 			<th width=\"15%\">{$status}</th>

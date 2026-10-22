@@ -664,13 +664,13 @@ $(document).on('change', '#users_selector', function(){
 <form action="users_rules.php" method="POST">
 <div class="list">
 <div class="title"><?php echo __('Groups rules') ?></div>
-<table cellspacing="0" class="grid" style="min-width:100%">
+<table cellspacing="0" class="grid rules-cards" style="min-width:100%">
 
 
 	<?php $display = '' ?>
 	<?php foreach ($acl_rules as $mod => $_rules): ?>
 		<?php if (strpos('forum.', $mod)) continue; ?>
-		<tr>
+		<tr class="rules-group-head">
 			<th class="group"><div class="title" onClick="AtomX.toggleByClass('<?php echo $mod ?>_rules_block');"><?php echo __($mod); ?></div></th>
 			<?php foreach ($acl_groups as $id => $gr): ?>
 			<th style="width:60px;">
@@ -687,7 +687,7 @@ $(document).on('change', '#users_selector', function(){
 			<td class="left"><?php echo __($title); ?></td>
 			<?php foreach ($acl_groups as $id => $gr): ?>
 			<?php  $ch_id = $mod . '_' . $id . '_' . $title; ?>
-			<td class="right">
+			<td class="right" data-label="<?php echo h($gr['title']); ?>">
 				<input name="<?php echo $mod.'['.$title.'_'.$id.']' ?>" type="checkbox" value="1" <?php if ($ACL->turn(array($mod, $title), false, $id)) echo 'checked="checked"' ?> id="<?php  echo $ch_id; ?>" /><label for="<?php  echo $ch_id; ?>"></label>
 			</td>
 			<?php endforeach; ?>
@@ -697,7 +697,7 @@ $(document).on('change', '#users_selector', function(){
 		<?php endforeach; ?>
 		<?php $display = 'none' ?>
 	<?php endforeach; ?>
-	<tr>
+	<tr class="rules-save-row">
 		<td align="center" colspan="<?php echo count($acl_groups) + 2 ?>">
 			<input class="save-button" name="send" type="submit" value="<?php echo __('Save') ?>"  />
 		</td>

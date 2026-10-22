@@ -404,7 +404,8 @@ $(document).ready(function(){
 	var wd = parseInt($('.list.pages-form').css('width'), 10) - 20;
     var editor = CodeMirror.fromTextArea(document.getElementById("tmpl"), {
 		theme: "solarized",
-		mode: "<?php echo ($type === 'css') ? 'css' : 'vbscript'; ?>"
+		mode: "<?php echo ($type === 'css') ? 'css' : 'vbscript'; ?>",
+		lineWrapping: window.innerWidth <= 700
 	});
 	
 	

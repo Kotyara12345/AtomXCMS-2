@@ -46,8 +46,8 @@ h1, h2, h3, h4 {color:#555;}
 .graph-container {height:300px;width:100%;}
 
 /* Head menu */
-#wrapper {min-height:100%; position:relative; min-width:1150px; padding:106px 3% 30px 3%;}
-.headmenuwrap {height:106px; width: 94%; padding:0px 3%; background:url('../img/headmenu-bg.png') repeat-x; position:absolute; z-index:1; -webkit-box-shadow: 0 1px 3px #555; -moz-box-shadow: 0 1px 3px #555; box-shadow: 0 1px 3px #555; min-width:1150px;}
+#wrapper {min-height:100%; position:relative; min-width:1150px; padding:106px 3% 30px 3%; box-sizing:border-box;}
+.headmenuwrap {height:106px; width:100%; padding:0px 3%; background:url('../img/headmenu-bg.png') repeat-x; position:absolute; z-index:1; -webkit-box-shadow: 0 1px 3px #555; -moz-box-shadow: 0 1px 3px #555; box-shadow: 0 1px 3px #555; min-width:1150px; box-sizing:border-box;}
 .headmenu {width:100%; height:35px; padding:10px 0px; z-index:10000;}
 .headmenu .logo {width:120px; height:50px; margin:-9px 0px 0px 50px; float:left; background:url('../img/logo.png') no-repeat;}
 
@@ -383,6 +383,9 @@ table.grid ul li div.item {/*background:#aaa;*/ border:1px dashed #aaa; padding:
 /* Footer */
 .footer {width:94%; color:#a1a1a1; font-size:13px; font-style:italic; text-align:center; padding:30px 0px; position:absolute; bottom:0px; z-index:0px;}
 
+/* Long PHP error lines must wrap instead of widening the log table */
+.error-log-content {max-width:100%; white-space:normal; overflow-wrap:anywhere; word-break:break-word; overflow-x:hidden;}
+
 
 
 
@@ -401,7 +404,7 @@ table.grid ul li div.item {/*background:#aaa;*/ border:1px dashed #aaa; padding:
 
 
 /* Mobile and tablet admin layout */
-@media screen and (max-width: 1100px) {
+@media screen and (max-width: 1200px) {
 	html, body {
 		min-width:0;
 		width:100%;
@@ -1221,6 +1224,209 @@ table.grid ul li div.item {/*background:#aaa;*/ border:1px dashed #aaa; padding:
 		width:100%;
 		max-width:100%;
 		box-sizing:border-box;
+	}
+}
+
+/* Phone-width list cards */
+@media screen and (max-width: 700px) {
+	table.mobile-cards {
+		display:block;
+		width:100%;
+		min-width:0;
+		border-collapse:collapse;
+	}
+
+	table.mobile-cards tbody {
+		display:block;
+		width:100%;
+	}
+
+	table.mobile-cards .mobile-table-head {
+		display:none;
+	}
+
+	table.mobile-cards tr {
+		display:block;
+		width:100%;
+		margin:0 0 10px;
+		padding:7px 12px;
+		box-sizing:border-box;
+		border:1px solid #d4d4d4;
+		border-radius:3px;
+		background:#fff;
+	}
+
+	table.mobile-cards tr:last-child {
+		margin-bottom:0;
+	}
+
+	table.mobile-cards td {
+		position:relative;
+		display:block;
+		width:auto !important;
+		height:auto !important;
+		min-height:24px;
+		padding:4px 0 4px 42% !important;
+		box-sizing:border-box;
+		border:0 !important;
+		background:transparent !important;
+		white-space:normal;
+		overflow-wrap:anywhere;
+		word-break:break-word;
+		line-height:1.45;
+		text-align:left !important;
+	}
+
+	table.mobile-cards td::before {
+		content:attr(data-label);
+		position:absolute;
+		top:4px;
+		left:0;
+		width:38%;
+		padding-right:8px;
+		box-sizing:border-box;
+		color:#777;
+		font-size:11px;
+		font-weight:bold;
+		line-height:1.7;
+	}
+
+	table.mobile-cards td[data-label=""] {
+		padding-left:0 !important;
+	}
+
+	table.mobile-cards td[data-label=""]::before {
+		display:none;
+	}
+
+	table.mobile-cards td a {
+		overflow-wrap:anywhere;
+	}
+
+	table.mobile-cards tr:nth-child(2n) td {
+		background:transparent !important;
+	}
+
+	/* Group permissions matrix */
+	table.rules-cards,
+	table.rules-cards tbody {
+		display:block;
+		width:100%;
+		min-width:0 !important;
+		border-collapse:collapse;
+	}
+
+	table.rules-cards tr {
+		display:block;
+		width:100%;
+		box-sizing:border-box;
+	}
+
+	table.rules-cards tr.rules-group-head {
+		margin:16px 0 6px;
+		padding:0;
+		border:0;
+		background:transparent;
+	}
+
+	table.rules-cards tr.rules-group-head:first-child {
+		margin-top:0;
+	}
+
+	table.rules-cards tr.rules-group-head th {
+		display:none;
+	}
+
+	table.rules-cards tr.rules-group-head th.group {
+		display:block;
+		width:auto;
+		padding:9px 12px;
+		border:0;
+		background:linear-gradient(#C2C1C1, #ECECEC);
+		text-align:left;
+	}
+
+	table.rules-cards tr.rules-group-head th.group > .title {
+		color:#96C703;
+		font-size:13px;
+		cursor:pointer;
+	}
+
+	table.rules-cards tr:not(.rules-group-head):not(.rules-save-row) {
+		margin:0 0 8px;
+		padding:6px 12px 8px;
+		border:1px solid #d4d4d4;
+		border-radius:3px;
+		background:#fff;
+	}
+
+	table.rules-cards tr:nth-child(2n) td {
+		background:transparent !important;
+	}
+
+	table.rules-cards td {
+		display:block;
+		width:auto !important;
+		height:auto !important;
+		padding:3px 0;
+		box-sizing:border-box;
+		border:0 !important;
+		background:transparent !important;
+		white-space:normal;
+		overflow-wrap:anywhere;
+		text-align:left !important;
+	}
+
+	table.rules-cards td.left {
+		padding:4px 0 6px;
+		color:#3a3a3a;
+		font-weight:bold;
+	}
+
+	table.rules-cards td.right {
+		display:flex;
+		align-items:center;
+		gap:8px;
+		min-height:24px;
+		padding:2px 0;
+	}
+
+	table.rules-cards td.right::before {
+		content:attr(data-label);
+		flex:1 1 auto;
+		min-width:0;
+		color:#777;
+		font-size:12px;
+		line-height:1.4;
+	}
+
+	table.rules-cards td.right input[type="checkbox"] + label {
+		flex:0 0 auto;
+		margin:0;
+	}
+
+	table.rules-cards td.right input[type="checkbox"] + label::before {
+		margin:0;
+	}
+
+	table.rules-cards .rules-save-row {
+		display:block;
+		margin:8px 0 0;
+	}
+
+	table.rules-cards .rules-save-row td {
+		padding:10px 0;
+		text-align:left !important;
+	}
+
+	table.rules-cards .rules-save-row .save-button {
+		width:100%;
+		max-width:220px;
+	}
+
+	.error-log-content {
+		height:auto !important;
+		max-height:70vh;
 	}
 }
 

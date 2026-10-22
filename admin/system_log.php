@@ -55,13 +55,15 @@ include_once ROOT . '/admin/template/header.php';
 
 <div class="list">
 <div class="title"><?php echo __('Action log') ?></div>
-<table class="grid" cellspacing="0" width="100%">
+<table class="grid mobile-cards" cellspacing="0" width="100%">
 	<?php if(!empty($data)): ?>
-	<th width="15%">Дата</th>
-	<th width="30%">Действие</th>
-	<th width="20%">Пользователь</th>
-	<th width="10%">IP адрес</th>
-	<th>Доп. информация</th>
+	<tr class="mobile-table-head">
+		<th width="15%">Дата</th>
+		<th width="30%">Действие</th>
+		<th width="20%">Пользователь</th>
+		<th width="10%">IP адрес</th>
+		<th>Доп. информация</th>
+	</tr>
 	<?php foreach($data as $line): 
 			//for coompare old version
 			$color = '';

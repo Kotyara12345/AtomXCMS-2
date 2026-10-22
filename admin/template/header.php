@@ -35,7 +35,7 @@
 		//setTimeout(function(){
 		//	$('#overlay').height($('#wrapper').height());
 		//}, 2000);
-		if (window.innerWidth > 1100) {
+		if (window.innerWidth > 1200) {
 			$('#wrapper').css('min-height', ($('body').height() - 136)); // 136 - top+bottom wrapper padding
 			$('body').height($('#wrapper').outerHeight() - 55); // 55 - side menu top indent
 		}
@@ -327,7 +327,7 @@
 		<script>
 		(function($) {
 			function isMobile() {
-				return window.innerWidth <= 1100;
+				return window.innerWidth <= 1200;
 			}
 
 			function buildMobileTopMenu() {
@@ -437,6 +437,52 @@
 		})(jQuery);
 		</script>
 		
+		<script>
+		(function($) {
+			function cleanLabel(value) {
+				return $.trim(String(value).replace(/\s+/g, ' '));
+			}
+
+			function prepareMobileTables() {
+				$('table.mobile-cards').each(function() {
+					var $table = $(this);
+					var $head = $table.find('.mobile-table-head').first();
+
+					if (!$head.length) {
+						$head = $table.find('tr').filter(function() {
+							return $(this).children('th').length > 0;
+						}).first();
+					}
+					if (!$head.length) return;
+
+					var labels = [];
+					$head.children('th').each(function() {
+						var label = cleanLabel($(this).text());
+						var colspan = parseInt($(this).attr('colspan'), 10) || 1;
+						for (var i = 0; i < colspan; i++) labels.push(label);
+					});
+
+					$table.find('tr').not($head).each(function() {
+						if ($(this).children('th').length) return;
+
+						var index = 0;
+						$(this).children('td').each(function() {
+							var $cell = $(this);
+							var colspan = parseInt($cell.attr('colspan'), 10) || 1;
+
+							if (typeof $cell.attr('data-label') === 'undefined') {
+								$cell.attr('data-label', labels[index] || '');
+							}
+							index += colspan;
+						});
+					});
+				});
+			}
+
+			$(prepareMobileTables);
+		})(jQuery);
+		</script>
+
 		<div class="center-wrapper">
 			<table class="side-separator" cellpadding="0" cellspacing="0" width="100%" >
 				<tr>

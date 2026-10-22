@@ -64,7 +64,7 @@ include_once ROOT . '/admin/template/header.php';
 		<?php if(!empty($data)): ?>
 		<tr>
 			<td>
-				<div style="height:800px; overflow-y:auto; ">
+				<div class="error-log-content" style="height:800px; overflow-y:auto;">
 					<?php echo nl2br(h($data)) ?>
 				</div>
 			</td>
