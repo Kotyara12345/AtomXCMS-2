@@ -394,6 +394,7 @@ class Module {
             'meta_keywords' => $this->getCompleteMetaTag($this->page_meta_keywords),
             'robots' => h($this->getRobotsMeta()),
             'canonical' => h($this->getCanonicalUrl()),
+            'open_graph' => $this->getOpenGraphMarkup(),
             'module_title' => $this->module_title,
             'categories' => $this->categories,
             'comments' => $this->comments,
@@ -1308,6 +1309,191 @@ class Module {
         }
 
         return http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+    }
+
+
+    /**
+     * Open Graph markup for the current module.
+     *
+     * Each module has its own title, description, image and type settings.
+     * Missing title and description values fall back to the SEO meta tags,
+     * so Open Graph works on existing sites without extra configuration.
+     *
+     * @return string
+     */
+    protected function getOpenGraphMarkup()
+    {
+        if ($this->module === '') return '';
+
+        // Modules with no saved value keep the previous default: enabled.
+        $enabled = Config::read('og_enabled', $this->module);
+        if ($enabled !== null && !$enabled) return '';
+
+        $pageTitle = $this->getCompleteMetaTag($this->page_title);
+        $pageDescription = $this->getCompleteMetaTag($this->page_meta_description);
+
+        $title = $this->getOpenGraphText(
+            Config::read('og_title', $this->module),
+            $pageTitle
+        );
+        $description = $this->getOpenGraphText(
+            Config::read('og_description', $this->module),
+            $pageDescription
+        );
+
+        $image = trim((string) Config::read('og_image', $this->module));
+        if ($image !== '') {
+            $image = $this->getCompleteMetaTag($image);
+            $image = $this->getOpenGraphImageUrl($image);
+        }
+
+        $type = $this->getOpenGraphType();
+        $url = $this->getOpenGraphUrl();
+        $siteName = trim((string) Config::read('site_title'));
+
+        $tags = array();
+        if ($title !== '') {
+            $tags[] = '<meta property="og:title" content="' . h($title) . '" />';
+        }
+        if ($description !== '') {
+            $tags[] = '<meta property="og:description" content="' . h($description) . '" />';
+        }
+        $tags[] = '<meta property="og:type" content="' . h($type) . '" />';
+        if ($url !== '') {
+            $tags[] = '<meta property="og:url" content="' . h($url) . '" />';
+        }
+        if ($image !== '') {
+            $tags[] = '<meta property="og:image" content="' . h($image) . '" />';
+        }
+        if ($siteName !== '') {
+            $tags[] = '<meta property="og:site_name" content="' . h($siteName) . '" />';
+        }
+
+        return implode("\n", $tags);
+    }
+
+
+    /**
+     * Normalize a configured Open Graph title or description.
+     *
+     * Page titles and meta descriptions are already HTML-escaped by the
+     * existing SEO code. Decoding and escaping once more keeps template
+     * placeholders and plain admin input consistent.
+     *
+     * @param mixed $configured
+     * @param string $fallback
+     * @return string
+     */
+    protected function getOpenGraphText($configured, $fallback)
+    {
+        $value = trim((string) $configured);
+        if ($value !== '') {
+            $value = $this->getCompleteMetaTag($value);
+        } else {
+            $value = (string) $fallback;
+        }
+
+        $value = htmlspecialchars_decode($value, ENT_QUOTES | ENT_HTML5);
+        $value = preg_replace('/\s+/u', ' ', $value);
+        if ($value === null) $value = '';
+
+        return trim($value);
+    }
+
+
+    /**
+     * @return string
+     */
+    protected function getOpenGraphType()
+    {
+        $allowed = array('website', 'article', 'profile', 'product', 'video.other');
+        $type = (string) Config::read('og_type', $this->module);
+        if (in_array($type, $allowed, true)) return $type;
+
+        $defaults = array(
+            'news' => 'article',
+            'stat' => 'article',
+            'loads' => 'article',
+            'users' => 'profile',
+        );
+
+        return isset($defaults[$this->module]) ? $defaults[$this->module] : 'website';
+    }
+
+
+    /**
+     * Absolute URL for og:url.
+     *
+     * Use the canonical target when it is enabled. When canonical output is
+     * disabled, build the current absolute URL so Open Graph still has a
+     * valid object URL.
+     *
+     * @return string
+     */
+    protected function getOpenGraphUrl()
+    {
+        $url = $this->getCanonicalUrl();
+        if ($url !== '') {
+            return $this->removeOpenGraphInternalParams($url);
+        }
+
+        $origin = $this->getCanonicalOrigin();
+        $path = $this->getCanonicalPath();
+        if ($origin === '' || $path === '') return '';
+
+        $url = $origin . $path;
+        // The front controller keeps the routed path in $_GET['url'].
+        // It is not part of the public page URL.
+        $query = $this->getCanonicalQuery(array('url'));
+        if ($query !== '') $url .= '?' . $query;
+
+        return $url;
+    }
+
+
+    /**
+     * Remove front-controller routing parameters from an absolute URL.
+     *
+     * The CMS keeps the routed path in $_GET['url'] on some setups. It is
+     * never part of the public URL, but canonical search URLs built from
+     * the query string can contain it.
+     *
+     * @param string $url
+     * @return string
+     */
+    protected function removeOpenGraphInternalParams($url)
+    {
+        $parts = explode('?', (string) $url, 2);
+        if (count($parts) < 2) return $url;
+
+        parse_str($parts[1], $params);
+        unset($params['url']);
+
+        $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        return $parts[0] . ($query !== '' ? '?' . $query : '');
+    }
+
+
+    /**
+     * Convert a configured image URL or root-relative path to an absolute URL.
+     *
+     * @param string $image
+     * @return string
+     */
+    protected function getOpenGraphImageUrl($image)
+    {
+        $image = trim((string) $image);
+        if ($image === '') return '';
+
+        if (preg_match('#^https?://#i', $image) || substr($image, 0, 2) === '//') {
+            return $image;
+        }
+
+        $origin = $this->getCanonicalOrigin();
+        if ($origin === '') return '';
+
+        if ($image[0] !== '/') $image = '/' . $image;
+        return $origin . $image;
     }
 
 

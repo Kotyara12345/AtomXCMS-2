@@ -41,3 +41,5 @@ $settingsInfo = array(
 		'checked' => '1',
 	),
 );
+
+$settingsInfo = array_merge($settingsInfo, atm_get_open_graph_settings('website'));

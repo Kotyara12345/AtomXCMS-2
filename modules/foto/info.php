@@ -96,5 +96,7 @@ $settingsInfo = array(
 	),
 );
 
+$settingsInfo = array_merge($settingsInfo, atm_get_open_graph_settings('website'));
+
 
 

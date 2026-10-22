@@ -100,6 +100,11 @@ panel keeps them after regenerating the configuration.
   about new news and articles from the site sidebar. Registered users
   can also choose individual news and article categories in their
   profile; notifications are sent when a material is published.
+* Open Graph markup can be enabled or disabled separately for every
+  module and configured with title, description, image and object type.
+  Empty title and description values fall back to the page title and
+  meta description; `og:url` and `og:site_name` are generated
+  automatically.
 
 #### Contributing
 
@@ -228,6 +233,10 @@ location / {
   Авторизованные пользователи также могут выбрать отдельные категории
   новостей и статей в личном кабинете; уведомления отправляются при
   публикации материала.
+* Микроразметку Open Graph можно включать и отключать отдельно для
+  каждого модуля, а также настраивать заголовок, описание, изображение и
+  тип объекта. Пустые заголовок и описание берутся из заголовка страницы
+  и мета-описания; `og:url` и `og:site_name` формируются автоматически.
 
 #### Участие в проекте
 

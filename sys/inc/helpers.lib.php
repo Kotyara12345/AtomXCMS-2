@@ -1194,3 +1194,63 @@ function atm_updateServerProtocolsConfig($config = array()) {
 	if ($newContent === $original) return true;
 	return (false !== @file_put_contents($file, $newContent));
 }
+
+
+/**
+ * Common Open Graph fields for module settings.
+ *
+ * Every module gets its own values. The title and description support the
+ * same page context placeholders as the module SEO templates; empty values
+ * fall back to the page title and meta description at render time.
+ *
+ * @param string $defaultType
+ * @return array
+ */
+function atm_get_open_graph_settings($defaultType = 'website')
+{
+	$types = array('website', 'article', 'profile', 'product', 'video.other');
+	if (!in_array($defaultType, $types, true)) $defaultType = 'website';
+
+	$typesList = array();
+	foreach ($types as $type) $typesList[$type] = $type;
+
+	return array(
+		__('Open Graph'),
+		'og_enabled' => array(
+			'type' => 'checkbox',
+			'title' => __('Enable Open Graph'),
+			'description' => __('Enable or disable Open Graph markup for this module.'),
+			'value' => '1',
+			'checked' => '1',
+			'default' => '1',
+		),
+		'og_title' => array(
+			'type' => 'textarea',
+			'title' => __('Open Graph title'),
+			'description' => sprintf(
+				__('Leave empty to use the page title. Available placeholders: %s.'),
+				'{{ entity_title }}, {{ category_title }}, {{ page }}'
+			),
+		),
+		'og_description' => array(
+			'type' => 'textarea',
+			'title' => __('Open Graph description'),
+			'description' => sprintf(
+				__('Leave empty to use the meta description. Available placeholders: %s.'),
+				'{{ entity_title }}, {{ category_title }}, {{ page }}'
+			),
+		),
+		'og_image' => array(
+			'type' => 'text',
+			'title' => __('Open Graph image'),
+			'description' => __('Absolute URL or a path from the site root. Leave empty to omit og:image.'),
+		),
+		'og_type' => array(
+			'type' => 'select',
+			'title' => __('Open Graph type'),
+			'description' => __('Open Graph object type.'),
+			'options' => $typesList,
+			'default' => $defaultType,
+		),
+	);
+}

@@ -228,3 +228,5 @@ $settingsInfo = array(
         'description' => __('Enable/Disable'),
     ),
 );
+
+$settingsInfo = array_merge($settingsInfo, atm_get_open_graph_settings('profile'));
