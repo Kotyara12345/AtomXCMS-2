@@ -149,7 +149,7 @@ include_once ROOT . '/admin/template/header.php';
 			</tr>
 		</table>
 	</div>
-	<table class="grid" style="width:100%;"  cellspacing="0px">
+	<table class="grid stats-table" style="width:100%;"  cellspacing="0px">
 		<?php if (!empty($stats)): ?>
 		<tr>
 			<td>Просмотров</td>

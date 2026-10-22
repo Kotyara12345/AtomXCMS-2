@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
 	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title><?php echo $pageTitle; ?></title>
 	<meta name="description" content="" />
 	<meta name="keywords" content="" />
@@ -22,7 +23,7 @@
 	<script src="<?php echo WWW_ROOT ?>/sys/js/fancybox/jquery.fancybox.js"></script>
 	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/sys/js/fancybox/css/fancy.css" />
 	
-	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css" />
+	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css?v=<?php echo filemtime(ROOT . '/admin/template/css/style.css'); ?>" />
 	<!--<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/font-awesome.min.css" />-->
 	
 	<script>
@@ -33,8 +34,10 @@
 		//setTimeout(function(){
 		//	$('#overlay').height($('#wrapper').height());
 		//}, 2000);
-		$('#wrapper').css('min-height', ($('body').height() - 136)); // 136 - top+bottom wrapper padding
-		$('body').height($('#wrapper').outerHeight() - 55); // 55 - side menu top indent
+		if (window.innerWidth > 1100) {
+			$('#wrapper').css('min-height', ($('body').height() - 136)); // 136 - top+bottom wrapper padding
+			$('body').height($('#wrapper').outerHeight() - 55); // 55 - side menu top indent
+		}
 		
 		
 		
@@ -90,6 +93,9 @@
 <body>
 	<div class="headmenuwrap">
 		<div class="headmenu">
+			<button type="button" id="mobile-menu-toggle" class="mobile-menu-toggle" aria-controls="side-menu" aria-expanded="false" aria-label="<?php echo h(__('Menu')); ?>">
+				<span></span><span></span><span></span>
+			</button>
 			<a href="<?php echo WWW_ROOT; ?>/admin/"><div class="logo"></div></a>
 			<div class="menu" id="topmenu">
 				<ul>
@@ -145,12 +151,18 @@
 		</div>
 	</div>
 	<div id="side-menu" class="side-menu">
+		<div class="mobile-sidebar-head">
+			<span><?php echo __('Menu'); ?></span>
+			<button type="button" class="mobile-menu-close" aria-label="<?php echo h(__('Close menu')); ?>">&times;</button>
+		</div>
 		<div class="search">
 			<form>
 				<div class="input"><input type="text" name="search" placeholder="Search..." /></div>
 				<input class="submit-butt" type="submit" name="send" value="" />
 			</form>
 		</div>
+		<div id="mobile-topmenu" class="mobile-topmenu"></div>
+		<div class="mobile-menu-title"><?php echo __('Admin modules'); ?></div>
 		<ul>
 		
 		
@@ -208,6 +220,7 @@
 		</ul>
 		<div class="clear"></div>
 	</div>
+	<div id="mobile-menu-overlay" class="mobile-menu-overlay" aria-hidden="true"></div>
 	<script>
 		var FpsAdmPanel = {};
 		FpsAdmPanel.sidePanel = 'visible';
@@ -310,6 +323,118 @@
 		</script>
 		<!-- /AdminBar -->
 		
+		<script>
+		(function($) {
+			function isMobile() {
+				return window.innerWidth <= 1100;
+			}
+
+			function buildMobileTopMenu() {
+				var $source = $('#topmenu > ul');
+				var $target = $('#mobile-topmenu');
+				if (!$source.length || !$target.length) return;
+
+				var $groups = $('<ul class="mobile-menu-groups"></ul>');
+
+				$source.children('li').each(function(index) {
+					var $item = $(this);
+					var $sourceLink = $item.children('a').first();
+					var label = $.trim($sourceLink.text());
+					if (!label) return;
+
+					var $sub = $item.children('.sub').first();
+					var id = 'mobile-top-sub-' + index;
+					var $group = $('<li class="mobile-menu-group"></li>');
+					var $link = $('<a href="#" class="mobile-top-link"></a>');
+
+					$link.text(label).attr({
+						'aria-controls': id,
+						'aria-expanded': 'false'
+					});
+
+					if ($sub.length) {
+						var $content = $sub.find('.shadow').first();
+						if (!$content.length) $content = $sub;
+
+						var $subMenu = $('<div class="mobile-top-sub" id="' + id + '" aria-hidden="true"></div>');
+						$subMenu.append($content.children().clone());
+						$group.append($link).append($subMenu);
+					} else {
+						$link.attr('href', $sourceLink.attr('href') || '#');
+						$group.append($link);
+					}
+
+					$groups.append($group);
+				});
+
+				$target.empty().append($groups);
+
+				$target.on('click', '.mobile-top-link', function(event) {
+					var $link = $(this);
+					var id = $link.attr('aria-controls');
+					if (!id) return;
+
+					event.preventDefault();
+					var $sub = $('#' + id);
+					var expanded = $link.attr('aria-expanded') === 'true';
+
+					$target.find('.mobile-top-link').not(this).attr('aria-expanded', 'false');
+					$target.find('.mobile-top-sub').not($sub).slideUp(150).attr('aria-hidden', 'true');
+
+					if (expanded) {
+						$sub.slideUp(150).attr('aria-hidden', 'true');
+						$link.attr('aria-expanded', 'false');
+					} else {
+						$sub.slideDown(150).attr('aria-hidden', 'false');
+						$link.attr('aria-expanded', 'true');
+					}
+				});
+			}
+
+			function openMobileMenu() {
+				if (!isMobile()) return;
+
+				$('#mobile-topmenu .mobile-top-sub').hide().attr('aria-hidden', 'true');
+				$('#mobile-topmenu .mobile-top-link').attr('aria-expanded', 'false');
+				$('body').addClass('mobile-menu-open');
+				$('#mobile-menu-toggle').attr('aria-expanded', 'true');
+			}
+
+			function closeMobileMenu() {
+				$('body').removeClass('mobile-menu-open');
+				$('#mobile-menu-toggle').attr('aria-expanded', 'false');
+			}
+
+			$(function() {
+				buildMobileTopMenu();
+
+				$('#mobile-menu-toggle').on('click', function() {
+					if ($('body').hasClass('mobile-menu-open')) {
+						closeMobileMenu();
+					} else {
+						openMobileMenu();
+					}
+				});
+
+				$('.mobile-menu-close, #mobile-menu-overlay').on('click', closeMobileMenu);
+
+				$('#side-menu').on('click', 'a', function() {
+					if ($(this).hasClass('mobile-top-link')) return;
+					if (isMobile()) closeMobileMenu();
+				});
+
+				$(window).on('resize orientationchange', function() {
+					if (!isMobile()) closeMobileMenu();
+				});
+
+				$(document).on('keydown', function(event) {
+					if (event.key === 'Escape' && $('body').hasClass('mobile-menu-open')) {
+						closeMobileMenu();
+					}
+				});
+			});
+		})(jQuery);
+		</script>
 		
 		<div class="center-wrapper">
 			<table class="side-separator" cellpadding="0" cellspacing="0" width="100%" >
