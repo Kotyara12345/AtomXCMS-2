@@ -767,6 +767,9 @@ Class NewsModule extends Module {
 		$className = ucfirst($this->module) . 'Entity';
 		$new = new $className($res);
 		$last_id = $new->save();
+		// Entity::save() returns the insert id but does not always assign it
+		// to the entity itself; notifications need a non-empty material id.
+		if ($last_id) $new->setId((int)$last_id);
 		
 		// additional categories of the material
 		if (!empty($extra_cats)) $this->_saveBoundCategoryIds($last_id, $extra_cats);
@@ -784,6 +787,12 @@ Class NewsModule extends Module {
 			'entity' => $new,
 			'module' => $this->module,
 		));
+
+		// Notify mailing subscribers about a published material.
+		if ($available == 1 && $res['premoder'] === 'confirmed') {
+			$notifyCategories = array_merge(array((int)$cats_selector), array_values($extra_cats));
+			atm_subscription_notify_material($this->module, $new, $notifyCategories);
+		}
 		
 		//clean cache
 		$this->Register['Cache']->clean(CACHE_MATCHING_TAG, array('module_' . $this->module));
@@ -942,6 +951,7 @@ Class NewsModule extends Module {
 
 		$target = $this->Model->getById($id);
 		if (!$target) redirect('/' . $this->module . '/');
+		$wasPublished = ((int)$target->getAvailable() === 1 && $target->getPremoder() === 'confirmed');
 		
 		
 		//turn access
@@ -1074,6 +1084,12 @@ Class NewsModule extends Module {
 		$this->_saveBoundCategoryIds($id, $extra_cats);
 		if (is_object($this->AddFields)) {
 			$this->AddFields->save($id, $_addFields);
+		}
+
+		// Notify subscribers when a previously hidden/pending material is published.
+		if (!$wasPublished && $available == 1 && $target->getPremoder() === 'confirmed') {
+			$notifyCategories = array_merge(array((int)$in_cat), array_values($extra_cats));
+			atm_subscription_notify_material($this->module, $target, $notifyCategories);
 		}
 
 
@@ -1316,9 +1332,18 @@ Class NewsModule extends Module {
 
 		$target = $this->Model->getById($id);
 		if (!$target) redirect('/');
+		$wasPublished = ((int)$target->getAvailable() === 1 && $target->getPremoder() === 'confirmed');
 		
 		$target->setPremoder((string)$type);
 		$target->save();
+
+		if ($type === 'confirmed' && !$wasPublished && (int)$target->getAvailable() === 1) {
+			atm_subscription_notify_material(
+				$this->module,
+				$target,
+				atm_subscription_get_entity_category_ids($this->module, $target)
+			);
+		}
 		return $this->showInfoMessage(__('Operation is successful'), '/' . $this->module . '/');
 	}
 	

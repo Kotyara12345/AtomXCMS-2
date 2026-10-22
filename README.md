@@ -96,6 +96,10 @@ panel keeps them after regenerating the configuration.
 * The robots meta tag for search result and pagination pages can be set
   to `index, follow`, `noindex, follow`, `index, nofollow` or
   `noindex, nofollow` in SEO settings.
+* Guests and registered users can subscribe to the general newsletter
+  about new news and articles from the site sidebar. Registered users
+  can also choose individual news and article categories in their
+  profile; notifications are sent when a material is published.
 
 #### Contributing
 
@@ -219,6 +223,11 @@ location / {
 * Мета-тег robots для страниц результатов поиска и пагинации можно
   выбрать в разделе SEO: `index, follow`, `noindex, follow`,
   `index, nofollow` или `noindex, nofollow`.
+* Гости и авторизованные пользователи могут подписаться на общую
+  рассылку о новых новостях и статьях из боковой панели сайта.
+  Авторизованные пользователи также могут выбрать отдельные категории
+  новостей и статей в личном кабинете; уведомления отправляются при
+  публикации материала.
 
 #### Участие в проекте
 

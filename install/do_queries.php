@@ -438,6 +438,25 @@ $array[] = "CREATE TABLE `{$set['db']['prefix']}users_settings` (
 $array[] = "INSERT INTO `{$set['db']['prefix']}users_settings` VALUES (1, 'rating', 'a:36:{s:3:\"cms\";s:21:\"Z:/home/localhost/www\";s:11:\"cookie_time\";s:2:\"30\";s:9:\"start_mod\";s:0:\"\";s:8:\"open_reg\";s:1:\"1\";s:10:\"debug_mode\";s:1:\"1\";s:5:\"forum\";a:12:{s:5:\"title\";s:27:\"Каталог файлов\";s:11:\"description\";s:42:\"Большой каталог файлов\";s:15:\"max_avatar_size\";s:6:\"100000\";s:12:\"not_reg_user\";s:16:\"Гостелло\";s:15:\"max_post_lenght\";s:3:\"500\";s:18:\"max_message_lenght\";s:4:\"3000\";s:15:\"max_mail_lenght\";s:3:\"500\";s:14:\"max_count_mess\";s:2:\"50\";s:13:\"post_per_page\";N;s:15:\"themes_per_page\";s:1:\"4\";s:14:\"posts_per_page\";s:2:\"15\";s:14:\"users_per_page\";s:2:\"30\";}s:13:\"max_file_size\";s:8:\"15000000\";s:19:\"min_password_lenght\";s:1:\"6\";s:11:\"admin_email\";s:19:\"drunyacoder@mail.ru\";s:14:\"redirect_delay\";s:1:\"1\";s:12:\"time_on_line\";s:2:\"10\";s:4:\"news\";a:4:{s:5:\"title\";s:14:\"Новости\";s:15:\"max_news_lenght\";s:5:\"15000\";s:19:\"max_announce_lenght\";s:3:\"700\";s:13:\"news_per_page\";s:1:\"3\";}s:4:\"stat\";a:5:{s:5:\"title\";s:12:\"Статьи\";s:11:\"description\";s:44:\"Много интересных статей\";s:15:\"max_post_lenght\";s:5:\"15000\";s:13:\"stat_per_page\";s:1:\"7\";s:15:\"announce_lenght\";s:4:\"1500\";}s:7:\"antisql\";s:3:\"yes\";s:4:\"load\";a:8:{s:5:\"title\";s:27:\"Каталог файлов\";s:11:\"description\";s:54:\"Каталог файлов. Все файлы тут.\";s:15:\"min_load_lenght\";s:3:\"200\";s:15:\"max_load_lenght\";s:4:\"1500\";s:19:\"max_announce_lenght\";s:3:\"300\";s:14:\"posts_per_page\";s:1:\"5\";s:13:\"max_file_size\";s:8:\"15000000\";s:14:\"loads_per_page\";s:1:\"5\";}s:4:\"rat0\";s:25:\"Заглянул сюда\";s:5:\"cond1\";s:1:\"2\";s:4:\"rat1\";s:14:\"никакой\";s:5:\"cond2\";s:1:\"5\";s:4:\"rat2\";s:12:\"салага\";s:5:\"cond3\";s:1:\"7\";s:4:\"rat3\";s:13:\"кое что\";s:5:\"cond4\";s:2:\"12\";s:4:\"rat4\";s:8:\"шкет\";s:5:\"cond5\";s:2:\"17\";s:4:\"rat5\";s:19:\"пойдет тип\";s:5:\"cond6\";s:2:\"22\";s:4:\"rat6\";s:16:\"зависший\";s:5:\"cond7\";s:2:\"25\";s:4:\"rat7\";s:8:\"кент\";s:5:\"cond8\";s:2:\"30\";s:4:\"rat8\";s:10:\"перец\";s:5:\"cond9\";s:2:\"35\";s:4:\"rat9\";s:23:\"крутой перец\";s:6:\"cond10\";s:2:\"40\";s:5:\"rat10\";s:34:\"круче любого перца\";}')";
 $array[] = "INSERT INTO `{$set['db']['prefix']}users_settings` VALUES (2, 'reg_rules', 'Правила как правила:)')";
 ##########################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}mailing_subscriptions`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}mailing_subscriptions` (
+  `id` int(11) NOT NULL auto_increment,
+  `user_id` int(11) NOT NULL default '0',
+  `email` varchar(190) NOT NULL default '',
+  `owner_key` varchar(200) NOT NULL default '',
+  `module` varchar(32) NOT NULL default '',
+  `category_id` int(11) NOT NULL default '0',
+  `token` char(64) NOT NULL default '',
+  `active` tinyint(1) NOT NULL default '1',
+  `created_at` datetime NOT NULL default CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL default CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `owner_target` (`owner_key`, `module`, `category_id`),
+  UNIQUE KEY `token` (`token`),
+  KEY `email` (`email`),
+  KEY `target` (`module`, `category_id`, `active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci";
+##########################################################################
 $array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}foto`";
 $array[] = "CREATE TABLE `{$set['db']['prefix']}foto` (
   `id` int(11) NOT NULL auto_increment,

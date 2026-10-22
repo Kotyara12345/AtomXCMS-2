@@ -643,6 +643,11 @@ Class UsersModule extends Module {
         //$data = array_merge($data, $user);
         $data = Validate::getCurrentInputsValues($user, $data);
         $markers = array();
+        try {
+            $markers['mailing_settings'] = atm_subscription_render_user_settings((int)$_SESSION['user']['id']);
+        } catch (Exception $e) {
+            $markers['mailing_settings'] = '';
+        }
 
 
         $markers['errors'] = $this->Register['Validate']->getErrors();
@@ -875,6 +880,24 @@ Class UsersModule extends Module {
         $user->setEmail_notification($email_notification);
         $user->setSummer_time($summer_time);
         $user->save();
+
+		// Mailing subscriptions from the profile form.
+		$mailing = (isset($_POST['mailing']) && is_array($_POST['mailing'])) ? $_POST['mailing'] : array();
+		$mailingCategories = array();
+		foreach (array('news', 'stat') as $mailingModule) {
+			$mailingCategories[$mailingModule] = isset($mailing['categories'][$mailingModule])
+				? (array)$mailing['categories'][$mailingModule] : array();
+		}
+		try {
+			atm_subscription_save_user_preferences(
+				(int)$user->getId(),
+				$email,
+				!empty($mailing['general']),
+				$mailingCategories
+			);
+		} catch (Exception $e) {
+			// A mailing storage problem must not block profile updates.
+		}
 
 		// the old "remember me" browsers must not sign in with the old password
 		if (!empty($changePassword)) atm_admin_remember_purge($user->getId());

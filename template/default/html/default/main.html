@@ -192,6 +192,27 @@ $(document).ready(function() {
 		</div>
 		<div class="rightbloks">
 		
+			<div class="block mailing-block">
+			  <div class="blockstop">{{ 'Subscribe to updates'|lang }}</div>
+			  <div class="blokscontent">
+				{{ mailing_notice }}
+				<p>{{ 'Receive announcements about new news and articles by e-mail.'|lang }}</p>
+				<form action="{{ www_root }}/subscribe.php" method="post" class="mailing-form">
+				  <input type="hidden" name="csrf_token" value="{{ mailing_csrf }}" />
+				  <input type="hidden" name="action" value="subscribe_general" />
+				  <div style="display:none;"><input type="text" name="website" value="" tabindex="-1" autocomplete="off" /></div>
+				  {% if fps_user_id %}
+				  <p>{{ 'Your e-mail'|lang }}: <b>{{ fps_user.email }}</b></p>
+				  {% else %}
+				  <p><input type="email" name="email" value="" maxlength="190" placeholder="{{ 'E-mail'|lang }}" required="required" /></p>
+				  {% endif %}
+				  <p><input type="submit" value="{{ 'Subscribe'|lang }}" /></p>
+				</form>
+				{% if fps_user_id %}
+				<p><a href="{{ www_root }}/users/edit_form/">{{ 'Manage subscriptions'|lang }}</a></p>
+				{% endif %}
+			  </div>
+			</div>
 			<div class="block">
 			  <div class="blockstop">{{ 'Voting'|lang }}</div>
 			  <div class="blokscontent"><ul class="mini_list">{{ pl_votes }}</ul></div>

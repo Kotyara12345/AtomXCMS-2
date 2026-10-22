@@ -321,6 +321,10 @@ class Module {
 			$this->View->setLayout($this->template);
 			$markers = $this->getGlobalMarkers(file_get_contents($this->View->getTemplateFilePath('main.html')));
             $markers['content'] = $content;
+			$markers['mailing_notice'] = function_exists('atm_subscription_notice')
+				? atm_subscription_notice() : '';
+			$markers['mailing_csrf'] = function_exists('atm_subscription_csrf_token')
+				? atm_subscription_csrf_token() : '';
 			
 			
 			// Cache global markers

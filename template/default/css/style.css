@@ -761,6 +761,13 @@ text-overflow: ellipsis;
 .content ul.spisok-all li .siu_data input[type="radio"], .content ul.spisok-all li .siu_data input[type="checkbox"] {height: 13px;width: 13px;}
 .content ul.spisok-all li .siu_data input[type="file"] {width: 270px;}
 .content ul.spisok-all li .siu_data textarea {height: 90px;width: 600px;}
+.mailing-settings {max-width: 620px;}
+.mailing-category-group {margin-top: 10px;}
+.mailing-categories, .mailing-categories ul {list-style: none;margin: 0;padding: 0;}
+.mailing-categories label {display: block;padding: 2px 0;}
+.mailing-note {color: #777;font-size: 12px;margin-top: 8px;}
+.mailing-block .mailing-form input[type="email"] {width: 100%;max-width: 100%;box-sizing: border-box;}
+.mailing-block .mailing-notice {margin-bottom: 8px;padding: 5px;border-radius: 4px;background: #f3f3c8;color: #555;}
 /*-------------------------------MULTIPLE CATEGORIES------------------------*/
 .multicat {display: flex;align-items: flex-start;max-width: 100%;}
 .content ul.spisok-all li .siu_data .multicat select {flex: 0 1 320px;width: 320px;min-width: 0;max-width: 100%;padding: 3px;border: 1px solid #AAAAAA;background: #fff;font-size: 13px;line-height: 1.5;}

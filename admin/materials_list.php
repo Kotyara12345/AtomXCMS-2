@@ -144,9 +144,18 @@ class MaterialsList {
 			
 			$status = $_GET['status'];
 			if (!in_array($status, array('rejected', 'confirmed'))) $status = 'nochecked';
-			
+
+			$wasPublished = ((int)$entity->getAvailable() === 1 && $entity->getPremoder() === 'confirmed');
 			$entity->setPremoder($status);
 			$entity->save();
+
+			if ($status === 'confirmed' && !$wasPublished && (int)$entity->getAvailable() === 1) {
+				atm_subscription_notify_material(
+					$module,
+					$entity,
+					atm_subscription_get_entity_category_ids($module, $entity)
+				);
+			}
 			$_SESSION['message'] = __('Saved');
 			
 			
@@ -444,6 +453,7 @@ class MaterialsList {
 					if ($newId < 1) {
 						$error = __('Some error occurred');
 					} else {
+						if ($entity) $entity->setId((int)$newId);
 						if ($useMultiCats) {
 							$this->saveBoundCategories($module, $newId, array_values(array_diff($selectedCats, array($mainCatId))));
 						}
@@ -452,6 +462,16 @@ class MaterialsList {
 							'entity' => $entity,
 							'module' => $module,
 						));
+
+						// Notify subscribers about a material published directly
+						// from the admin panel.
+						if ((int)$entity->getAvailable() === 1 && $entity->getPremoder() === 'confirmed') {
+							atm_subscription_notify_material(
+								$module,
+								$entity,
+								atm_subscription_get_entity_category_ids($module, $entity)
+							);
+						}
 
 						$Cache = new Cache;
 						$Cache->clean(CACHE_MATCHING_ANY_TAG, array('module_' . $module));
