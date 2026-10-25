@@ -27,6 +27,20 @@ $ip      = (!empty($_SERVER['REMOTE_ADDR'])) ? $_SERVER['REMOTE_ADDR'] : '';
 $keystring = (isset($_POST['keystring'])) ? trim($_POST['keystring']) : '';
 
 
+/* Reply target: only a comment of the same material and module is allowed. */
+$parentId = (!empty($_POST['parent_id'])) ? (int)$_POST['parent_id'] : 0;
+if ($parentId > 0) {
+	$commentsModel = $this->Register['ModManager']->getModelInstance('Comments');
+	$parentComment = ($commentsModel) ? $commentsModel->getById($parentId) : false;
+	if (!$parentComment
+		|| (int)$parentComment->getEntity_id() !== $id
+		|| $parentComment->getModule() !== $this->module
+		|| $parentComment->getPremoder() === 'rejected') {
+		$parentId = 0;
+	}
+}
+
+
 // Check fields
 $errors = $this->Register['Validate']->check($this->Register['action']);
 
@@ -53,7 +67,10 @@ if (!empty($errors)) {
 	$_SESSION['FpsForm']['errors'] = $this->Register['DocParser']->wrapErrors($errors);
 	$_SESSION['FpsForm']['name'] = $name;
 	$_SESSION['FpsForm']['message'] = $message;
-	redirect('/' . $this->module . '/view/' . $id);
+	$_SESSION['FpsForm']['parent_id'] = $parentId;
+	$returnUrl = '/' . $this->module . '/view/' . $id;
+	if ($parentId > 0) $returnUrl .= '?reply=' . $parentId;
+	redirect($returnUrl . '#sendForm');
 }
 
 
@@ -73,6 +90,7 @@ $this->DB->cleanSqlCache();
 /* save data */	
 $data = array(
 	'entity_id'   => $id,
+	'parent_id'   => $parentId,
 	'name'     => $name,
 	'message'  => $message,
 	'ip'       => $ip,

@@ -42,6 +42,10 @@ $queries = array(
 	"ALTER TABLE `users` ADD `first_name` VARCHAR(32) character set utf8 NOT NULL default ''",
 	"ALTER TABLE `users` ADD `last_name` VARCHAR(32) character set utf8 NOT NULL default ''",
 
+	// Hierarchical comments
+	"ALTER TABLE `comments` ADD `parent_id` INT(11) NOT NULL DEFAULT '0' AFTER `entity_id`",
+	"ALTER TABLE `comments` ADD INDEX (`parent_id`)",
+
 	// Add indexes
 	"ALTER TABLE `forums` ADD INDEX (`in_cat`)",
 	"ALTER TABLE `loads` ADD INDEX (`category_id`, `author_id`)",

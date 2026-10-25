@@ -30,6 +30,7 @@ class CommentsEntity extends FpsEntity
 	
 	protected $id;
 	protected $entity_id;
+	protected $parent_id;
 	protected $user_id;
 	protected $name;
 	protected $message;
@@ -44,6 +45,7 @@ class CommentsEntity extends FpsEntity
 	{
 		$data = array(
 			'entity_id' => intval($this->entity_id),
+			'parent_id' => intval($this->parent_id),
 			'user_id' => intval($this->user_id),
 			'name' => $this->name,
 			'message' => $this->message,
@@ -63,6 +65,12 @@ class CommentsEntity extends FpsEntity
 	public function delete()
 	{
 		$Register = Register::getInstance();
+		// Keep replies visible after their parent is deleted: move them one level up.
+		$Register['DB']->save('comments', array(
+			'parent_id' => intval($this->parent_id),
+		), array(
+			'parent_id' => intval($this->id),
+		));
 		$Register['DB']->delete('comments', array('id' => $this->id));
 	}
 }

@@ -2,8 +2,10 @@
 {{ data.errors }}
 <div class="material">
 	   <form method="POST" id="sendForm" action="{{ data.action }}">
+       <input type="hidden" name="parent_id" value="{{ data.parent_id }}" />
        <div class="inftitle">{{ 'Adding a comment'|lang }}</div>
 	   <div class="mat-content">
+          {{ data.reply_notice }}
           <ul class="spisok-all">
 		  {% if fps_user_id == 0 %}
           <li>

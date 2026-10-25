@@ -160,6 +160,7 @@ $array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}comments`";
 $array[] = "CREATE TABLE `{$set['db']['prefix']}comments` (
   `id` int(11) NOT NULL auto_increment,
   `entity_id` int(11) NOT NULL,
+  `parent_id` int(11) NOT NULL DEFAULT '0',
   `user_id` INT(11) DEFAULT '0' NOT NULL,
   `name` varchar(100) NOT NULL,
   `message` text NOT NULL,
@@ -169,7 +170,8 @@ $array[] = "CREATE TABLE `{$set['db']['prefix']}comments` (
   `module` varchar(10) default 'news' NOT NULL,
   `premoder` enum('nochecked','rejected','confirmed') NOT NULL DEFAULT 'nochecked',
   PRIMARY KEY  (`id`),
-	INDEX (`entity_id`, `user_id`)
+	INDEX (`entity_id`, `user_id`),
+	INDEX (`parent_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci";
 #####################################################################
 $array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}loads_categories`";

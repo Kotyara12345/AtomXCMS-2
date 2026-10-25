@@ -2695,6 +2695,10 @@ Class UsersModule extends Module {
 
 				$markers['moder_panel'] = $moder_panel;
 				$markers['message'] = $this->Textarier->parseBBCodes($entity->getMessage(), $entity);
+				$markers['depth'] = 0;
+				$markers['depth_class'] = 0;
+				$markers['reply_to'] = '';
+				$markers['reply_link'] = '';
 
 				if ($entity->getEditdate()!='0000-00-00 00:00:00') {
 					$markers['editdate'] = 'Комментарий был изменён '.$entity->getEditdate();

@@ -22,7 +22,58 @@ if (empty($html) && $commentsModel) {
 	), $params);
 	
 	if ($comments) {
+		/*
+		 * Build a tree from the flat list. Comments are already sorted by
+		 * date, so every level keeps the order selected in the module settings.
+		 */
+		$commentsById = array();
+		$children = array(0 => array());
 		foreach ($comments as $comment) {
+			$commentId = (int)$comment->getId();
+			$commentsById[$commentId] = $comment;
+			if (!isset($children[$commentId])) $children[$commentId] = array();
+		}
+		
+		foreach ($comments as $comment) {
+			$commentId = (int)$comment->getId();
+			$parentId = (int)$comment->getParent_id();
+			if ($parentId > 0 && $parentId !== $commentId && isset($commentsById[$parentId])) {
+				$children[$parentId][] = $commentId;
+			} else {
+				// Broken or missing parent: keep the comment visible as a root.
+				if ($parentId > 0) $comment->setParent_id(0);
+				$children[0][] = $commentId;
+			}
+		}
+		
+		$ordered = array();
+		$visited = array();
+		$walkTree = function($parentId, $depth) use (&$walkTree, &$children, &$commentsById, &$ordered, &$visited) {
+			if (empty($children[$parentId])) return;
+			foreach ($children[$parentId] as $commentId) {
+				if (isset($visited[$commentId])) continue;
+				$visited[$commentId] = true;
+				$ordered[] = array($commentsById[$commentId], $depth);
+				$walkTree($commentId, $depth + 1);
+			}
+		};
+		$walkTree(0, 0);
+		
+		// Safety net for cyclic data: never hide a comment from the page.
+		foreach ($comments as $comment) {
+			$commentId = (int)$comment->getId();
+			if (!isset($visited[$commentId])) {
+				$visited[$commentId] = true;
+				$comment->setParent_id(0);
+				$ordered[] = array($comment, 0);
+			}
+		}
+		
+		$canReply = $this->ACL->turn(array($this->module, 'add_comments'), false);
+		$comments = array();
+		
+		foreach ($ordered as $item) {
+			list($comment, $depth) = $item;
 			$markers = array();
 			
 			
@@ -74,7 +125,25 @@ if (empty($html) && $commentsModel) {
 			
 			$markers['moder_panel'] = $moder_panel;
 			$markers['message'] = $this->Textarier->parseBBCodes($comment->getMessage(), $comment);
+			$markers['depth'] = $depth;
+			$markers['depth_class'] = min($depth, 5);
+			
+			$parentId = (int)$comment->getParent_id();
+			if ($parentId > 0 && !empty($commentsById[$parentId])) {
+				$markers['reply_to'] = '<a href="#comment-' . $parentId . '" class="comment-parent-link">'
+					. sprintf(__('Reply to %s'), h($commentsById[$parentId]->getName())) . '</a>';
+			} else {
+				$markers['reply_to'] = '';
+			}
+			
+			$markers['reply_link'] = '';
+			if ($canReply && $comment->getPremoder() !== 'rejected') {
+				$replyUrl = get_url('/' . $this->module . '/view/' . $id . '?reply=' . $comment->getId()) . '#sendForm';
+				$markers['reply_link'] = '<a href="' . h($replyUrl) . '" class="comment-reply-link">' . __('Reply') . '</a>';
+			}
+			
 			$comment->setAdd_markers($markers);
+			$comments[] = $comment;
 		}
 	}
 	$html = $this->render('viewcomment.html', array('commentsr' => $comments));
@@ -83,4 +152,3 @@ if (empty($html) && $commentsModel) {
 } else {
 	$html = '';
 }
-

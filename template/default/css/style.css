@@ -877,6 +877,24 @@ color: #333;}
 .comment-block .userlisttitle {font-size: 18px; margin: 0 0 15px 0;}
 .comment-block .text2 {width:70%; font-size:13px;}
 .comment-block .info {float: left; margin-top: 5px; font-size: 11px; color: #818181;}
+.comment-block.comment-depth-1 {margin-left: 30px;}
+.comment-block.comment-depth-2 {margin-left: 60px;}
+.comment-block.comment-depth-3 {margin-left: 90px;}
+.comment-block.comment-depth-4 {margin-left: 120px;}
+.comment-block.comment-depth-5 {margin-left: 150px;}
+.comment-block.comment-depth-1,
+.comment-block.comment-depth-2,
+.comment-block.comment-depth-3,
+.comment-block.comment-depth-4,
+.comment-block.comment-depth-5 {border-left: 3px solid #e2e2e2; padding-left: 12px;}
+.comment-block[id] {scroll-margin-top: 50px;}
+.comment-reply-to {margin: -6px 0 8px 0; font-size: 11px; color: #818181;}
+.comment-reply-to a {color: #6f8660; text-decoration: none;}
+.comment-reply-to a:hover {text-decoration: underline;}
+.comment-reply {margin-left: 8px;}
+.comment-reply-link {font-weight: bold;}
+.comment-reply-notice {margin: 0 0 10px 0; padding: 8px 12px; background: #f1f5ec; border-left: 3px solid #8aa66f; color: #3c3c3c; font-size: 13px;}
+.comment-reply-notice .comment-reply-cancel {margin-left: 8px; font-size: 12px;}
 
 
 table.cat-tb {padding:5px;}
@@ -1629,6 +1647,17 @@ background: rgba(177, 199, 150, 1);
 	.comment-block .text2 {
 		width: auto;
 	}
+	.comment-block.comment-depth-1 {margin-left: 12px;}
+	.comment-block.comment-depth-2 {margin-left: 24px;}
+	.comment-block.comment-depth-3 {margin-left: 36px;}
+	.comment-block.comment-depth-4 {margin-left: 48px;}
+	.comment-block.comment-depth-5 {margin-left: 60px;}
+	.comment-block.comment-depth-1,
+	.comment-block.comment-depth-2,
+	.comment-block.comment-depth-3,
+	.comment-block.comment-depth-4,
+	.comment-block.comment-depth-5 {padding-left: 8px;}
+	.comment-reply-notice {padding: 7px 8px;}
 	.forumblock div .forstatus,
 	.forumblock div .fornewmess,
 	.forumblock div .fornewposts {

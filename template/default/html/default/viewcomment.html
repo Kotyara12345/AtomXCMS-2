@@ -4,7 +4,7 @@
 	  <div class="mat-content">
           <ul class="userlist">
              {% for comment in commentsr %}
-                            <li class="comment-block">
+                            <li class="comment-block comment-depth-{{ comment.add_markers.depth_class }}" id="comment-{{ comment.id }}" data-comment-depth="{{ comment.add_markers.depth }}">
 							       <div class="userlistavatar">{{ comment.add_markers.avatar }}</div>
 							        <div >
 								          <ul class="listuserbuttons">
@@ -12,11 +12,13 @@
                                               {% if comment.entry_url %}<li><a href="{{ comment.entry_url }}" class="button2">Перейти к материалу...</a></li>{% endif %}
 								              </ul>
 								          <h3 class="userlisttitle">{{ comment.add_markers.name_a }}</h3>
+										  {% if comment.add_markers.reply_to %}<div class="comment-reply-to">{{ comment.add_markers.reply_to }}</div>{% endif %}
 										  <div class="text2">
 			                                {{ comment.add_markers.message }}
 		                                  </div>
 								          <div class="info">
 								               {% if comment.add_markers.editdate %}<span><b>{{ 'The comment was changed'|lang }}:</b> {{ comment.add_markers.editdate }}</span>{% endif %}<span> {{ AtmGetDate(comment.date) }}</span>
+								               {% if comment.add_markers.reply_link %}<span class="comment-reply">{{ comment.add_markers.reply_link }}</span>{% endif %}
 								          </div>
 							        </div>
                             </li>
