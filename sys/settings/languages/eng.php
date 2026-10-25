@@ -372,6 +372,7 @@ return array(
 	'Bans by IP'                    => 'Blocking by IP',
 	'Backup control'                => 'Backup control',
 	'Web server configuration'      => 'Web server configuration',
+	'Go to site'                    => 'Go to site',
 	'Apache configuration'          => 'Apache configuration',
 	'Nginx configuration'           => 'Nginx configuration',
 	'Configuration file path'       => 'Configuration file path',

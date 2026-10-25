@@ -140,6 +140,17 @@
 				?>
 				<div class="ava"><img src="<?php echo $ava_path; ?>" alt="user ava" title="user ava" /></div>
 				<div class="name"><a href="#"><?php echo h($_SESSION['user']['name']); ?></a><span><?php echo h($group_title) ?></span></div>
+				<a
+					href="<?php echo WWW_ROOT; ?>/"
+					class="go-site"
+					target="_blank"
+					rel="noopener noreferrer"
+					title="<?php echo h(__('Go to site')); ?>"
+					aria-label="<?php echo h(__('Go to site')); ?>"
+				>
+					<span class="go-site-label-full"><?php echo h(__('Go to site')); ?></span>
+					<span class="go-site-label-short"><?php echo h(__('Site')); ?></span>
+				</a>
 				<a href="exit.php" class="exit"></a>
 			</div>
 			<div class="clear"></div>

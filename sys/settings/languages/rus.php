@@ -404,6 +404,7 @@ return array(
 	'Bans by IP'                    => 'Баны по IP',
 	'Backup control'                => 'Управление Бекапами',
 	'Web server configuration'      => 'Конфигурация веб-сервера',
+	'Go to site'                    => 'Перейти на сайт',
 	'Apache configuration'          => 'Конфигурация Apache',
 	'Nginx configuration'           => 'Конфигурация Nginx',
 	'Configuration file path'       => 'Путь к файлу конфигурации',
