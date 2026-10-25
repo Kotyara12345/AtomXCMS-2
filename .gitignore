@@ -6,6 +6,7 @@
 /sys/avatars/*
 /sys/files/*
 /sys/settings/config.php
+/sys/settings/server_config.php
 /sitemap.xml
 /sys/img/counter.png
 /TODO.txt

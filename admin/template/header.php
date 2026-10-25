@@ -295,6 +295,9 @@
 		  '<a href="settings.php?m=secure"><?php echo __('Security settings'); ?></a>',
 		  '<a href="ip_ban.php"><?php echo __('Bans by IP'); ?></a>',
 		  '<a href="dump.php"><?php echo __('Backup control'); ?></a>',
+		  <?php if (!empty($_SESSION['user']) && (int)$_SESSION['user']['status'] === 4): ?>
+		  '<a href="server_config.php"><?php echo __('Web server configuration'); ?></a>',
+		  <?php endif; ?>
 		  'sep',
 		  '<a href="system_log.php"><?php echo __('Action log'); ?></a>',
 		  '<a href="errors_log.php"><?php echo __('Errors log'); ?></a>'
