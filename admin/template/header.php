@@ -1,3 +1,46 @@
+<?php
+include_once ROOT . '/sys/inc/admin_security.lib.php';
+include_once ROOT . '/sys/inc/server_config.lib.php';
+
+$atmNotificationCounts = atm_admin_notification_counts();
+$atmNotificationTotal = 0;
+foreach (array('news', 'loads', 'stat', 'comments') as $atmNotificationKey) {
+	$atmNotificationTotal += !empty($atmNotificationCounts[$atmNotificationKey])
+		? (int)$atmNotificationCounts[$atmNotificationKey] : 0;
+}
+
+$atmServerStatuses = atm_server_config_status_all();
+$atmServerConfigured = 0;
+$atmServerOk = 0;
+$atmServerIssues = 0;
+foreach ($atmServerStatuses as $atmServerStatus) {
+	if (!empty($atmServerStatus['configured'])) {
+		$atmServerConfigured++;
+		if (!empty($atmServerStatus['ok'])) {
+			$atmServerOk++;
+		} else {
+			$atmServerIssues++;
+		}
+	}
+}
+if ($atmServerIssues > 0) {
+	$atmServerDot = ($atmServerOk > 0) ? 'warn' : 'error';
+} else {
+	$atmServerDot = ($atmServerConfigured > 0) ? 'ok' : 'error';
+}
+
+$atmServerLabels = array(
+	'ok' => __('OK'),
+	'empty' => __('Not configured'),
+	'missing' => __('File not found'),
+	'not_readable' => __('File is not readable'),
+	'not_writable' => __('Read only'),
+	'not_file' => __('Not a file'),
+	'extension' => __('Unsupported file type'),
+	'relative' => __('Path must be absolute'),
+	'invalid' => __('Invalid path'),
+);
+?>
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -23,8 +66,19 @@
 	
 	<script src="<?php echo WWW_ROOT ?>/sys/js/fancybox/jquery.fancybox.js"></script>
 	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/sys/js/fancybox/css/fancy.css" />
+
+	<script>
+	(function () {
+		try {
+			if (localStorage.getItem('atmAdminTheme') === 'dark') {
+				document.documentElement.className += ' atm-dark';
+			}
+		} catch (e) {}
+	})();
+	</script>
 	
 	<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/style.css?v=<?php echo filemtime(ROOT . '/admin/template/css/style.css'); ?>" />
+	<script src="<?php echo WWW_ROOT ?>/admin/js/admin-ui.js?v=<?php echo filemtime(ROOT . '/admin/js/admin-ui.js'); ?>" defer></script>
 	<!--<link rel="stylesheet" href="<?php echo WWW_ROOT ?>/admin/template/css/font-awesome.min.css" />-->
 	
 	<script>
@@ -92,6 +146,8 @@
 	</script>
 </head> 
 <body>
+	<a class="atm-skip-link" href="#content-wrapper"><?php echo h(__('Skip to content')); ?></a>
+	<div id="atm-toasts" class="atm-toasts" role="region" aria-label="<?php echo h(__('Notifications')); ?>" aria-live="polite"></div>
 	<div class="headmenuwrap">
 		<div class="headmenu">
 			<button type="button" id="mobile-menu-toggle" class="mobile-menu-toggle" aria-controls="side-menu" aria-expanded="false" aria-label="<?php echo h(__('Menu')); ?>">
@@ -105,7 +161,7 @@
 					<li><a href="#">Сниппеты</a></li>
 					<li><a href="#">Дизайн</a></li>
 					<li><a href="#">Статистика</a></li>
-					<li><a href="#">Безопасность</a></li>
+					<li><a href="security.php">Безопасность</a></li>
 					<li><a href="#">Дополнительно</a></li>
 					<li><a href="#">Помощь</a></li>
 					<div class="clear"></div>
@@ -138,8 +194,94 @@
 				$group_title = $group_info['title'];
 				
 				?>
-				<div class="ava"><img src="<?php echo $ava_path; ?>" alt="user ava" title="user ava" /></div>
-				<div class="name"><a href="#"><?php echo h($_SESSION['user']['name']); ?></a><span><?php echo h($group_title) ?></span></div>
+				<div class="atm-notify">
+					<button type="button" class="atm-icon-button atm-bell" id="atm-notify-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="atm-notify-dropdown" aria-label="<?php echo h($atmNotificationTotal > 0 ? sprintf(__('Notifications: %d new'), $atmNotificationTotal) : __('Notifications')); ?>">
+						<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-5.2V11a7 7 0 0 0-5.5-6.84V3a1.5 1.5 0 0 0-3 0v1.16A7 7 0 0 0 5 11v5.8l-1.7 1.7a1 1 0 0 0 .7 1.7h16a1 1 0 0 0 .7-1.7Z"/></svg>
+						<?php if ($atmNotificationTotal > 0): ?><span class="atm-badge"><?php echo (int)$atmNotificationTotal; ?></span><?php endif; ?>
+						<span class="atm-status-dot <?php echo h($atmServerDot); ?>" aria-hidden="true"></span>
+					</button>
+					<div class="atm-dropdown atm-notify-dropdown" id="atm-notify-dropdown" role="menu" hidden>
+						<div class="atm-dropdown-head"><?php echo h(__('Notifications')); ?></div>
+						<?php if ($atmNotificationTotal < 1): ?>
+							<div class="atm-empty"><?php echo h(__('No new notifications')); ?></div>
+						<?php else: ?>
+							<?php
+							$atmNotifyItems = array(
+								'news' => array('label' => __('News'), 'url' => 'materials_list.php?m=news&premoder=1'),
+								'loads' => array('label' => __('Loads'), 'url' => 'materials_list.php?m=loads&premoder=1'),
+								'stat' => array('label' => __('Articles'), 'url' => 'materials_list.php?m=stat&premoder=1'),
+								'comments' => array('label' => __('Comments'), 'url' => 'moderation.php#comments'),
+							);
+							foreach ($atmNotifyItems as $atmNotifyKey => $atmNotifyItem):
+								$atmNotifyCount = !empty($atmNotificationCounts[$atmNotifyKey]) ? (int)$atmNotificationCounts[$atmNotifyKey] : 0;
+								if ($atmNotifyCount < 1) continue;
+							?>
+								<a class="atm-notify-item" role="menuitem" href="<?php echo h($atmNotifyItem['url']); ?>">
+									<span><?php echo h($atmNotifyItem['label']); ?></span>
+									<b><?php echo $atmNotifyCount; ?></b>
+								</a>
+							<?php endforeach; ?>
+						<?php endif; ?>
+						<div class="atm-dropdown-sep"></div>
+						<div class="atm-server-status">
+							<div class="atm-dropdown-subhead"><?php echo h(__('Server status')); ?></div>
+							<?php foreach ($atmServerStatuses as $atmServerType => $atmServerStatus): ?>
+								<?php
+								$atmServerOkRow = !empty($atmServerStatus['ok']);
+								$atmServerConfiguredRow = !empty($atmServerStatus['configured']);
+								$atmServerRowClass = $atmServerOkRow ? 'ok' : ($atmServerConfiguredRow ? 'error' : 'empty');
+								$atmServerCode = $atmServerOkRow ? 'ok' : (string)$atmServerStatus['code'];
+								$atmServerLabel = isset($atmServerLabels[$atmServerCode]) ? $atmServerLabels[$atmServerCode] : __('Error');
+								?>
+								<div class="atm-server-row">
+									<span class="atm-dot <?php echo h($atmServerRowClass); ?>" aria-hidden="true"></span>
+									<span class="atm-server-name"><?php echo h($atmServerType === 'apache' ? 'Apache' : 'Nginx'); ?></span>
+									<span class="atm-server-value"><?php echo h($atmServerLabel); ?></span>
+									<?php if ($atmServerOkRow && !empty($atmServerStatus['info']['mtime'])): ?>
+										<small><?php echo h(__('Modified')); ?>: <?php echo h(date('d.m.Y H:i', (int)$atmServerStatus['info']['mtime'])); ?></small>
+									<?php endif; ?>
+								</div>
+							<?php endforeach; ?>
+							<?php if (!empty($_SESSION['user']) && (int)$_SESSION['user']['status'] === 4): ?>
+								<a class="atm-dropdown-link" role="menuitem" href="server_config.php"><?php echo h(__('Web server configuration')); ?></a>
+							<?php endif; ?>
+						</div>
+						<a class="atm-dropdown-all" role="menuitem" href="moderation.php"><?php echo h(__('All notifications')); ?></a>
+					</div>
+				</div>
+
+				<div class="atm-user-menu">
+					<button type="button" class="atm-user-toggle" id="atm-user-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="atm-user-dropdown" aria-label="<?php echo h(__('User menu')); ?>">
+						<span class="ava"><img src="<?php echo $ava_path; ?>" alt="" /></span>
+						<span class="name">
+							<span class="atm-user-name"><?php echo h($_SESSION['user']['name']); ?></span>
+							<span class="atm-user-group"><?php echo h($group_title); ?></span>
+						</span>
+						<span class="atm-caret" aria-hidden="true"></span>
+					</button>
+					<div class="atm-dropdown atm-user-dropdown" id="atm-user-dropdown" role="menu" hidden>
+						<div class="atm-dropdown-head atm-user-head">
+							<b><?php echo h($_SESSION['user']['name']); ?></b>
+							<small><?php echo h($group_title); ?></small>
+						</div>
+						<a class="atm-dropdown-link" role="menuitem" href="profile.php"><?php echo h(__('Profile')); ?></a>
+						<a class="atm-dropdown-link" role="menuitem" href="security.php"><?php echo h(__('Security center')); ?></a>
+						<a class="atm-dropdown-link" role="menuitem" href="moderation.php"><?php echo h(__('Moderation')); ?></a>
+						<?php if ((int)$_SESSION['user']['status'] === 4): ?>
+							<div class="atm-dropdown-sep"></div>
+							<a class="atm-dropdown-link" role="menuitem" href="settings.php?m=sys"><?php echo h(__('Common settings')); ?></a>
+							<a class="atm-dropdown-link" role="menuitem" href="audit_log.php"><?php echo h(__('Audit log')); ?></a>
+						<?php endif; ?>
+						<div class="atm-dropdown-sep"></div>
+						<button type="button" class="atm-theme-toggle" id="atm-theme-toggle" aria-pressed="false">
+							<span class="atm-theme-symbol" aria-hidden="true">◐</span>
+							<span class="atm-theme-dark-label"><?php echo h(__('Dark theme')); ?></span>
+							<span class="atm-theme-light-label"><?php echo h(__('Light theme')); ?></span>
+							<span class="atm-switch" aria-hidden="true"></span>
+						</button>
+					</div>
+				</div>
+
 				<a
 					href="<?php echo WWW_ROOT; ?>/"
 					class="go-site"
@@ -151,7 +293,7 @@
 					<span class="go-site-label-full"><?php echo h(__('Go to site')); ?></span>
 					<span class="go-site-label-short"><?php echo h(__('Site')); ?></span>
 				</a>
-				<a href="exit.php" class="exit"></a>
+				<a href="exit.php" class="exit" title="<?php echo h(__('Logout')); ?>" aria-label="<?php echo h(__('Logout')); ?>"></a>
 			</div>
 			<div class="clear"></div>
 		</div>
@@ -214,7 +356,7 @@
 		?>
 		
 			<li>
-				<div class="icon <?php echo $modKey ?>"></div>
+				<div class="icon <?php echo h(!empty($modData['icon']) ? $modData['icon'] : $modKey); ?>"></div>
                 <div class="sub-opener" onClick="subMenu('sub<?php echo $modKey ?>')"></div>
                 <a href="<?php echo $modData['url']; ?>"><?php echo $modData['ankor']; ?></a>
 				<div class="clear"></div>
@@ -303,11 +445,13 @@
 
 		['<?php echo __('Security'); ?>',
 		  [
+		  '<a href="security.php"><?php echo __('Security center'); ?></a>',
 		  '<a href="settings.php?m=secure"><?php echo __('Security settings'); ?></a>',
 		  '<a href="ip_ban.php"><?php echo __('Bans by IP'); ?></a>',
 		  '<a href="dump.php"><?php echo __('Backup control'); ?></a>',
 		  <?php if (!empty($_SESSION['user']) && (int)$_SESSION['user']['status'] === 4): ?>
 		  '<a href="server_config.php"><?php echo __('Web server configuration'); ?></a>',
+		  '<a href="audit_log.php"><?php echo __('Audit log'); ?></a>',
 		  <?php endif; ?>
 		  'sep',
 		  '<a href="system_log.php"><?php echo __('Action log'); ?></a>',
@@ -503,7 +647,7 @@
 					<td id="side-menu-td" width="237" min-height="100%">
 					</td>
 					<td style="position:relative;">
-						<div id="content-wrapper">
+						<div id="content-wrapper" tabindex="-1">
 
 <?php if (!empty($serverMessage)): ?>
     <!-- AtomX Server Notification -->
@@ -513,12 +657,12 @@
     <!-- /AtomX Server Notification -->
 <?php endif  ?>
 <?php if (!empty($_SESSION['message'])): ?>
-    <div class="warning ok">
+    <div class="warning ok atm-flash">
 		<?php echo $_SESSION['message'] ?>
 	</div>
     <?php unset($_SESSION['message']); ?>
 <?php endif; if (!empty($_SESSION['errors'])): ?>
-    <div class="warning error">
+    <div class="warning error atm-flash">
 		<?php echo $_SESSION['errors'] ?>
 	</div>
 <?php unset($_SESSION['errors']); endif; ?>

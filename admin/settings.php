@@ -228,6 +228,12 @@ if (isset($_POST['send'])) {
 
 	//save settings
 	Config::write($tmpSet);
+	atm_admin_audit(
+		'settings_saved',
+		'module(' . (string)$module . ')',
+		!empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : null,
+		!empty($_SESSION['user']['name']) ? (string)$_SESSION['user']['name'] : ''
+	);
 	
 	$_SESSION['message'] = __('Saved');
 

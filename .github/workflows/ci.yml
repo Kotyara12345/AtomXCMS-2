@@ -1,0 +1,50 @@
+name: Admin UI checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.1']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Lint changed PHP files
+        run: |
+          set -e
+          for file in \
+            admin/exit.php \
+            admin/errors_log.php \
+            admin/inc/adm_boot.php \
+            admin/server_config.php \
+            admin/settings.php \
+            admin/template/header.php \
+            admin/template/footer.php \
+            admin/security.php \
+            admin/profile.php \
+            admin/audit_log.php \
+            admin/moderation.php \
+            sys/inc/admin_security.lib.php \
+            sys/inc/server_config.lib.php \
+            sys/settings/languages/rus.php \
+            install/do_queries.php \
+            tests/admin-ui-test.php
+          do
+            php -l "$file"
+          done
+
+      - name: Static admin UI and translation checks
+        run: php tests/admin-ui-test.php

@@ -43,8 +43,8 @@ list($pages, $page) = pagination($total, 1, '/admin/errors_log.php?');
 
 
 $offset = ($total > 1) ? ($total - ($page - 1)) * $bytes_per_page : 0;
-$data = (file_exists($log_path) || is_readable($log_path))
-	? file_get_contents($log_path, NULL, NULL, $offset, $bytes_per_page)
+$data = (is_file($log_path) && is_readable($log_path))
+	? file_get_contents($log_path, false, null, $offset, $bytes_per_page)
 	: '';
 
 

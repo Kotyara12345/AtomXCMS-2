@@ -651,6 +651,64 @@ $array[] = "CREATE TABLE IF NOT EXISTS `{$set['db']['prefix']}polls` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=3;";
 #############################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_sessions`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_sessions` (
+	`id` int(11) NOT NULL auto_increment,
+	`session_hash` char(64) NOT NULL,
+	`user_id` int(11) NOT NULL default '0',
+	`user_name` varchar(64) NOT NULL default '',
+	`ip` varchar(64) NOT NULL default '',
+	`user_agent` varchar(255) NOT NULL default '',
+	`created` int(11) NOT NULL default '0',
+	`last_seen` int(11) NOT NULL default '0',
+	`revoked` tinyint(1) NOT NULL default '0',
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `session_hash` (`session_hash`),
+	KEY `user_id` (`user_id`),
+	KEY `last_seen` (`last_seen`),
+	KEY `revoked` (`revoked`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+#############################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_audit`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_audit` (
+	`id` int(11) NOT NULL auto_increment,
+	`user_id` int(11) NOT NULL default '0',
+	`user_name` varchar(64) NOT NULL default '',
+	`action` varchar(64) NOT NULL default '',
+	`details` text,
+	`ip` varchar(64) NOT NULL default '',
+	`user_agent` varchar(255) NOT NULL default '',
+	`created` int(11) NOT NULL default '0',
+	PRIMARY KEY (`id`),
+	KEY `user_id` (`user_id`),
+	KEY `action` (`action`),
+	KEY `created` (`created`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+#############################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_login_attempts`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_login_attempts` (
+	`id` int(11) NOT NULL auto_increment,
+	`login` varchar(64) NOT NULL default '',
+	`ip` varchar(64) NOT NULL default '',
+	`success` tinyint(1) NOT NULL default '0',
+	`created` int(11) NOT NULL default '0',
+	PRIMARY KEY (`id`),
+	KEY `login` (`login`),
+	KEY `ip` (`ip`),
+	KEY `created` (`created`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+#############################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_2fa`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_2fa` (
+	`user_id` int(11) NOT NULL,
+	`secret` varchar(64) NOT NULL default '',
+	`enabled` tinyint(1) NOT NULL default '0',
+	`backup_codes` text,
+	`created` int(11) NOT NULL default '0',
+	`updated` int(11) NOT NULL default '0',
+	PRIMARY KEY (`user_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+#############################################################################
 
 
 

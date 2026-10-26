@@ -31,7 +31,7 @@
 			</table>
 
 		</div>	
-		<div class="footer">(c) AtomX — <?php echo date("Y") ?>. All rights reserved.</div>
+		<div class="footer">(c) AtomX — <?php echo date("Y") ?>. Все права защищены.</div>
 	</div>
 	<div id="overlay"></div>
 </body>

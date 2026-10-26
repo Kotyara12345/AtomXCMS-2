@@ -118,6 +118,7 @@ table.side-separator, table.side-separator tr td {vertical-align:top; min-height
 .side-menu li div.icon.chat {background-position:0px -245px;}
 .side-menu li div.icon.statistics {background-position:0px -376px;}
 .side-menu li div.icon.forum {background-position:0px -420px;}
+.side-menu li div.icon.security {background-position:0px 6px;}
 
 
 /* Content */
@@ -1614,3 +1615,694 @@ table.grid ul li div.item {/*background:#aaa;*/ border:1px dashed #aaa; padding:
 	}
 }
 
+/* --------------------------------------------------------------------------
+   Admin UI: dropdowns, notifications, toasts, accessibility and theme
+   -------------------------------------------------------------------------- */
+
+[hidden] {display:none !important;}
+
+.atm-skip-link {
+	position:fixed;
+	top:-80px;
+	left:14px;
+	z-index:100200;
+	padding:10px 16px;
+	border-radius:0 0 5px 5px;
+	background:#96c703;
+	color:#1d2500;
+	font-weight:bold;
+	text-decoration:none;
+	transition:top .15s ease;
+}
+
+.atm-skip-link:focus {top:0; color:#1d2500;}
+
+:focus-visible {
+	outline:2px solid #b4e129;
+	outline-offset:2px;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+	outline:2px solid #b4e129;
+	outline-offset:2px;
+}
+
+.atm-toasts {
+	position:fixed;
+	top:18px;
+	right:18px;
+	z-index:100150;
+	display:flex;
+	flex-direction:column;
+	gap:8px;
+	width:360px;
+	max-width:calc(100vw - 24px);
+	pointer-events:none;
+}
+
+.atm-toast {
+	position:relative;
+	padding:13px 40px 13px 15px;
+	border:1px solid #4b4b4c;
+	border-left:4px solid #96c703;
+	border-radius:5px;
+	background:#29292a;
+	color:#ececec;
+	font-size:12px;
+	line-height:1.5;
+	box-shadow:0 8px 24px rgba(0,0,0,.42);
+	pointer-events:auto;
+	animation:atm-toast-in .22s ease-out;
+}
+
+.atm-toast.error {border-left-color:#e25656;}
+.atm-toast.info {border-left-color:#5e9dd8;}
+.atm-toast .atm-toast-close {
+	position:absolute;
+	top:5px;
+	right:7px;
+	width:24px;
+	height:24px;
+	padding:0;
+	border:0;
+	background:transparent;
+	color:#bdbdbd;
+	font-size:18px;
+	line-height:22px;
+	cursor:pointer;
+}
+
+@keyframes atm-toast-in {
+	from {opacity:0; transform:translateY(-8px);}
+	to {opacity:1; transform:none;}
+}
+
+.atm-notify,
+.atm-user-menu {position:relative; flex:0 0 auto;}
+
+.atm-user-menu {display:flex; align-items:center; min-width:0;}
+
+.atm-icon-button {
+	display:inline-flex;
+	align-items:center;
+	justify-content:center;
+	width:30px;
+	height:30px;
+	margin:0 5px 0 0;
+	padding:0;
+	border:1px solid rgba(255,255,255,.22);
+	border-radius:4px;
+	background:rgba(0,0,0,.16);
+	color:#ddd;
+	cursor:pointer;
+}
+
+.atm-icon-button:hover {background:rgba(255,255,255,.12); color:#fff;}
+
+.atm-bell {position:relative;}
+
+.atm-badge {
+	position:absolute;
+	top:-5px;
+	right:-5px;
+	min-width:16px;
+	height:16px;
+	padding:0 4px;
+	box-sizing:border-box;
+	border-radius:9px;
+	background:#e14c4c;
+	color:#fff;
+	font-size:10px;
+	font-weight:bold;
+	line-height:16px;
+	text-align:center;
+	box-shadow:0 1px 3px rgba(0,0,0,.45);
+}
+
+.atm-status-dot {
+	position:absolute;
+	right:1px;
+	bottom:1px;
+	width:8px;
+	height:8px;
+	border:2px solid #2b2b2c;
+	border-radius:50%;
+	background:#777;
+}
+
+.atm-status-dot.ok,
+.atm-dot.ok {background:#8fc400;}
+.atm-status-dot.warn,
+.atm-dot.warn {background:#e2a63b;}
+.atm-status-dot.error,
+.atm-dot.error {background:#e25656;}
+.atm-dot.empty {background:#777;}
+
+.atm-user-toggle {
+	display:flex;
+	align-items:center;
+	min-width:0;
+	margin:0;
+	padding:0;
+	border:0;
+	background:transparent;
+	color:inherit;
+	font:inherit;
+	text-align:left;
+	cursor:pointer;
+}
+
+.atm-user-toggle .name {max-width:96px; min-width:0; overflow:hidden;}
+
+.atm-user-toggle .atm-user-name {
+	display:block;
+	overflow:hidden;
+	color:#ddd;
+	font-style:italic;
+	font-weight:bold;
+	text-shadow:0 -1px 2px #000;
+	text-overflow:ellipsis;
+	white-space:nowrap;
+}
+
+.atm-user-toggle .atm-user-group {
+	display:block;
+	overflow:hidden;
+	color:#8a8888;
+	font-style:italic;
+	text-overflow:ellipsis;
+	white-space:nowrap;
+}
+
+.atm-caret {
+	width:0;
+	height:0;
+	margin-left:5px;
+	border-left:4px solid transparent;
+	border-right:4px solid transparent;
+	border-top:5px solid #bdbdbd;
+	opacity:.9;
+}
+
+.atm-dropdown {
+	position:absolute;
+	top:calc(100% + 9px);
+	right:0;
+	z-index:10060;
+	width:340px;
+	max-width:calc(100vw - 20px);
+	padding:9px;
+	box-sizing:border-box;
+	border:1px solid #505051;
+	border-radius:6px;
+	background:#252526;
+	color:#ddd;
+	font-size:12px;
+	text-align:left;
+	box-shadow:0 12px 34px rgba(0,0,0,.55);
+}
+
+.atm-user-dropdown {width:260px;}
+
+.atm-dropdown-head {
+	padding:7px 8px 10px;
+	border-bottom:1px solid #414142;
+	color:#fff;
+	font-size:13px;
+	font-weight:bold;
+}
+
+.atm-user-head b {display:block; font-size:13px;}
+.atm-user-head small {display:block; padding-top:3px; color:#9a9a9a; font-size:11px; font-style:italic;}
+
+.atm-dropdown-sep {height:1px; margin:6px 2px; background:#414142;}
+
+.atm-dropdown-subhead {
+	padding:3px 8px 5px;
+	color:#9a9a9a;
+	font-size:10px;
+	font-weight:bold;
+	letter-spacing:.06em;
+	text-transform:uppercase;
+}
+
+.atm-notify-item {
+	display:flex;
+	align-items:center;
+	justify-content:space-between;
+	gap:12px;
+	padding:8px;
+	border-radius:4px;
+	color:#e3e3e3;
+	text-decoration:none;
+}
+
+.atm-notify-item:hover,
+.atm-notify-item:focus {background:#333334; color:#fff; text-decoration:none;}
+
+.atm-notify-item b {
+	min-width:21px;
+	padding:1px 5px;
+	box-sizing:border-box;
+	border-radius:9px;
+	background:#96c703;
+	color:#1b2300;
+	font-size:11px;
+	text-align:center;
+}
+
+.atm-server-status {padding-bottom:2px;}
+
+.atm-server-row {
+	display:grid;
+	grid-template-columns:10px 52px minmax(0, 1fr);
+	gap:4px 7px;
+	align-items:center;
+	padding:4px 8px;
+	color:#d2d2d2;
+}
+
+.atm-server-row small {
+	grid-column:2 / -1;
+	color:#8f8f8f;
+	font-size:10px;
+	line-height:1.35;
+}
+
+.atm-dot {
+	display:inline-block;
+	width:8px;
+	height:8px;
+	border-radius:50%;
+	background:#777;
+	vertical-align:middle;
+}
+
+.atm-server-name {color:#bfbfbf; font-weight:bold;}
+.atm-server-value {overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+.atm-dropdown-link {
+	display:block;
+	padding:8px;
+	border-radius:4px;
+	color:#d8e7a6;
+	text-decoration:none;
+}
+
+.atm-dropdown-link:hover,
+.atm-dropdown-link:focus {background:#333334; color:#fff; text-decoration:none;}
+
+.atm-dropdown-all {
+	display:block;
+	margin-top:6px;
+	padding:9px 8px 4px;
+	border-top:1px solid #414142;
+	color:#b4e129;
+	text-decoration:none;
+	text-align:center;
+}
+
+.atm-dropdown-all:hover {color:#d7ff57; text-decoration:none;}
+
+.atm-empty {padding:14px 8px; color:#9a9a9a; text-align:center;}
+
+.atm-theme-toggle {
+	display:flex;
+	align-items:center;
+	width:100%;
+	padding:8px;
+	border:0;
+	border-radius:4px;
+	background:transparent;
+	color:#d8e7a6;
+	font:inherit;
+	text-align:left;
+	cursor:pointer;
+}
+
+.atm-theme-toggle:hover {background:#333334; color:#fff;}
+.atm-theme-symbol {margin-right:7px; color:#b4e129; font-size:14px;}
+.atm-theme-light-label {display:none;}
+.atm-switch {
+	position:relative;
+	width:30px;
+	height:16px;
+	margin-left:auto;
+	border-radius:9px;
+	background:#555;
+}
+
+.atm-switch:after {
+	position:absolute;
+	top:2px;
+	left:2px;
+	width:12px;
+	height:12px;
+	border-radius:50%;
+	background:#ddd;
+	content:"";
+	transition:left .15s ease;
+}
+
+.atm-theme-toggle[aria-pressed="true"] .atm-switch {background:#7da800;}
+.atm-theme-toggle[aria-pressed="true"] .atm-switch:after {left:16px;}
+
+html.atm-dark .atm-theme-dark-label {display:none;}
+html.atm-dark .atm-theme-light-label {display:inline;}
+
+/* Second login step */
+#login-wrapper .form.atm-twofa-form .items .atm-twofa-hint {
+	position:absolute;
+	top:100px;
+	left:170px;
+	width:300px;
+	color:#a9a9a9;
+	font-size:11px;
+	font-style:italic;
+	line-height:1.45;
+	text-shadow:none;
+}
+
+#login-wrapper .form.atm-twofa-form .items .error {
+	top:-50px;
+	left:170px;
+	width:300px;
+}
+
+#login-wrapper .form.atm-twofa-form .remember a {color:#b4e129; font-size:12px;}
+
+/* Configuration editor additions */
+.server-config-toolbar {
+	display:flex;
+	flex-wrap:wrap;
+	align-items:center;
+	gap:7px;
+}
+
+.server-config-toolbar .button,
+.server-config-backups .button,
+.atm-button {
+	display:inline-block;
+	padding:6px 11px;
+	border:1px solid #6f8d0b;
+	border-radius:4px;
+	background:linear-gradient(#9fca12, #7ca700);
+	color:#f4ffd0;
+	font-size:12px;
+	font-weight:bold;
+	line-height:1.3;
+	text-decoration:none;
+	cursor:pointer;
+}
+
+.server-config-toolbar .button.secondary,
+.server-config-backups .button.secondary,
+.atm-button.secondary {
+	border-color:#999;
+	background:#eee;
+	color:#3a3a3a;
+	text-shadow:none;
+}
+
+.server-config-toolbar .button.danger,
+.server-config-backups .button.danger,
+.atm-button.danger {
+	border-color:#a94444;
+	background:#b94f4f;
+	color:#fff;
+}
+
+.server-config-backups {margin-top:18px;}
+
+.server-config-backups table {margin-top:8px;}
+
+.server-config-backups .backup-actions {white-space:nowrap;}
+.server-config-backups .backup-actions form {display:inline-block; margin:0 5px 0 0;}
+
+.atm-muted {color:#888; font-size:11px; font-style:italic;}
+
+.atm-backup-codes {
+	padding:14px;
+	border:1px dashed #96c703;
+	border-radius:5px;
+	background:#1f2413;
+	color:#e8f7ba;
+	font-family:Consolas, Monaco, monospace;
+	font-size:15px;
+	line-height:1.7;
+	white-space:pre-wrap;
+	word-break:break-word;
+}
+
+.atm-code {
+	padding:3px 6px;
+	border:1px solid #555;
+	border-radius:3px;
+	background:#222;
+	color:#e8f7ba;
+	font-family:Consolas, Monaco, monospace;
+	font-size:13px;
+	word-break:break-all;
+}
+
+.atm-inline-form {display:inline-block; margin:0;}
+
+.atm-status-pill {
+	display:inline-block;
+	padding:2px 8px;
+	border-radius:10px;
+	background:#e7e7e7;
+	color:#4b4b4b;
+	font-size:11px;
+	font-weight:bold;
+}
+
+.atm-status-pill.ok {background:#d7f6a0; color:#315000;}
+.atm-status-pill.warn {background:#ffe1a7; color:#6a4400;}
+.atm-status-pill.error {background:#ffd0d0; color:#7b1f1f;}
+
+/* --------------------------------------------------------------------------
+   Dark theme
+   -------------------------------------------------------------------------- */
+
+html.atm-dark body {
+	background:#171718 !important;
+	color:#c9c9c9;
+}
+
+html.atm-dark a {color:#b4e129;}
+
+html.atm-dark .headmenuwrap {
+	background:#1d1d1e;
+	border-bottom:1px solid #333;
+}
+
+html.atm-dark .headmenu .menu > ul > li:hover {
+	background:#2a2a2b;
+	border-bottom-color:#4b4b4c;
+	box-shadow:none;
+}
+
+html.atm-dark .side-menu {
+	background:#202021;
+	border-color:#303031;
+}
+
+html.atm-dark .side-menu li {
+	background-color:#252526;
+	border-top-color:#303031;
+	border-bottom-color:#3b3b3c;
+}
+
+html.atm-dark .side-menu li:hover {background-color:#2e2e30;}
+html.atm-dark .side-menu li div.sub {background:#262627;}
+html.atm-dark .side-menu li div.sub .shadow {box-shadow:inset 0 0 20px #111;}
+html.atm-dark .side-menu .search {box-shadow:0 0 20px #111;}
+
+html.atm-dark #wrapper {background:transparent;}
+
+html.atm-dark .list,
+html.atm-dark .list2 {
+	background:#242425;
+	box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+
+html.atm-dark .list > .title {
+	background:#2c2c2d;
+	border-bottom-color:#414142;
+	color:#b4e129;
+}
+
+html.atm-dark .list > .title ~ .title,
+html.atm-dark .list .level1 > .title {
+	background:#303031;
+	color:#e6e6e6;
+	box-shadow:inset 0 2px 2px #1b1b1c;
+}
+
+html.atm-dark .list > .level1 > .head {
+	background:#343435;
+	border-bottom-color:#484849;
+	color:#d8d8d8;
+}
+
+html.atm-dark .list > .level1 > .head .title,
+html.atm-dark .list > .level1 > .head .title-r {color:#e2e2e2; text-shadow:none; border-color:#4b4b4c;}
+html.atm-dark .list > .level1 .items > .level2,
+html.atm-dark .list > .level1 > .items > .setting-item {color:#d6d6d6; text-shadow:none;}
+html.atm-dark .list > .level1 .items > .level2:nth-child(2n + 1),
+html.atm-dark .list > .level1 > .items > .setting-item:nth-child(2n) {background:#29292a;}
+html.atm-dark .list > .level1 .items > .level2 .number,
+html.atm-dark .list > .level1 .items > .level2 .buttons,
+html.atm-dark .list > .level1 > .items > .setting-item .left,
+html.atm-dark .list > .level1 > .items > .setting-item .right {border-color:#414142;}
+html.atm-dark .list > .level1 > .items > .setting-item .left {background:#2a2a2b;}
+
+html.atm-dark table.grid th {
+	background:#343435;
+	color:#e5e5e5;
+	border-top-color:#111;
+	border-bottom-color:#4a4a4b;
+}
+
+html.atm-dark table.grid th a {color:#e5e5e5;}
+html.atm-dark table.grid td {color:#d3d3d3; text-shadow:none;}
+html.atm-dark table.grid tr:nth-child(2n) td {background:#29292a;}
+html.atm-dark table.grid td,
+html.atm-dark table.grid th {border-right-color:#414142;}
+html.atm-dark table.grid td a {color:#b4e129;}
+
+html.atm-dark input[type="text"],
+html.atm-dark input[type="password"],
+html.atm-dark input[type="email"],
+html.atm-dark input[type="search"],
+html.atm-dark select,
+html.atm-dark textarea,
+html.atm-dark .collection {
+	background:#1d1d1e;
+	border-color:#4b4b4c;
+	color:#e0e0e0;
+	box-shadow:inset 0 1px 1px #111;
+}
+
+html.atm-dark .warning {background:#2b2b2c; color:#d2d2d2;}
+html.atm-dark .warning.ok {background:#28331a; color:#dff5b4;}
+html.atm-dark .warning.error {background:#3a2424; color:#ffd1d1;}
+
+html.atm-dark .footer {color:#777;}
+
+html.atm-dark .atm-dropdown {
+	background:#242425;
+	border-color:#4a4a4b;
+	color:#ddd;
+}
+
+html.atm-dark .atm-dropdown-head,
+html.atm-dark .atm-dropdown-sep,
+html.atm-dark .atm-dropdown-all {border-color:#414142;}
+
+html.atm-dark .server-config-toolbar .button.secondary,
+html.atm-dark .server-config-backups .button.secondary,
+html.atm-dark .atm-button.secondary {
+	background:#3b3b3c;
+	border-color:#5a5a5b;
+	color:#e2e2e2;
+}
+
+html.atm-dark .atm-status-pill {background:#383839; color:#ddd;}
+html.atm-dark .atm-status-pill.ok {background:#314414; color:#d9f5a8;}
+html.atm-dark .atm-status-pill.warn {background:#4a3a16; color:#ffe0a3;}
+html.atm-dark .atm-status-pill.error {background:#4a2222; color:#ffd0d0;}
+
+/* Compact desktop header after adding the notification bell */
+@media screen and (min-width: 1281px) and (max-width: 1439px) {
+	.headmenu .menu > ul {padding-left:38px;}
+	.headmenu .menu > ul > li > a {padding-left:11px; padding-right:11px;}
+}
+
+@media screen and (min-width: 1201px) and (max-width: 1359px) {
+	.atm-icon-button {width:28px; height:28px; margin-right:3px;}
+	.atm-user-toggle .name {max-width:72px;}
+	.atm-user-toggle .atm-user-group {display:none;}
+	.atm-user-toggle .atm-user-name {font-size:11px;}
+}
+
+@media screen and (max-width: 1200px) {
+	.atm-toasts {top:10px; right:10px; left:10px; width:auto;}
+	.atm-dropdown {position:fixed; top:62px; right:10px; left:10px; width:auto; max-width:none;}
+	.atm-user-dropdown {left:auto; width:280px;}
+}
+
+@media screen and (max-width: 560px) {
+	.atm-user-dropdown {left:10px; right:10px; width:auto;}
+	.atm-bell {width:28px; height:28px;}
+	.atm-user-toggle .name {display:none;}
+	.atm-caret {margin-left:3px;}
+}
+/* Confirmation modal */
+.atm-confirm-overlay {
+	position:fixed;
+	top:0;
+	right:0;
+	bottom:0;
+	left:0;
+	z-index:100300;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	padding:20px;
+	background:rgba(0,0,0,.62);
+}
+
+.atm-confirm-dialog {
+	width:440px;
+	max-width:100%;
+	padding:20px;
+	box-sizing:border-box;
+	border:1px solid #4d4d4e;
+	border-radius:7px;
+	background:#272728;
+	color:#e2e2e2;
+	box-shadow:0 18px 50px rgba(0,0,0,.6);
+}
+
+.atm-confirm-dialog h3 {
+	margin:0 0 12px;
+	color:#fff;
+	font-size:16px;
+}
+
+.atm-confirm-message {
+	color:#cfcfcf;
+	font-size:13px;
+	line-height:1.55;
+	overflow-wrap:anywhere;
+}
+
+.atm-confirm-actions {
+	display:flex;
+	justify-content:flex-end;
+	gap:8px;
+	margin-top:20px;
+}
+
+.atm-confirm-actions .atm-button {min-width:96px; text-align:center;}
+
+/* Small spacing fixes for the added admin controls */
+.setting-item .right .atm-button {margin:0 6px 6px 0;}
+.setting-item .right .atm-button:last-child {margin-right:0;}
+
+html.atm-dark input::placeholder,
+html.atm-dark textarea::placeholder {color:#989899; opacity:1;}
+html.atm-dark .CodeMirror {background:#1d1d1e; color:#e0e0e0; border-color:#4b4b4c;}
+html.atm-dark .CodeMirror-gutters {background:#242425; border-color:#3d3d3e;}
+html.atm-dark .CodeMirror-linenumber {color:#777;}
+html.atm-dark .CodeMirror-cursor {border-left-color:#ddd;}
+html.atm-dark .CodeMirror-selected {background:#3a4a24 !important;}
+html.atm-dark .server-config-candidates a {color:#7fb2df;}
+html.atm-dark .server-config-ok {color:#9ccc65;}
+html.atm-dark .server-config-error {color:#ff8a80;}

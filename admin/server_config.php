@@ -65,9 +65,58 @@ if (!function_exists('atm_server_config_admin_error')) {
 				return __('The path settings could not be saved (no write access to sys/settings).');
 			case 'path_mismatch':
 				return __('The configuration file path has changed. Reload the page and try again.');
+			case 'backup_missing':
+				return __('The backup file was not found.');
+			case 'critical_changes':
+				return __('Critical directives were changed. Review the differences and confirm the save.');
 		}
 
 		return __('Unknown error.');
+	}
+}
+
+
+if (!function_exists('atm_server_config_admin_log')) {
+	/**
+	 * Write an event to both the action log and the database audit trail.
+	 *
+	 * @param string $auditAction
+	 * @param string $details
+	 * @param string $logMessage
+	 */
+	function atm_server_config_admin_log($auditAction, $details, $logMessage = '')
+	{
+		$userId = !empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : null;
+		$userName = !empty($_SESSION['user']['name']) ? (string)$_SESSION['user']['name'] : '';
+
+		atm_admin_audit($auditAction, $details, $userId, $userName);
+
+		if ($logMessage !== '' && Config::read('system_log', 'secure') && class_exists('Logination')) {
+			$Log = new Logination();
+			$Log->write($logMessage, $details);
+		}
+	}
+}
+
+
+if (!function_exists('atm_server_config_send_download')) {
+	/**
+	 * Send a text file as a download and terminate the request.
+	 *
+	 * @param string $filename
+	 * @param string $content
+	 */
+	function atm_server_config_send_download($filename, $content)
+	{
+		$filename = preg_replace('/[^a-zA-Z0-9._-]+/', '_', (string)$filename);
+		if ($filename === '') $filename = 'server_config.txt';
+
+		header('Content-Type: text/plain; charset=UTF-8');
+		header('Content-Disposition: attachment; filename="' . $filename . '"');
+		header('Content-Length: ' . strlen($content));
+		header('X-Content-Type-Options: nosniff');
+		echo $content;
+		exit;
 	}
 }
 
@@ -95,7 +144,9 @@ foreach ($types as $type => $meta) {
 
 $action = isset($_POST['action']) ? (string)$_POST['action'] : '';
 $type = isset($_POST['type']) ? (string)$_POST['type'] : '';
+$backupName = isset($_POST['backup']) ? basename((string)$_POST['backup']) : '';
 $typeIsValid = array_key_exists($type, $types);
+$criticalChanges = array();
 
 if ($action === 'save_path' && $typeIsValid) {
 	$pathOverrides[$type] = isset($_POST['path']) ? trim((string)$_POST['path']) : '';
@@ -121,6 +172,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 			if (!atm_server_config_write_settings($newSettings)) {
 				$errors[] = atm_server_config_admin_error('settings_write');
 			} else {
+				atm_server_config_admin_log(
+					'config_path_saved',
+					'type(' . $type . '), path(empty)'
+				);
 				$_SESSION['message'] = __('The path was saved.');
 				redirect('/admin/server_config.php');
 			}
@@ -133,6 +188,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 				if (!atm_server_config_write_settings($newSettings)) {
 					$errors[] = atm_server_config_admin_error('settings_write');
 				} else {
+					atm_server_config_admin_log(
+						'config_path_saved',
+						'type(' . $type . '), path(' . $check['path'] . ')'
+					);
 					$_SESSION['message'] = __('The path was saved.');
 					redirect('/admin/server_config.php');
 				}
@@ -155,25 +214,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 				$_SESSION['message'] = __('No changes to save.');
 				redirect('/admin/server_config.php');
 			} else {
-				$info = array();
-				if (!atm_server_config_save_file($type, $check['path'], $content, $info)) {
-					$errors[] = atm_server_config_admin_error($info['code']);
+				$critical = atm_server_config_critical_changes($currentContent, $content);
+				if (!empty($critical) && empty($_POST['confirm_critical'])) {
+					$criticalChanges[$type] = $critical;
+					$errors[] = atm_server_config_admin_error('critical_changes');
 				} else {
-					if (Config::read('system_log', 'secure') && class_exists('Logination')) {
-						$Log = new Logination();
-						$Log->write(
-							'editing server configuration',
-							'type(' . $type . '), file(' . $check['path'] . '), backup(' . $info['backup'] . ')'
+					$info = array();
+					if (!atm_server_config_save_file($type, $check['path'], $content, $info)) {
+						$errors[] = atm_server_config_admin_error($info['code']);
+					} else {
+						atm_server_config_admin_log(
+							'config_saved',
+							'type(' . $type . '), file(' . $check['path'] . '), backup(' . $info['backup'] . ')',
+							'editing server configuration'
 						);
-					}
 
-					$_SESSION['message'] = sprintf(
-						__('The file was saved. Backup: %s'),
-						h($info['backup'])
-					);
-					redirect('/admin/server_config.php');
+						$_SESSION['message'] = sprintf(
+							__('The file was saved. Backup: %s'),
+							h($info['backup'])
+						);
+						redirect('/admin/server_config.php');
+					}
 				}
 			}
+		}
+	} elseif ($action === 'download') {
+		$check = $checks[$type];
+		if (!$check['ok']) {
+			$errors[] = atm_server_config_admin_error($check['code']);
+		} else {
+			$content = atm_server_config_read_file($check['path'], $readCode);
+			if ($content === false) {
+				$errors[] = atm_server_config_admin_error($readCode);
+			} else {
+				atm_admin_audit(
+					'config_downloaded',
+					'type(' . $type . '), file(' . $check['path'] . ')',
+					(int)$_SESSION['user']['id'],
+					(string)$_SESSION['user']['name']
+				);
+				atm_server_config_send_download($type . '_' . basename($check['path']), $content);
+			}
+		}
+	} elseif ($action === 'download_backup') {
+		$backupPath = atm_server_config_backup_path($type, $backupName);
+		if ($backupPath === false) {
+			$errors[] = atm_server_config_admin_error('backup_missing');
+		} else {
+			$content = atm_server_config_read_file($backupPath, $readCode);
+			if ($content === false) {
+				$errors[] = atm_server_config_admin_error($readCode);
+			} else {
+				atm_admin_audit(
+					'config_downloaded',
+					'type(' . $type . '), backup(' . $backupName . ')',
+					(int)$_SESSION['user']['id'],
+					(string)$_SESSION['user']['name']
+				);
+				atm_server_config_send_download($backupName, $content);
+			}
+		}
+	} elseif ($action === 'restore_backup') {
+		$info = array();
+		if (!atm_server_config_restore_backup($type, $backupName, $info)) {
+			$errors[] = atm_server_config_admin_error(
+				!empty($info['code']) ? $info['code'] : 'backup_missing'
+			);
+		} else {
+			atm_server_config_admin_log(
+				'config_restored',
+				'type(' . $type . '), backup(' . $info['restored'] . '), safety(' . $info['backup'] . ')',
+				'restoring server configuration'
+			);
+			$_SESSION['message'] = sprintf(
+				__('The configuration was restored from %s. A safety backup was created: %s'),
+				h($info['restored']),
+				h($info['backup'])
+			);
+			redirect('/admin/server_config.php');
 		}
 	} else {
 		$errors[] = __('Unknown action.');
@@ -211,6 +329,12 @@ foreach ($types as $type => $meta) {
 }
 
 
+$backups = array();
+foreach ($types as $type => $meta) {
+	$backups[$type] = atm_server_config_backup_list($type, 12);
+}
+
+
 $pageTitle = __('Web server configuration');
 $pageNav = $pageTitle;
 $pageNavr = '';
@@ -232,6 +356,13 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 .server-config-ok { color:#5a8f00; }
 .server-config-error { color:#c00; }
 .server-config-editor-note { margin-top:8px; }
+.server-config-toolbar form { display:inline-block; margin:0 6px 0 0; }
+.server-config-critical { margin:10px 0; padding-left:15px; }
+.server-config-critical ul { margin:8px 0; padding-left:22px; }
+.server-config-critical li { margin:3px 0; }
+.server-config-critical code { display:inline-block; max-width:100%; overflow-wrap:anywhere; }
+.server-config-backups table { margin:0; }
+.server-config-backups .backup-actions form { display:inline-block; margin:0 5px 5px 0; }
 @media screen and (max-width: 1200px) {
 	.server-config-path-form .right { width:100%; }
 	.server-config-path-input { width:100%; margin:0 0 10px; }
@@ -292,6 +423,11 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 							type="submit"
 							value="<?php echo h(__('Apply path')); ?>"
 						/>
+						<button
+							type="button"
+							class="atm-button secondary"
+							data-atm-copy-target="#server-config-<?php echo h($type); ?>-path"
+						><?php echo h(__('Copy path')); ?></button>
 						<div class="comment"><?php echo h($meta['note']); ?></div>
 
 						<?php if (!empty($candidates)): ?>
@@ -338,6 +474,14 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 									<br /><span class="server-config-error"><?php echo __('The file is not writable. Changes can not be saved.'); ?></span>
 								<?php endif; ?>
 							</div>
+							<div class="server-config-toolbar" style="margin-top:8px;">
+								<form method="post" action="server_config.php" data-atm-no-dirty>
+									<input type="hidden" name="csrf_token" value="<?php echo h(atm_admin_csrf_token()); ?>" />
+									<input type="hidden" name="action" value="download" />
+									<input type="hidden" name="type" value="<?php echo h($type); ?>" />
+									<button type="submit" class="atm-button secondary"><?php echo h(__('Download current file')); ?></button>
+								</form>
+							</div>
 						<?php endif; ?>
 
 						<?php if (isset($readErrors[$type])): ?>
@@ -355,6 +499,21 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 							<input type="hidden" name="action" value="save_file" />
 							<input type="hidden" name="type" value="<?php echo h($type); ?>" />
 							<input type="hidden" name="path" value="<?php echo h($check['path']); ?>" />
+
+							<?php if (!empty($criticalChanges[$type])): ?>
+								<div class="warning error server-config-critical">
+									<strong><?php echo h(__('Critical directives were changed:')); ?></strong>
+									<ul>
+										<?php foreach ($criticalChanges[$type] as $criticalLine): ?>
+											<li><code><?php echo h($criticalLine); ?></code></li>
+										<?php endforeach; ?>
+									</ul>
+									<label>
+										<input type="checkbox" name="confirm_critical" value="1" />
+										<?php echo h(__('I checked the changes and confirm saving the configuration.')); ?>
+									</label>
+								</div>
+							<?php endif; ?>
 
 							<div class="center">
 								<textarea
@@ -391,6 +550,58 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 					<?php endif; ?>
 				<?php endif; ?>
 
+				<div class="setting-item server-config-backups">
+					<div class="left">
+						<?php echo h(__('Backup history')); ?>
+						<span class="comment"><?php echo h(__('A backup is created automatically before every save or restore.')); ?></span>
+					</div>
+					<div class="right">
+						<?php if (empty($backups[$type])): ?>
+							<span class="atm-muted"><?php echo h(__('No backups yet.')); ?></span>
+						<?php else: ?>
+							<table class="grid mobile-cards" cellspacing="0" width="100%">
+								<tr class="mobile-table-head">
+									<th><?php echo h(__('Date')); ?></th>
+									<th><?php echo h(__('Size')); ?></th>
+									<th><?php echo h(__('Actions')); ?></th>
+								</tr>
+								<?php foreach ($backups[$type] as $backup): ?>
+									<tr>
+										<td data-label="<?php echo h(__('Date')); ?>">
+											<?php echo h(date('d.m.Y H:i:s', (int)$backup['mtime'])); ?>
+											<span class="comment"><?php echo h($backup['name']); ?></span>
+										</td>
+										<td data-label="<?php echo h(__('Size')); ?>"><?php echo h(atm_server_config_format_size($backup['size'])); ?></td>
+										<td data-label="<?php echo h(__('Actions')); ?>" class="backup-actions">
+											<form method="post" action="server_config.php" data-atm-no-dirty>
+												<input type="hidden" name="csrf_token" value="<?php echo h(atm_admin_csrf_token()); ?>" />
+												<input type="hidden" name="action" value="download_backup" />
+												<input type="hidden" name="type" value="<?php echo h($type); ?>" />
+												<input type="hidden" name="backup" value="<?php echo h($backup['name']); ?>" />
+												<button type="submit" class="atm-button secondary"><?php echo h(__('Download')); ?></button>
+											</form>
+											<form method="post" action="server_config.php" data-atm-no-dirty>
+												<input type="hidden" name="csrf_token" value="<?php echo h(atm_admin_csrf_token()); ?>" />
+												<input type="hidden" name="action" value="restore_backup" />
+												<input type="hidden" name="type" value="<?php echo h($type); ?>" />
+												<input type="hidden" name="backup" value="<?php echo h($backup['name']); ?>" />
+												<button
+													type="submit"
+													class="atm-button danger"
+													data-atm-danger
+													data-atm-confirm="<?php echo h(sprintf(__('Restore the configuration from %s? The current file will be backed up first.'), $backup['name'])); ?>"
+													data-atm-confirm-ok="<?php echo h(__('Restore')); ?>"
+												><?php echo h(__('Restore')); ?></button>
+											</form>
+										</td>
+									</tr>
+								<?php endforeach; ?>
+							</table>
+						<?php endif; ?>
+					</div>
+					<div class="clear"></div>
+				</div>
+
 			</div>
 		</div>
 	</div>
@@ -400,7 +611,7 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 <div class="warning clean">
 	<?php echo sprintf(
 		__('Backups are stored in %s.'),
-		h(ROOT . DS . 'sys' . DS . 'logs' . DS . 'server_config_backups')
+		h(atm_server_config_backup_dir())
 	); ?>
 </div>
 

@@ -438,13 +438,26 @@ if (!function_exists('atm_server_config_format_size')) {
 		$bytes = (int)$bytes;
 
 		if ($bytes < 1024) {
-			return $bytes . ' B';
+			return $bytes . ' Б';
 		}
 		if ($bytes < 1048576) {
-			return round($bytes / 1024, 1) . ' KB';
+			return round($bytes / 1024, 1) . ' КБ';
 		}
 
-		return round($bytes / 1048576, 1) . ' MB';
+		return round($bytes / 1048576, 1) . ' МБ';
+	}
+}
+
+
+if (!function_exists('atm_server_config_backup_dir')) {
+	/**
+	 * Directory with automatic configuration backups.
+	 *
+	 * @return string
+	 */
+	function atm_server_config_backup_dir()
+	{
+		return ROOT . DS . 'sys' . DS . 'logs' . DS . 'server_config_backups';
 	}
 }
 
@@ -462,7 +475,7 @@ if (!function_exists('atm_server_config_backup')) {
 	{
 		$code = '';
 
-		$dir = ROOT . DS . 'sys' . DS . 'logs' . DS . 'server_config_backups';
+		$dir = atm_server_config_backup_dir();
 		if (!@is_dir($dir)) {
 			if (!@mkdir($dir, 0777, true)) {
 				$code = 'backup_dir';
@@ -557,5 +570,267 @@ if (!function_exists('atm_server_config_save_file')) {
 
 		$info['bytes'] = $bytes;
 		return true;
+	}
+}
+
+
+if (!function_exists('atm_server_config_status_all')) {
+	/**
+	 * Compact status information for the admin header.
+	 *
+	 * @return array
+	 */
+	function atm_server_config_status_all()
+	{
+		$settings = atm_server_config_read_settings();
+		$out = array();
+
+		foreach (atm_server_config_types() as $type) {
+			$path = isset($settings[$type]) ? trim((string)$settings[$type]) : '';
+			$check = atm_server_config_check_path($type, $path);
+			$info = $check['ok'] ? atm_server_config_file_info($check['path']) : array(
+				'size' => 0,
+				'mtime' => 0,
+				'perms' => '',
+				'writable' => false,
+			);
+
+			$out[$type] = array(
+				'type' => $type,
+				'configured' => ($path !== ''),
+				'ok' => !empty($check['ok']),
+				'code' => isset($check['code']) ? (string)$check['code'] : '',
+				'path' => !empty($check['path']) ? $check['path'] : $path,
+				'info' => $info,
+			);
+		}
+
+		return $out;
+	}
+}
+
+
+if (!function_exists('atm_server_config_backup_name_allowed')) {
+	/**
+	 * Check that a file name looks like a generated configuration backup.
+	 *
+	 * @param string $type
+	 * @param string $name
+	 * @return bool
+	 */
+	function atm_server_config_backup_name_allowed($type, $name)
+	{
+		if (!in_array($type, atm_server_config_types(), true)) return false;
+		$name = basename((string)$name);
+		return (bool)preg_match(
+			'/^' . preg_quote($type, '/') . '_[a-z0-9._-]+_[0-9]{8}-[0-9]{6}_[a-f0-9]{8}\.bak$/i',
+			$name
+		);
+	}
+}
+
+
+if (!function_exists('atm_server_config_backup_list')) {
+	/**
+	 * List automatic backups for a configuration type, newest first.
+	 *
+	 * @param string $type
+	 * @param int $limit
+	 * @return array
+	 */
+	function atm_server_config_backup_list($type, $limit = 10)
+	{
+		if (!in_array($type, atm_server_config_types(), true)) return array();
+		$dir = atm_server_config_backup_dir();
+		if (!@is_dir($dir)) return array();
+
+		$files = @glob($dir . DS . $type . '_*.bak');
+		if (empty($files)) return array();
+
+		$out = array();
+		foreach ($files as $file) {
+			$name = basename($file);
+			if (!atm_server_config_backup_name_allowed($type, $name)) continue;
+			$mtime = @filemtime($file);
+			$size = @filesize($file);
+			$out[] = array(
+				'name' => $name,
+				'path' => $file,
+				'mtime' => ($mtime !== false) ? (int)$mtime : 0,
+				'size' => ($size !== false) ? (int)$size : 0,
+			);
+		}
+
+		usort($out, function ($a, $b) {
+			if ($a['mtime'] === $b['mtime']) return strcmp($b['name'], $a['name']);
+			return ($a['mtime'] > $b['mtime']) ? -1 : 1;
+		});
+
+		$limit = max(1, (int)$limit);
+		return array_slice($out, 0, $limit);
+	}
+}
+
+
+if (!function_exists('atm_server_config_backup_path')) {
+	/**
+	 * Resolve a backup name to a safe path inside the backup directory.
+	 *
+	 * @param string $type
+	 * @param string $name
+	 * @return string|bool
+	 */
+	function atm_server_config_backup_path($type, $name)
+	{
+		if (!atm_server_config_backup_name_allowed($type, $name)) return false;
+		$dir = atm_server_config_backup_dir();
+		$path = $dir . DS . basename((string)$name);
+		if (!@is_file($path)) return false;
+
+		$realDir = @realpath($dir);
+		$realFile = @realpath($path);
+		if ($realDir === false || $realFile === false) return false;
+
+		$realDir = rtrim(str_replace('\\', '/', $realDir), '/') . '/';
+		$realFile = str_replace('\\', '/', $realFile);
+		if (strpos($realFile, $realDir) !== 0) return false;
+
+		return $path;
+	}
+}
+
+
+if (!function_exists('atm_server_config_restore_backup')) {
+	/**
+	 * Restore a configuration file from a backup.
+	 *
+	 * A safety backup of the current file is created first.
+	 *
+	 * @param string $type
+	 * @param string $name
+	 * @param array $info
+	 * @return bool
+	 */
+	function atm_server_config_restore_backup($type, $name, &$info = null)
+	{
+		$info = array(
+			'code' => '',
+			'backup' => '',
+			'restored' => '',
+			'bytes' => 0,
+		);
+
+		$backup = atm_server_config_backup_path($type, $name);
+		if ($backup === false) {
+			$info['code'] = 'backup_missing';
+			return false;
+		}
+
+		$settings = atm_server_config_read_settings();
+		$path = isset($settings[$type]) ? (string)$settings[$type] : '';
+		$check = atm_server_config_check_path($type, $path);
+		if (!$check['ok']) {
+			$info['code'] = $check['code'];
+			return false;
+		}
+		if (!$check['writable']) {
+			$info['code'] = 'not_writable';
+			return false;
+		}
+
+		$content = atm_server_config_read_file($backup, $readCode);
+		if ($content === false) {
+			$info['code'] = $readCode;
+			return false;
+		}
+
+		$code = '';
+		$safety = atm_server_config_backup($type, $check['path'], $code);
+		if ($safety === false) {
+			$info['code'] = $code;
+			return false;
+		}
+
+		$bytes = @file_put_contents($check['path'], $content, LOCK_EX);
+		if ($bytes === false || $bytes !== strlen($content)) {
+			@copy($safety, $check['path']);
+			$info['code'] = 'write_failed';
+			return false;
+		}
+
+		$info['backup'] = $safety;
+		$info['restored'] = basename((string)$name);
+		$info['bytes'] = $bytes;
+		return true;
+	}
+}
+
+if (!function_exists('atm_server_config_critical_directives')) {
+	/**
+	 * Extract directives which can make a web server unavailable.
+	 *
+	 * Comments, empty lines and block braces are ignored. The function is
+	 * deliberately conservative: a changed critical line requires an extra
+	 * confirmation from the administrator before the file is written.
+	 *
+	 * @param string $content
+	 * @return array
+	 */
+	function atm_server_config_critical_directives($content)
+	{
+		$critical = array(
+			'listen', 'virtualhost', 'servername', 'serveralias', 'documentroot',
+			'directory', 'sslcertificatefile', 'sslcertificatekeyfile', 'sslengine',
+			'proxypass', 'proxypassreverse', 'rewriteengine', 'rewriterule',
+			'rewritecond', 'rewritebase', 'allowoverride', 'require', 'deny',
+			'allow', 'options', 'errorlog', 'customlog', 'include', 'includeoptional',
+			'server', 'server_name', 'root', 'ssl_certificate', 'ssl_certificate_key',
+			'location', 'proxy_pass', 'try_files', 'error_page', 'return', 'rewrite',
+		);
+
+		$out = array();
+		$lines = preg_split('/\R/u', (string)$content);
+		foreach ($lines as $line) {
+			$line = trim($line);
+			if ($line === '' || $line[0] === '#') continue;
+			$line = preg_replace('/\s+/', ' ', $line);
+			if (preg_match('/^<\s*([a-z0-9_]+)/i', $line, $match)) {
+				$directive = strtolower($match[1]);
+			} else {
+				$parts = explode(' ', $line, 2);
+				$directive = strtolower($parts[0]);
+			}
+			if (in_array($directive, $critical, true)) {
+				$out[] = $line;
+			}
+		}
+
+		return array_values(array_unique($out));
+	}
+}
+
+
+if (!function_exists('atm_server_config_critical_changes')) {
+	/**
+	 * Diff of critical directives between two configuration files.
+	 *
+	 * @param string $oldContent
+	 * @param string $newContent
+	 * @return array
+	 */
+	function atm_server_config_critical_changes($oldContent, $newContent)
+	{
+		$old = atm_server_config_critical_directives($oldContent);
+		$new = atm_server_config_critical_directives($newContent);
+		$removed = array_diff($old, $new);
+		$added = array_diff($new, $old);
+		$out = array();
+		foreach ($removed as $line) {
+			$out[] = '- ' . $line;
+		}
+		foreach ($added as $line) {
+			$out[] = '+ ' . $line;
+		}
+		return $out;
 	}
 }
