@@ -3,11 +3,13 @@ include_once ROOT . '/sys/inc/admin_security.lib.php';
 include_once ROOT . '/sys/inc/server_config.lib.php';
 
 $atmNotificationCounts = atm_admin_notification_counts();
-$atmNotificationTotal = 0;
-foreach (array('news', 'loads', 'stat', 'comments') as $atmNotificationKey) {
-	$atmNotificationTotal += !empty($atmNotificationCounts[$atmNotificationKey])
-		? (int)$atmNotificationCounts[$atmNotificationKey] : 0;
-}
+$atmNotificationUserId = !empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : 0;
+$atmNotificationSummary = atm_admin_notification_summary($atmNotificationCounts, $atmNotificationUserId);
+$atmNotificationTotal = (int)$atmNotificationSummary['total'];
+$atmNotificationNew = $atmNotificationSummary['moderation'];
+$atmRecentNotifications = $atmNotificationUserId > 0
+	? atm_admin_notifications_list($atmNotificationUserId, 3, true)
+	: array();
 
 $atmServerStatuses = atm_server_config_status_all();
 $atmServerConfigured = 0;
@@ -51,6 +53,59 @@ $atmServerLabels = array(
 	<meta name="description" content="" />
 	<meta name="keywords" content="" />
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.js"></script>
+	<script>
+	window.ATM_CSRF_TOKEN = <?php echo json_encode(atm_admin_csrf_token()); ?>;
+	(function ($) {
+		if (!$ || !window.ATM_CSRF_TOKEN) return;
+
+		function isSameOrigin(url) {
+			var anchor = document.createElement('a');
+			anchor.href = url || window.location.href;
+			// Only attach the admin token to admin endpoints. This keeps
+			// the token away from public site scripts on the same host.
+			return anchor.host === window.location.host
+				&& anchor.pathname.indexOf('/admin/') !== -1;
+		}
+
+		$.ajaxPrefilter(function (options) {
+			var method = String(options.type || 'GET').toUpperCase();
+			if (method !== 'POST' || !isSameOrigin(options.url)) return;
+
+			var token = window.ATM_CSRF_TOKEN;
+			if (typeof FormData !== 'undefined' && options.data instanceof FormData) {
+				if (!options.data.has('csrf_token')) options.data.append('csrf_token', token);
+				return;
+			}
+			if (typeof options.data === 'string') {
+				if (options.data.indexOf('csrf_token=') === -1) {
+					options.data += (options.data ? '&' : '') + 'csrf_token=' + encodeURIComponent(token);
+				}
+				return;
+			}
+			if ($.isArray(options.data)) {
+				options.data.push({name: 'csrf_token', value: token});
+				return;
+			}
+			if (options.data && typeof options.data === 'object') {
+				options.data.csrf_token = token;
+				return;
+			}
+			options.data = {csrf_token: token};
+		});
+
+		$(document).on('submit', 'form', function () {
+			var $form = $(this);
+			var method = String($form.attr('method') || 'GET').toUpperCase();
+			if (method !== 'POST') return;
+			if ($form.find('input[name="csrf_token"]').length) return;
+			$('<input>', {
+				type: 'hidden',
+				name: 'csrf_token',
+				value: window.ATM_CSRF_TOKEN
+			}).appendTo($form);
+		});
+	})(window.jQuery);
+	</script>
 	
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery.validate.js"></script>
 	<script src="<?php echo WWW_ROOT ?>/sys/js/jquery-ui.min.js"></script>
@@ -213,7 +268,7 @@ $atmServerLabels = array(
 								'comments' => array('label' => __('Comments'), 'url' => 'moderation.php#comments'),
 							);
 							foreach ($atmNotifyItems as $atmNotifyKey => $atmNotifyItem):
-								$atmNotifyCount = !empty($atmNotificationCounts[$atmNotifyKey]) ? (int)$atmNotificationCounts[$atmNotifyKey] : 0;
+								$atmNotifyCount = !empty($atmNotificationNew[$atmNotifyKey]) ? (int)$atmNotificationNew[$atmNotifyKey] : 0;
 								if ($atmNotifyCount < 1) continue;
 							?>
 								<a class="atm-notify-item" role="menuitem" href="<?php echo h($atmNotifyItem['url']); ?>">
@@ -221,6 +276,21 @@ $atmServerLabels = array(
 									<b><?php echo $atmNotifyCount; ?></b>
 								</a>
 							<?php endforeach; ?>
+							<?php foreach ($atmRecentNotifications as $atmNotification): ?>
+								<a class="atm-notify-item atm-notify-security" role="menuitem" href="<?php echo h(!empty($atmNotification['url']) ? $atmNotification['url'] : 'notifications.php'); ?>">
+									<span>
+										<?php echo h($atmNotification['title']); ?>
+										<?php if (!empty($atmNotification['message'])): ?>
+											<small><?php echo h($atmNotification['message']); ?></small>
+										<?php endif; ?>
+									</span>
+									<b class="atm-notify-type <?php echo h($atmNotification['type']); ?>"></b>
+								</a>
+							<?php endforeach; ?>
+							<form method="POST" action="notifications.php" class="atm-notify-read-form">
+								<input type="hidden" name="action" value="mark_all_read" />
+								<button type="submit" class="atm-dropdown-link"><?php echo h(__('Mark all as read')); ?></button>
+							</form>
 						<?php endif; ?>
 						<div class="atm-dropdown-sep"></div>
 						<div class="atm-server-status">
@@ -246,7 +316,7 @@ $atmServerLabels = array(
 								<a class="atm-dropdown-link" role="menuitem" href="server_config.php"><?php echo h(__('Web server configuration')); ?></a>
 							<?php endif; ?>
 						</div>
-						<a class="atm-dropdown-all" role="menuitem" href="moderation.php"><?php echo h(__('All notifications')); ?></a>
+						<a class="atm-dropdown-all" role="menuitem" href="notifications.php"><?php echo h(__('All notifications')); ?></a>
 					</div>
 				</div>
 
@@ -454,8 +524,10 @@ $atmServerLabels = array(
 		  '<a href="audit_log.php"><?php echo __('Audit log'); ?></a>',
 		  <?php endif; ?>
 		  'sep',
-		  '<a href="system_log.php"><?php echo __('Action log'); ?></a>',
+		  '<a href="system_log.php"><?php echo __('Action log'); ?></a>'
+		  <?php if (!empty($_SESSION['user']) && (int)$_SESSION['user']['status'] === 4): ?>,
 		  '<a href="errors_log.php"><?php echo __('Errors log'); ?></a>'
+		  <?php endif; ?>
 		  ]],
 		  
 		  

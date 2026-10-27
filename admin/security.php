@@ -206,6 +206,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			atm_security_redirect('message', __('Login attempts cleared.'));
 			break;
 
+		case 'cleanup':
+			if (!$isAdmin) {
+				atm_security_redirect('error', __('Permission denied'));
+			}
+			$cleanup = atm_admin_security_cleanup(true);
+			atm_security_redirect(
+				'message',
+				sprintf(
+					__('Cleanup completed: sessions %d, audit %d, attempts %d, notifications %d.'),
+					isset($cleanup['sessions']) ? (int)$cleanup['sessions'] : 0,
+					isset($cleanup['audit']) ? (int)$cleanup['audit'] : 0,
+					isset($cleanup['attempts']) ? (int)$cleanup['attempts'] : 0,
+					isset($cleanup['notifications']) ? (int)$cleanup['notifications'] : 0
+				)
+			);
+			break;
+
 		case 'start_2fa':
 			$_SESSION['admin_2fa_setup_secret'] = atm_admin_totp_secret();
 			redirect('/admin/security.php?setup=1');
@@ -469,13 +486,34 @@ include_once ROOT . '/admin/template/header.php';
 							<td data-label="<?php echo h(__('Date')); ?>"><?php echo h(date('d.m.Y H:i', (int)$entry['created'])); ?></td>
 							<td data-label="<?php echo h(__('User')); ?>"><?php echo h($entry['user_name']); ?></td>
 							<td data-label="<?php echo h(__('Event')); ?>"><?php echo h(atm_admin_audit_label($entry['action'])); ?></td>
-							<td data-label="<?php echo h(__('Details')); ?>"><?php echo h(atm_security_excerpt((string)$entry['details'], 120)); ?></td>
+							<td data-label="<?php echo h(__('Details')); ?>"><?php echo h(atm_security_excerpt(atm_admin_audit_details($entry['details']), 120)); ?></td>
 							<td data-label="<?php echo h(__('IP address')); ?>"><?php echo h($entry['ip']); ?></td>
 						</tr>
 					<?php endforeach; ?>
 				<?php endif; ?>
 			</table>
 			<p><a class="atm-button secondary" href="audit_log.php"><?php echo h(__('Open audit log')); ?></a></p>
+		</div>
+	</div>
+</div>
+<div class="list">
+	<div class="title"><?php echo h(__('Data retention')); ?></div>
+	<div class="level1">
+		<div class="items">
+			<div class="setting-item">
+				<div class="left">
+					<?php echo h(__('Automatic security data cleanup')); ?>
+					<span class="comment"><?php echo h(__('Expired sessions, audit records, login attempts and notifications are removed automatically once a day.')); ?></span>
+				</div>
+				<div class="right">
+					<form method="POST" action="security.php" data-atm-no-dirty>
+						<input type="hidden" name="csrf_token" value="<?php echo h(atm_admin_csrf_token()); ?>" />
+						<input type="hidden" name="action" value="cleanup" />
+						<button type="submit" class="atm-button secondary"><?php echo h(__('Run cleanup now')); ?></button>
+					</form>
+				</div>
+				<div class="clear"></div>
+			</div>
 		</div>
 	</div>
 </div>

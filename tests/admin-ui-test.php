@@ -46,6 +46,8 @@ $required = array(
 	'admin/profile.php',
 	'admin/audit_log.php',
 	'admin/moderation.php',
+	'admin/notifications.php',
+	'admin/errors_log.php',
 	'admin/server_config.php',
 	'admin/js/admin-ui.js',
 	'admin/template/header.php',
@@ -108,13 +110,15 @@ atm_test_assert(strpos($admBoot, 'function atm_admin_login_csrf_check') !== fals
 atm_test_assert(substr_count($admBoot, 'atm_admin_login_csrf_check(') >= 3, 'The login flow does not use the CSRF fallback.');
 atm_test_assert(strpos($admBoot, 'HTTP_ORIGIN') !== false, 'Same-origin validation does not inspect the Origin header.');
 atm_test_assert(strpos($admBoot, 'HTTP_REFERER') !== false, 'Same-origin validation does not inspect the Referer header.');
-atm_test_assert(strpos($errorsLog, 'file_get_contents($log_path, false, null') !== false, 'The error log reader must not pass null as the file_get_contents include-path argument.');
-atm_test_assert(strpos($errorsLog, 'file_get_contents($log_path, NULL, NULL') === false, 'The PHP 8.1 error log deprecation has returned.');
+atm_test_assert(strpos($errorsLog, "fopen(\$path, 'rb')") !== false, 'The error log reader must use a bounded file handle.');
+atm_test_assert(strpos($errorsLog, "action === 'clear'") !== false, 'Clearing the error log must be a POST action.');
+atm_test_assert(strpos($errorsLog, "action === 'rotate'") !== false, 'The error log rotation action is missing.');
+atm_test_assert(strpos($errorsLog, "\$_GET['del']") === false, 'The error log must not be cleared through a GET request.');
 
 atm_test_assert(strpos($footer, 'Все права защищены.') !== false, 'The footer copyright is not translated.');
 atm_test_assert(strpos($footer, 'All rights reserved.') === false, 'The English footer copyright is still present.');
 
-foreach (array('admin_sessions', 'admin_audit', 'admin_login_attempts', 'admin_2fa') as $table) {
+foreach (array('admin_sessions', 'admin_audit', 'admin_login_attempts', 'admin_2fa', 'admin_notifications', 'admin_notification_reads', 'admin_notification_state') as $table) {
 	atm_test_assert(strpos($schema, $table) !== false, 'Installer schema is missing ' . $table . '.');
 }
 
@@ -124,6 +128,32 @@ atm_test_assert(strpos($moderation, 'comments_list.php?m=news&amp;premoder=1') =
 atm_test_assert(strpos($serverConfig, 'confirm_critical') !== false, 'Critical directive confirmation is missing.');
 atm_test_assert(strpos($serverConfig, 'download_backup') !== false, 'Backup download action is missing.');
 atm_test_assert(strpos($serverConfig, 'restore_backup') !== false, 'Backup restore action is missing.');
+atm_test_assert(strpos($serverConfig, 'save_backup_limit') !== false, 'Configurable backup retention is missing.');
+atm_test_assert(strpos($serverConfig, 'backup_limit') !== false, 'The backup retention field is missing.');
+
+$securityLib = atm_test_read($root . '/sys/inc/admin_security.lib.php');
+$serverLib = atm_test_read($root . '/sys/inc/server_config.lib.php');
+$auditLog = atm_test_read($root . '/admin/audit_log.php');
+$notifications = atm_test_read($root . '/admin/notifications.php');
+$index = atm_test_read($root . '/admin/index.php');
+atm_test_assert(strpos($securityLib, 'Content-Security-Policy-Report-Only') !== false, 'Security headers are missing the CSP.');
+atm_test_assert(strpos($securityLib, 'atm_admin_csrf') === false || strpos($admBoot, 'atm_admin_csrf_validate_request') !== false, 'Global authenticated POST CSRF validation is missing.');
+atm_test_assert(strpos($admBoot, 'atm_admin_csrf_buffer_start') !== false, 'Legacy form CSRF injection is missing.');
+atm_test_assert(strpos($header, 'ATM_CSRF_TOKEN') !== false, 'The AJAX CSRF token is missing from the header.');
+atm_test_assert(strpos($header, 'ajaxPrefilter') !== false, 'The AJAX CSRF prefilter is missing.');
+atm_test_assert(strpos($moderation, 'bulk_moderate') !== false, 'Bulk moderation is missing.');
+atm_test_assert(strpos($moderation, 'data-atm-select-all') !== false, 'Bulk selection controls are missing.');
+atm_test_assert(strpos($auditLog, "['export'] = 'csv'") !== false, 'Audit CSV export is missing.');
+atm_test_assert(strpos($auditLog, 'atm_admin_audit_details') !== false, 'Human-readable audit details are missing.');
+atm_test_assert(strpos($notifications, 'mark_all_read') !== false, 'Notification read state is missing.');
+atm_test_assert(strpos($notifications, 'atm_admin_notifications_list') !== false, 'Notification history is missing.');
+atm_test_assert(strpos($index, 'atm_admin_security_overview') !== false, 'The dashboard security block is missing.');
+atm_test_assert(strpos($serverLib, '0700') !== false, 'Backup directory permissions are not hardened.');
+atm_test_assert(strpos($serverLib, 'atm_server_config_validate_content') !== false, 'Server configuration syntax validation is missing.');
+atm_test_assert(strpos($serverLib, 'atm_server_config_backup_limit') !== false, 'Configurable backup retention is missing from the library.');
+atm_test_assert(strpos($securityLib, 'atm_admin_notifications_list') !== false, 'Notification table helpers are missing.');
+atm_test_assert(strpos($securityLib, 'atm_admin_security_cleanup') !== false, 'Security retention cleanup is missing.');
+atm_test_assert(strpos($securityLib, 'admin_notification_reads') !== false, 'Notification read markers are missing.');
 
 atm_test_assert(is_array($language), 'The language file must return an array.');
 if (!is_array($language)) {
@@ -135,6 +165,9 @@ $translationFiles = array(
 	'admin/profile.php',
 	'admin/audit_log.php',
 	'admin/moderation.php',
+	'admin/notifications.php',
+	'admin/errors_log.php',
+	'admin/index.php',
 	'admin/server_config.php',
 	'admin/template/header.php',
 	'admin/inc/adm_boot.php',

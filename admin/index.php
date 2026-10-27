@@ -32,6 +32,7 @@ $FpsDB = $Register['DB'];
 $pageTitle = __('Admin Panel');
 $pageNav = $pageTitle . __(' - General information');
 $pageNavr = '';
+$securityOverview = atm_admin_security_overview();
 
 
 
@@ -114,6 +115,64 @@ include 'template/header.php';
         resizeHandler();
     });
 </script>
+
+<div class="list atm-security-status">
+	<div class="title"><?php echo h(__('Security status')); ?></div>
+	<div class="level1">
+		<div class="head">
+			<div class="title settings"><?php echo h(__('Check')); ?></div>
+			<div class="title-r"><?php echo h(__('Value')); ?></div>
+			<div class="clear"></div>
+		</div>
+		<div class="items">
+			<?php if (!empty($securityOverview['warnings'])): ?>
+				<?php foreach ($securityOverview['warnings'] as $securityWarning): ?>
+					<div class="setting-item atm-security-warning">
+						<div class="left">
+							<span class="atm-status-pill warn"><?php echo h(__('Attention')); ?></span>
+							<?php echo h($securityWarning['label']); ?>
+						</div>
+						<div class="right">
+							<a class="atm-button secondary" href="<?php echo h($securityWarning['url']); ?>"><?php echo h(__('Open')); ?></a>
+						</div>
+						<div class="clear"></div>
+					</div>
+				<?php endforeach; ?>
+			<?php else: ?>
+				<div class="setting-item">
+					<div class="left">
+						<span class="atm-status-pill ok"><?php echo h(__('OK')); ?></span>
+						<?php echo h(__('No security warnings.')); ?>
+					</div>
+					<div class="right"></div>
+					<div class="clear"></div>
+				</div>
+			<?php endif; ?>
+			<?php foreach ($securityOverview['items'] as $securityItem): ?>
+				<div class="setting-item">
+					<div class="left"><?php echo h($securityItem['label']); ?></div>
+					<div class="right">
+						<span class="atm-status-pill <?php echo h($securityItem['class']); ?>"><?php echo h($securityItem['value']); ?></span>
+						<a class="atm-security-link" href="<?php echo h($securityItem['url']); ?>"><?php echo h(__('Details')); ?></a>
+					</div>
+					<div class="clear"></div>
+				</div>
+			<?php endforeach; ?>
+			<div class="setting-item">
+				<div class="left">
+					<a class="atm-button secondary" href="security.php"><?php echo h(__('Security center')); ?></a>
+					<a class="atm-button secondary" href="notifications.php"><?php echo h(__('Notifications')); ?></a>
+					<?php if ((int)$_SESSION['user']['status'] === 4): ?>
+						<a class="atm-button secondary" href="audit_log.php"><?php echo h(__('Audit log')); ?></a>
+					<?php endif; ?>
+				</div>
+				<div class="right"></div>
+				<div class="clear"></div>
+			</div>
+		</div>
+	</div>
+</div>
+
 <div class="atm-flex-box">
 	<div class="atm-flex-child">
 <!--************ GENERAL **********-->							

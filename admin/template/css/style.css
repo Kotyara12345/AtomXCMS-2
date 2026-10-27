@@ -1930,6 +1930,23 @@ textarea:focus-visible {
 
 .atm-empty {padding:14px 8px; color:#9a9a9a; text-align:center;}
 
+.atm-notify-item.atm-notify-security {align-items:flex-start;}
+.atm-notify-item.atm-notify-security span small {display:block; max-width:210px; margin-top:3px; color:#a9a9a9; font-size:10px; line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.atm-notify-type {display:inline-block; width:9px; min-width:9px; height:9px; margin-top:5px; padding:0; border-radius:50%; background:#6f8ca3;}
+.atm-notify-type.success {background:#91c94b;}
+.atm-notify-type.warning {background:#e0a53b;}
+.atm-notify-type.error {background:#e05a67;}
+.atm-notify-read-form {margin:0; padding:0 2px 2px;}
+.atm-notify-read-form .atm-dropdown-link {width:100%; border:0; background:none; font:inherit; text-align:left; cursor:pointer;}
+
+.atm-security-status {margin-bottom:16px;}
+.atm-security-warning .left {line-height:1.5;}
+.atm-security-link {margin-left:8px; color:#3573a8; font-size:12px; text-decoration:underline;}
+.atm-security-status .atm-button {margin:2px 6px 2px 0;}
+@media screen and (max-width: 700px) {
+	.atm-security-status .right .atm-button {width:100%; box-sizing:border-box;}
+}
+
 .atm-theme-toggle {
 	display:flex;
 	align-items:center;

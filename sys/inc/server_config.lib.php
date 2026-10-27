@@ -138,6 +138,7 @@ if (!function_exists('atm_server_config_defaults')) {
 		$settings = array(
 			'apache' => ROOT . DS . '.htaccess',
 			'nginx' => '',
+			'backup_limit' => 30,
 		);
 
 		foreach (atm_server_config_candidates('nginx') as $path) {
@@ -177,6 +178,9 @@ if (!function_exists('atm_server_config_read_settings')) {
 				$settings[$type] = trim($data[$type]);
 			}
 		}
+		if (isset($data['backup_limit'])) {
+			$settings['backup_limit'] = max(1, min(500, (int)$data['backup_limit']));
+		}
 
 		return $settings;
 	}
@@ -198,6 +202,9 @@ if (!function_exists('atm_server_config_write_settings')) {
 				? trim($settings[$type])
 				: '';
 		}
+		$data['backup_limit'] = isset($settings['backup_limit'])
+			? max(1, min(500, (int)$settings['backup_limit']))
+			: 30;
 
 		$code = "<?php\nreturn " . var_export($data, true) . ";\n";
 		return @file_put_contents(atm_server_config_settings_file(), $code, LOCK_EX) !== false;
@@ -438,13 +445,13 @@ if (!function_exists('atm_server_config_format_size')) {
 		$bytes = (int)$bytes;
 
 		if ($bytes < 1024) {
-			return $bytes . ' Б';
+			return $bytes . ' B';
 		}
 		if ($bytes < 1048576) {
-			return round($bytes / 1024, 1) . ' КБ';
+			return round($bytes / 1024, 1) . ' KB';
 		}
 
-		return round($bytes / 1048576, 1) . ' МБ';
+		return round($bytes / 1048576, 1) . ' MB';
 	}
 }
 
@@ -458,6 +465,21 @@ if (!function_exists('atm_server_config_backup_dir')) {
 	function atm_server_config_backup_dir()
 	{
 		return ROOT . DS . 'sys' . DS . 'logs' . DS . 'server_config_backups';
+	}
+}
+
+
+if (!function_exists('atm_server_config_backup_limit')) {
+	/**
+	 * Number of configuration backups kept per server type.
+	 *
+	 * @return int
+	 */
+	function atm_server_config_backup_limit()
+	{
+		$settings = atm_server_config_read_settings();
+		$limit = isset($settings['backup_limit']) ? (int)$settings['backup_limit'] : 30;
+		return max(1, min(500, $limit));
 	}
 }
 
@@ -477,10 +499,15 @@ if (!function_exists('atm_server_config_backup')) {
 
 		$dir = atm_server_config_backup_dir();
 		if (!@is_dir($dir)) {
-			if (!@mkdir($dir, 0777, true)) {
+			if (!@mkdir($dir, 0700, true)) {
 				$code = 'backup_dir';
 				return false;
 			}
+		}
+		// The backup directory must not be readable by other users on
+		// POSIX systems. On Windows this call is harmless.
+		if (DIRECTORY_SEPARATOR === '/') {
+			@chmod($dir, 0700);
 		}
 
 		$base = strtolower(basename(str_replace('\\', '/', $path)));
@@ -500,11 +527,18 @@ if (!function_exists('atm_server_config_backup')) {
 
 		@chmod($dest, 0600);
 
-		// Keep the backup directory from growing without a limit.
+		// Keep the backup directory from growing without a limit. Only
+		// delete files that match our generated naming scheme.
+		$limit = atm_server_config_backup_limit();
 		$backups = @glob($dir . DS . $type . '_*.bak');
-		if (!empty($backups) && count($backups) > 30) {
+		if (!empty($backups)) {
+			$backups = array_values(array_filter($backups, function ($file) use ($type) {
+				return atm_server_config_backup_name_allowed($type, basename($file));
+			}));
+		}
+		if (!empty($backups) && count($backups) > $limit) {
 			sort($backups);
-			$remove = count($backups) - 30;
+			$remove = count($backups) - $limit;
 			for ($i = 0; $i < $remove; $i++) {
 				@unlink($backups[$i]);
 			}
@@ -743,6 +777,11 @@ if (!function_exists('atm_server_config_restore_backup')) {
 			$info['code'] = $readCode;
 			return false;
 		}
+		$validation = atm_server_config_validate_content($type, $content);
+		if (empty($validation['ok'])) {
+			$info['code'] = 'invalid_backup';
+			return false;
+		}
 
 		$code = '';
 		$safety = atm_server_config_backup($type, $check['path'], $code);
@@ -764,6 +803,198 @@ if (!function_exists('atm_server_config_restore_backup')) {
 		return true;
 	}
 }
+
+if (!function_exists('atm_server_config_validate_content')) {
+	/**
+	 * Lightweight structural check before writing a configuration file.
+	 *
+	 * This is not a replacement for `apachectl -t` or `nginx -t`; those
+	 * commands are not available to PHP in every hosting environment.
+	 * The check catches the common fatal mistakes (unbalanced blocks,
+	 * unclosed quotes and missing braces) without executing a binary.
+	 *
+	 * @param string $type
+	 * @param string $content
+	 * @return array
+	 */
+	function atm_server_config_validate_content($type, $content)
+	{
+		$type = (string)$type;
+		$content = (string)$content;
+		$result = array('ok' => true, 'message' => '', 'warnings' => array());
+
+		if (strpos($content, "\0") !== false) {
+			return array(
+				'ok' => false,
+				'message' => __('The configuration contains a null byte.'),
+				'warnings' => array(),
+			);
+		}
+		if (strlen($content) > 2097152) {
+			return array(
+				'ok' => false,
+				'message' => __('The file is too large to edit (maximum 2 MB).'),
+				'warnings' => array(),
+			);
+		}
+
+		$single = false;
+		$double = false;
+		$escaped = false;
+		$lineComment = false;
+		$blockComment = false;
+		$trackBraces = ($type === 'nginx');
+		$braces = 0;
+		$length = strlen($content);
+		for ($i = 0; $i < $length; $i++) {
+			$char = $content[$i];
+			$next = ($i + 1 < $length) ? $content[$i + 1] : '';
+
+			if ($lineComment) {
+				if ($char === "\n") $lineComment = false;
+				continue;
+			}
+			if ($blockComment) {
+				if ($char === '*' && $next === '/') {
+					$blockComment = false;
+					$i++;
+				}
+				continue;
+			}
+			if ($escaped) {
+				$escaped = false;
+				continue;
+			}
+			if (($single || $double) && $char === '\\') {
+				$escaped = true;
+				continue;
+			}
+			if ($single) {
+				if ($char === "'") $single = false;
+				continue;
+			}
+			if ($double) {
+				if ($char === '"') $double = false;
+				continue;
+			}
+			if ($char === '#') {
+				$lineComment = true;
+				continue;
+			}
+			if ($char === '/' && $next === '*') {
+				$blockComment = true;
+				$i++;
+				continue;
+			}
+			if ($char === "'") {
+				$single = true;
+				continue;
+			}
+			if ($char === '"') {
+				$double = true;
+				continue;
+			}
+			if ($trackBraces && $char === '{') $braces++;
+			if ($trackBraces && $char === '}') {
+				$braces--;
+				if ($braces < 0) {
+					return array(
+						'ok' => false,
+						'message' => __('Unbalanced closing brace in the configuration.'),
+						'warnings' => array(),
+					);
+				}
+			}
+		}
+
+		if ($single || $double) {
+			return array(
+				'ok' => false,
+				'message' => __('An unclosed quote was found in the configuration.'),
+				'warnings' => array(),
+			);
+		}
+		if ($blockComment) {
+			$result['warnings'][] = __('The configuration ends inside a block comment.');
+		}
+
+		if ($type === 'nginx') {
+			if ($braces !== 0) {
+				return array(
+					'ok' => false,
+					'message' => __('Unbalanced curly braces in the Nginx configuration.'),
+					'warnings' => array(),
+				);
+			}
+
+			$lines = preg_split('/\R/u', $content);
+			foreach ($lines as $lineNumber => $line) {
+				$line = trim($line);
+				if ($line === '' || $line[0] === '#') continue;
+				// Ignore trailing Nginx comments before checking the
+				// directive terminator: "listen 80; # comment" is valid.
+				$checkLine = rtrim(preg_replace('/\s+#.*$/', '', $line));
+				if ($checkLine === ''
+					|| substr($checkLine, -1) === ';'
+					|| substr($checkLine, -1) === '{'
+					|| substr($checkLine, -1) === '}'
+					|| substr($checkLine, -1) === '\\') {
+					continue;
+				}
+				$result['warnings'][] = sprintf(
+					__('Line %d may be missing a semicolon.'),
+					$lineNumber + 1
+				);
+			}
+		} elseif ($type === 'apache') {
+			$tags = array(
+				'ifmodule', 'ifdefine', 'ifversion', 'directory', 'directorymatch',
+				'files', 'filesmatch', 'location', 'locationmatch', 'virtualhost',
+				'limit', 'limitexcept', 'proxy', 'requireall',
+			);
+			$stack = array();
+			// Blocks mentioned in Apache comments must not affect the
+			// balance check (for example "# </VirtualHost>").
+			$structure = preg_replace('/^\s*#.*$/m', '', $content);
+			$structure = preg_replace('/[ \t]+#.*$/m', '', $structure);
+			if (preg_match_all('/<\s*(\/?)\s*([a-z][a-z0-9_]*)\b[^>]*>/i', $structure, $matches, PREG_SET_ORDER)) {
+				foreach ($matches as $match) {
+					$closing = $match[1] === '/';
+					$tag = strtolower($match[2]);
+					if (!in_array($tag, $tags, true)) continue;
+					if (!$closing) {
+						$stack[] = $tag;
+					} else {
+						$open = array_pop($stack);
+						if ($open !== $tag) {
+							return array(
+								'ok' => false,
+								'message' => sprintf(
+									__('Mismatched Apache block tag: %s.'),
+									'</' . $tag . '>'
+								),
+								'warnings' => array(),
+							);
+						}
+					}
+				}
+			}
+			if (!empty($stack)) {
+				return array(
+					'ok' => false,
+					'message' => sprintf(
+						__('Unclosed Apache block: %s.'),
+						'<' . end($stack) . '>'
+					),
+					'warnings' => array(),
+				);
+			}
+		}
+
+		return $result;
+	}
+}
+
 
 if (!function_exists('atm_server_config_critical_directives')) {
 	/**

@@ -373,6 +373,15 @@
 		confirmDialog(message, function () {
 			var form = closest(button, 'form');
 			if (form) {
+				// form.submit() does not include the clicked submit button,
+				// so copy its name/value for actions such as bulk delete.
+				if (button.name) {
+					var hidden = document.createElement('input');
+					hidden.type = 'hidden';
+					hidden.name = button.name;
+					hidden.value = button.value || '';
+					form.appendChild(hidden);
+				}
 				form.setAttribute('data-atm-submitting', '1');
 				form.submit();
 				return;
@@ -477,4 +486,33 @@
 
 	window.atmMarkFormClean = markFormClean;
 	window.atmMarkFormDirty = markFormDirty;
+/* ------------------------------------------------------------------
+	 * Bulk selection
+	 * ------------------------------------------------------------------ */
+
+	document.addEventListener('change', function (event) {
+		var master = closest(event.target, '[data-atm-select-all]');
+		if (master) {
+			var form = closest(master, 'form');
+			if (!form) return;
+			var checked = !!master.checked;
+			Array.prototype.forEach.call(
+				form.querySelectorAll('[data-atm-select-item]'),
+				function (item) { item.checked = checked; }
+			);
+			return;
+		}
+
+		var item = closest(event.target, '[data-atm-select-item]');
+		if (!item) return;
+		var form = closest(item, 'form');
+		if (!form) return;
+		var all = form.querySelectorAll('[data-atm-select-item]');
+		var master = form.querySelector('[data-atm-select-all]');
+		if (master) {
+			var selected = form.querySelectorAll('[data-atm-select-item]:checked').length;
+			master.checked = all.length > 0 && selected === all.length;
+			master.indeterminate = selected > 0 && selected < all.length;
+		}
+	});
 })();

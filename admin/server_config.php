@@ -67,6 +67,8 @@ if (!function_exists('atm_server_config_admin_error')) {
 				return __('The configuration file path has changed. Reload the page and try again.');
 			case 'backup_missing':
 				return __('The backup file was not found.');
+			case 'invalid_backup':
+				return __('The backup failed the configuration syntax check and was not restored.');
 			case 'critical_changes':
 				return __('Critical directives were changed. Review the differences and confirm the save.');
 		}
@@ -133,6 +135,7 @@ $types = array(
 );
 
 $settings = atm_server_config_read_settings();
+$backupLimit = atm_server_config_backup_limit();
 $errors = array();
 $pathOverrides = array();
 $contentOverrides = array();
@@ -161,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 
 	if (!atm_admin_csrf_check($csrfToken)) {
 		$errors[] = __('Session expired, please reload the page');
-	} elseif (!$typeIsValid) {
+	} elseif (!$typeIsValid && $action !== 'save_backup_limit') {
 		$errors[] = __('Unknown configuration type.');
 	} elseif ($action === 'save_path') {
 		$path = isset($pathOverrides[$type]) ? $pathOverrides[$type] : '';
@@ -214,8 +217,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 				$_SESSION['message'] = __('No changes to save.');
 				redirect('/admin/server_config.php');
 			} else {
+				$syntaxWarnings = array();
+				$syntax = atm_server_config_validate_content($type, $content);
+				if (!$syntax['ok']) {
+					$errors[] = sprintf(
+						__('Configuration check failed: %s'),
+						$syntax['message']
+					);
+					atm_server_config_admin_log(
+						'config_validation_failed',
+						'type(' . $type . '), message(' . $syntax['message'] . ')'
+					);
+				} elseif (!empty($syntax['warnings'])) {
+					$syntaxWarnings = $syntax['warnings'];
+				}
+
 				$critical = atm_server_config_critical_changes($currentContent, $content);
-				if (!empty($critical) && empty($_POST['confirm_critical'])) {
+				if (!empty($errors)) {
+					// The file is not written when the syntax check fails.
+				} elseif (!empty($critical) && empty($_POST['confirm_critical'])) {
 					$criticalChanges[$type] = $critical;
 					$errors[] = atm_server_config_admin_error('critical_changes');
 				} else {
@@ -229,14 +249,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 							'editing server configuration'
 						);
 
-						$_SESSION['message'] = sprintf(
+						$message = sprintf(
 							__('The file was saved. Backup: %s'),
 							h($info['backup'])
 						);
+						if (!empty($syntaxWarnings)) {
+							$message .= '<br />' . implode('<br />', array_map('h', $syntaxWarnings));
+						}
+						$_SESSION['message'] = $message;
 						redirect('/admin/server_config.php');
 					}
 				}
 			}
+		}
+	} elseif ($action === 'save_backup_limit') {
+		$limit = isset($_POST['backup_limit']) ? (int)$_POST['backup_limit'] : 30;
+		$limit = max(1, min(500, $limit));
+		$newSettings = $settings;
+		$newSettings['backup_limit'] = $limit;
+		if (!atm_server_config_write_settings($newSettings)) {
+			$errors[] = atm_server_config_admin_error('settings_write');
+		} else {
+			atm_server_config_admin_log(
+				'backup_limit_saved',
+				'count(' . $limit . ')'
+			);
+			$_SESSION['message'] = __('The backup retention period was saved.');
+			redirect('/admin/server_config.php');
 		}
 	} elseif ($action === 'download') {
 		$check = $checks[$type];
@@ -361,6 +400,7 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 .server-config-critical ul { margin:8px 0; padding-left:22px; }
 .server-config-critical li { margin:3px 0; }
 .server-config-critical code { display:inline-block; max-width:100%; overflow-wrap:anywhere; }
+.server-config-limit-input { width:90px; height:30px; margin-right:8px; padding:0 8px; box-sizing:border-box; }
 .server-config-backups table { margin:0; }
 .server-config-backups .backup-actions form { display:inline-block; margin:0 5px 5px 0; }
 @media screen and (max-width: 1200px) {
@@ -382,6 +422,42 @@ $openBasedir = trim((string)ini_get('open_basedir'));
 	); ?>
 </div>
 <?php endif; ?>
+
+
+<div class="list">
+	<div class="title"><?php echo h(__('Backup storage')); ?></div>
+	<div class="level1">
+		<div class="items">
+			<form class="setting-item" method="post" action="server_config.php">
+				<input type="hidden" name="csrf_token" value="<?php echo h(atm_admin_csrf_token()); ?>" />
+				<input type="hidden" name="action" value="save_backup_limit" />
+				<div class="left">
+					<?php echo h(__('Backups kept per server type')); ?>
+				</div>
+				<div class="right">
+					<input
+						class="server-config-limit-input"
+						type="number"
+						name="backup_limit"
+						min="1"
+						max="500"
+						step="1"
+						value="<?php echo (int)$backupLimit; ?>"
+					/>
+					<input
+						class="save-button server-config-small-button"
+						type="submit"
+						value="<?php echo h(__('Save')); ?>"
+					/>
+					<div class="comment">
+						<?php echo h(__('Oldest backups are removed automatically. Allowed range: 1–500.')); ?>
+					</div>
+				</div>
+				<div class="clear"></div>
+			</form>
+		</div>
+	</div>
+</div>
 
 
 <?php foreach ($types as $type => $meta): ?>

@@ -33,6 +33,7 @@ $_SESSION['lang'] = Config::read('language');
 
 include_once ROOT . '/sys/inc/admin_security.lib.php';
 atm_admin_security_ensure_tables();
+atm_admin_send_security_headers();
 
 
 /*
@@ -55,6 +56,146 @@ if (!function_exists('atm_admin_csrf_check')) {
 		return !empty($_SESSION['csrf_token'])
 			&& is_string($token)
 			&& hash_equals($_SESSION['csrf_token'], $token);
+	}
+}
+
+if (!function_exists('atm_admin_csrf_input')) {
+	/**
+	 * Hidden CSRF field for a form.
+	 *
+	 * @return string
+	 */
+	function atm_admin_csrf_input()
+	{
+		return '<input type="hidden" name="csrf_token" value="'
+			. h(atm_admin_csrf_token()) . '" />';
+	}
+}
+
+if (!function_exists('atm_admin_csrf_fail_response')) {
+	/**
+	 * Reject a POST request with an invalid CSRF token.
+	 *
+	 * AJAX callers receive JSON so the existing scripts can show an
+	 * error; normal form submissions receive a small HTML page.
+	 */
+	function atm_admin_csrf_fail_response()
+	{
+		atm_admin_audit(
+			'csrf_failed',
+			'uri: ' . (isset($_SERVER['REQUEST_URI']) ? (string)$_SERVER['REQUEST_URI'] : '')
+		);
+
+		$isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])
+				&& strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+			|| (isset($_SERVER['HTTP_ACCEPT'])
+				&& stripos((string)$_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
+
+		http_response_code(403);
+		if ($isAjax) {
+			header('Content-Type: application/json; charset=utf-8');
+			echo json_encode(array(
+				'status' => false,
+				'errors' => array(__('Session expired, please reload the page')),
+			), JSON_UNESCAPED_UNICODE);
+			exit;
+		}
+
+		header('Content-Type: text/html; charset=utf-8');
+		echo '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8" />'
+			. '<meta name="viewport" content="width=device-width, initial-scale=1" />'
+			. '<title>' . h(__('Permission denied')) . '</title>'
+			. '<style>body{font:16px/1.5 Arial,sans-serif;margin:40px;color:#333}'
+			. 'a{color:#3573a8}</style></head><body><h1>'
+			. h(__('Permission denied')) . '</h1><p>'
+			. h(__('Session expired, please reload the page'))
+			. '</p><p><a href="' . h(WWW_ROOT . '/admin/') . '">'
+			. h(__('Admin Panel')) . '</a></p></body></html>';
+		exit;
+	}
+}
+
+if (!function_exists('atm_admin_csrf_validate_request')) {
+	/**
+	 * Validate the CSRF token of an authenticated POST request.
+	 */
+	function atm_admin_csrf_validate_request()
+	{
+		if (PHP_SAPI === 'cli') return;
+		if (empty($_SERVER['REQUEST_METHOD'])
+			|| strtoupper((string)$_SERVER['REQUEST_METHOD']) !== 'POST') return;
+
+		$token = isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '';
+		if (!atm_admin_csrf_check($token)) {
+			atm_admin_csrf_fail_response();
+		}
+	}
+}
+
+if (!function_exists('atm_admin_csrf_buffer_callback')) {
+	/**
+	 * Add a hidden token to POST forms rendered by legacy admin pages.
+	 *
+	 * The admin panel contains dozens of old forms. Doing this at the
+	 * output boundary keeps the change central and makes the global POST
+	 * validation above safe for every legacy form, including forms that
+	 * are assembled by modules.
+	 *
+	 * @param string $html
+	 * @return string
+	 */
+	function atm_admin_csrf_buffer_callback($html)
+	{
+		if (stripos($html, '<form') === false) return $html;
+		$token = atm_admin_csrf_token();
+		if ($token === '') return $html;
+
+		// Never modify downloads, CSV exports, JSON responses or log
+		// files that merely happen to contain a form-like string.
+		$headers = headers_list();
+		foreach ($headers as $header) {
+			if (stripos($header, 'content-type:') === 0
+				&& stripos($header, 'text/html') === false) {
+				return $html;
+			}
+		}
+
+		return preg_replace_callback(
+			'/<form\b[^>]*>.*?<\/form>/is',
+			function ($match) use ($token) {
+				if (!preg_match('/\bmethod\s*=\s*["\']?\s*post\b/i', $match[0])) {
+					return $match[0];
+				}
+				if (preg_match('/\bname\s*=\s*["\']?csrf_token\b/i', $match[0])) {
+					return $match[0];
+				}
+
+				$field = '<input type="hidden" name="csrf_token" value="'
+					. h($token) . '" />';
+				return preg_replace_callback(
+					'/<form\b[^>]*>/i',
+					function ($open) use ($field) {
+						return $open[0] . $field;
+					},
+					$match[0],
+					1
+				);
+			},
+			$html
+		);
+	}
+}
+
+if (!function_exists('atm_admin_csrf_buffer_start')) {
+	/**
+	 * Start output buffering for automatic legacy-form tokens.
+	 */
+	function atm_admin_csrf_buffer_start()
+	{
+		static $started = false;
+		if ($started || PHP_SAPI === 'cli') return;
+		$started = true;
+		ob_start('atm_admin_csrf_buffer_callback');
 	}
 }
 
@@ -463,6 +604,18 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 			}
 		}
 	}
+}
+
+
+/*
+ * Existing admin forms are protected centrally: every authenticated
+ * POST must carry the session token, and the output buffer below adds
+ * the hidden field to legacy forms that do not render it themselves.
+ */
+if (!empty($_SESSION['user'])) {
+	atm_admin_csrf_validate_request();
+	atm_admin_security_cleanup();
+	atm_admin_csrf_buffer_start();
 }
 
 

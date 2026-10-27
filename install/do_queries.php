@@ -709,6 +709,38 @@ $array[] = "CREATE TABLE `{$set['db']['prefix']}admin_2fa` (
 	PRIMARY KEY (`user_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
 #############################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_notifications`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_notifications` (
+	`id` int(11) NOT NULL auto_increment,
+	`user_id` int(11) NOT NULL default '0',
+	`type` varchar(32) NOT NULL default '',
+	`title` varchar(255) NOT NULL default '',
+	`message` text,
+	`url` varchar(255) NOT NULL default '',
+	`created` int(11) NOT NULL default '0',
+	PRIMARY KEY (`id`),
+	KEY `user_id` (`user_id`),
+	KEY `type` (`type`),
+	KEY `created` (`created`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+#############################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_notification_reads`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_notification_reads` (
+	`notification_id` int(11) NOT NULL,
+	`user_id` int(11) NOT NULL,
+	`read_at` int(11) NOT NULL default '0',
+	PRIMARY KEY (`notification_id`, `user_id`),
+	KEY `user_id` (`user_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+#############################################################################
+$array[] = "DROP TABLE IF EXISTS `{$set['db']['prefix']}admin_notification_state`";
+$array[] = "CREATE TABLE `{$set['db']['prefix']}admin_notification_state` (
+	`user_id` int(11) NOT NULL,
+	`counts` text,
+	`updated` int(11) NOT NULL default '0',
+	PRIMARY KEY (`user_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+#############################################################################
 
 
 
