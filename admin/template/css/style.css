@@ -119,6 +119,7 @@ table.side-separator, table.side-separator tr td {vertical-align:top; min-height
 .side-menu li div.icon.statistics {background-position:0px -376px;}
 .side-menu li div.icon.forum {background-position:0px -420px;}
 .side-menu li div.icon.security {background-position:0px 6px;}
+.side-menu li div.icon.shop {background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 8.5h13l-1 11h-11z'/%3E%3Cpath d='M9 8.5V6.8a3 3 0 0 1 6 0v1.7'/%3E%3C/svg%3E") 0 -2px/32px 32px no-repeat;}
 
 
 /* Content */
@@ -193,6 +194,16 @@ table.side-separator, table.side-separator tr td {vertical-align:top; min-height
 .list > .level1 > .items > .setting-item.protocol-switch .right {max-width:calc(77% - 70px);}
 .list > .level1 > .items > .setting-item .right input[type="text"], select, textarea, .collection {width:390px;}
 .list > .level1 > .items > .setting-item .right textarea {height:auto; min-height:100px;}
+/* Give shop settings enough room for long titles, descriptions and prices. */
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .left,
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right {box-sizing:border-box;}
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right {width:77%;}
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right input[type="text"],
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right input[type="email"],
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right input[type="number"],
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right select,
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right textarea {width:100%; max-width:720px; height:auto; min-height:38px; padding:8px 10px; box-sizing:border-box; color:#25313d; font-size:14px; font-style:normal; line-height:1.35;}
+form[action="settings.php?m=shop"] .list > .level1 > .items > .setting-item .right textarea {min-height:160px; resize:vertical;}
 .list > .level1 > .items > .setting-item .center {padding:20px; margin: 0 auto;}
 .list > .level1 > .items > .setting-item .center h3 {-moz-text-shadow:none; -webkit-text-shadow:none; text-shadow:none; color:#96C703;}
 

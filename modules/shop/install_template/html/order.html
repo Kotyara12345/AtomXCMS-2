@@ -1,0 +1,92 @@
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css" />
+<div class="shop-page">
+    <div class="shop-topbar">
+        <a href="{{ shop_url }}">Каталог</a>
+        <a href="{{ www_root }}/shop/cart/">Корзина</a>
+        <a href="{{ orders_url }}">Мои заказы</a>
+    </div>
+
+    {% if breadcrumbs %}{{ breadcrumbs }}{% endif %}
+
+    <div class="shop-heading">
+        <h1>Заказ №{{ order.number }}</h1>
+        <p>от {{ order.created_at_formatted|escape }}</p>
+    </div>
+
+    <div class="shop-order-layout">
+        <div class="shop-order-main">
+            <div class="shop-panel">
+                <h2>Состав заказа</h2>
+                <div class="shop-table-wrap">
+                    <table class="shop-table">
+                        <thead>
+                            <tr>
+                                <th>Товар</th>
+                                <th>Артикул</th>
+                                <th>Цена</th>
+                                <th>Кол-во</th>
+                                <th>Итого</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td>
+                                    <strong>{{ item.product_title|escape }}</strong>
+                                    {% if item.variant_title %}<div class="shop-muted">{{ item.variant_title|escape }}</div>{% endif %}
+                                </td>
+                                <td>{{ item.sku|escape }}</td>
+                                <td>{{ item.price_formatted }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.total_formatted }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="shop-order-totals">
+                    <div class="shop-summary-row">
+                        <span>Товары:</span>
+                        <span>{{ order.subtotal_formatted }}</span>
+                    </div>
+                    <div class="shop-summary-row">
+                        <span>Доставка:</span>
+                        <span>{{ order.delivery_price_formatted }}</span>
+                    </div>
+                    <div class="shop-summary-row shop-summary-total">
+                        <span>Итого:</span>
+                        <span>{{ order.total_formatted }}</span>
+                    </div>
+                </div>
+            </div>
+
+            {% if order.comment %}
+            <div class="shop-panel">
+                <h2>Комментарий</h2>
+                <div class="shop-pre">{{ order.comment|escape }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <aside class="shop-order-side">
+            <div class="shop-panel">
+                <h2>Статус</h2>
+                <p><span class="shop-status shop-status-{{ order.status }}">{{ order.status_label|escape }}</span></p>
+            </div>
+
+            <div class="shop-panel">
+                <h2>Покупатель</h2>
+                <p><strong>{{ order.customer_name|escape }}</strong></p>
+                <p>{{ order.email|escape }}<br />{{ order.phone|escape }}</p>
+            </div>
+
+            <div class="shop-panel">
+                <h2>Доставка и оплата</h2>
+                <p><strong>{{ order.delivery_title|escape }}</strong></p>
+                {% if order.address %}<div class="shop-pre">{{ order.address|escape }}</div>{% endif %}
+                <p><strong>{{ order.payment_title|escape }}</strong></p>
+            </div>
+        </aside>
+    </div>
+</div>

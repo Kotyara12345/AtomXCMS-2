@@ -1,0 +1,82 @@
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css" />
+<div class="shop-page">
+    <div class="shop-topbar">
+        <a href="{{ shop_url }}">Каталог</a>
+        <a href="{{ cart_url }}">Корзина{% if shop_cart_count %} ({{ shop_cart_count }}){% endif %}</a>
+        <a href="{{ www_root }}/shop/orders/">Мои заказы</a>
+    </div>
+
+    {% if breadcrumbs %}{{ breadcrumbs }}{% endif %}
+
+    {% if flash %}
+    <div class="shop-alert {% if flash.type == 'error' %}shop-alert-error{% else %}shop-alert-success{% endif %}">{{ flash.message|escape }}</div>
+    {% endif %}
+
+    <div class="shop-layout">
+        <aside class="shop-sidebar">
+            {{ categories_html }}
+        </aside>
+
+        <section class="shop-main">
+            <div class="shop-heading">
+                <h1>{% if category %}{{ category.title|escape }}{% else %}Каталог товаров{% endif %}</h1>
+                {% if search_query %}<p class="shop-muted">Результаты поиска: «{{ search_query|escape }}»</p>{% endif %}
+                {% if category.description %}<div class="shop-category-description">{{ category.description|escape }}</div>{% endif %}
+                <p class="shop-muted">Найдено товаров: {{ total }}</p>
+            </div>
+
+            <form class="shop-toolbar" method="get" action="{{ search_action }}">
+                <input type="text" name="q" value="{{ search_query|escape }}" placeholder="Поиск по каталогу" />
+                <button type="submit" class="shop-btn">Найти</button>
+                {% if sort_options %}
+                <select name="sort" onchange="window.location.href=this.value;">
+                    {% for option in sort_options %}
+                    <option value="{{ option.url }}"{% if option.selected %} selected="selected"{% endif %}>{{ option.title|escape }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </form>
+
+            {% if products %}
+            <div class="shop-grid">
+                {% for product in products %}
+                <article class="shop-card">
+                    <a class="shop-card-image" href="{{ product.url }}">
+                        {% if product.image_url %}
+                        <img src="{{ product.image_url }}" alt="{{ product.title|escape }}" loading="lazy" />
+                        {% else %}
+                        <span class="shop-noimage">Нет фото</span>
+                        {% endif %}
+                    </a>
+                    <div class="shop-card-body">
+                        {% if product.category_title %}
+                        <div class="shop-card-category">{{ product.category_title|escape }}</div>
+                        {% endif %}
+                        <h2 class="shop-card-title"><a href="{{ product.url }}">{{ product.title|escape }}</a></h2>
+                        {% if product.short_description_html %}
+                        <div class="shop-card-description">{{ product.short_description_html }}</div>
+                        {% endif %}
+                        <div class="shop-card-footer">
+                            <div class="shop-card-price">
+                                {% if product.price_from_formatted %}
+                                <span class="shop-price">{{ product.price_from_formatted }}</span>
+                                {% else %}
+                                <span class="shop-muted">Цена по запросу</span>
+                                {% endif %}
+                            </div>
+                            <a class="shop-btn shop-btn-small" href="{{ product.url }}">Подробнее</a>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="shop-empty">{{ empty_text|escape }}</div>
+            {% endif %}
+
+            {% if shop_pagination %}
+            <div class="shop-pagination">{{ shop_pagination }}</div>
+            {% endif %}
+        </section>
+    </div>
+</div>

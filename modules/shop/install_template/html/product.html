@@ -1,0 +1,109 @@
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css" />
+<div class="shop-page">
+    <div class="shop-topbar">
+        <a href="{{ shop_url }}">Каталог</a>
+        <a href="{{ cart_url }}">Корзина{% if shop_cart_count %} ({{ shop_cart_count }}){% endif %}</a>
+        <a href="{{ www_root }}/shop/orders/">Мои заказы</a>
+    </div>
+
+    {% if breadcrumbs %}{{ breadcrumbs }}{% endif %}
+
+    {% if flash %}
+    <div class="shop-alert {% if flash.type == 'error' %}shop-alert-error{% else %}shop-alert-success{% endif %}">{{ flash.message|escape }}</div>
+    {% endif %}
+
+    <div class="shop-layout">
+        <aside class="shop-sidebar">
+            {{ categories_html }}
+        </aside>
+
+        <section class="shop-main">
+            <div class="shop-product">
+                <div class="shop-product-media">
+                    {% if product.image_url %}
+                    <img src="{{ product.image_url }}" alt="{{ product.title|escape }}" />
+                    {% else %}
+                    <div class="shop-noimage shop-noimage-large">Нет фото</div>
+                    {% endif %}
+                </div>
+
+                <div class="shop-product-info">
+                    <h1>{{ product.title|escape }}</h1>
+                    {% if product.category_title %}
+                    <div class="shop-card-category">
+                        <a href="{{ product.category_url }}">{{ product.category_title|escape }}</a>
+                    </div>
+                    {% endif %}
+
+                    {% if product.short_description_html %}
+                    <div class="shop-product-short">{{ product.short_description_html }}</div>
+                    {% endif %}
+
+                    <div class="shop-product-price">
+                        {% if product.price_from_formatted %}
+                        <span class="shop-price shop-price-large">от {{ product.price_from_formatted }}</span>
+                        {% else %}
+                        <span class="shop-muted">Цена по запросу</span>
+                        {% endif %}
+                    </div>
+
+                    {% if variants %}
+                    <form class="shop-buy" method="post" action="{{ form_action }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                        <input type="hidden" name="return" value="{{ return_url }}" />
+
+                        <div class="shop-variants">
+                            {% for variant in variants %}
+                            <label class="shop-variant{% if variant.available %}{% else %} shop-variant-disabled{% endif %}">
+                                <input type="radio" name="variant_id" value="{{ variant.id }}" {{ variant.checked }} {{ variant.disabled }} />
+                                <span class="shop-variant-body">
+                                    <span class="shop-variant-title">{{ variant.title|escape }}</span>
+                                    <span class="shop-variant-meta">
+                                        {% if variant.sku %}Артикул: {{ variant.sku|escape }}{% endif %}
+                                        {% if variant.available %}{% if variant.sku %} · {% endif %}В наличии: {{ variant.stock }}{% else %}{% if variant.sku %} · {% endif %}Нет в наличии{% endif %}
+                                    </span>
+                                    <span class="shop-variant-price">{{ variant.price_formatted }}</span>
+                                </span>
+                            </label>
+                            {% endfor %}
+                        </div>
+
+                        <div class="shop-buy-row">
+                            <label for="shop-qty">Количество</label>
+                            <input id="shop-qty" type="number" name="qty" value="1" min="1" max="{{ stock_total }}" />
+                            <button type="submit" class="shop-btn"{% if in_stock %}{% else %} disabled="disabled"{% endif %}>Добавить в корзину</button>
+                        </div>
+                    </form>
+                    {% else %}
+                    <div class="shop-empty">Для этого товара пока не настроены варианты.</div>
+                    {% endif %}
+
+                    {% if attributes %}
+                    <div class="shop-attributes">
+                        <h2>Характеристики</h2>
+                        <table>
+                            {% for attribute in attributes %}
+                            <tr>
+                                <th>{{ attribute.title|escape }}</th>
+                                <td>
+                                    {% for value in attribute.values %}
+                                    <span class="shop-attr-value">{{ value.title|escape }}</span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if product.description_html %}
+            <div class="shop-product-description">
+                <h2>Описание</h2>
+                {{ product.description_html }}
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</div>

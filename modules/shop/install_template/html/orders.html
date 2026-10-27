@@ -1,0 +1,46 @@
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css" />
+<div class="shop-page">
+    <div class="shop-topbar">
+        <a href="{{ shop_url }}">Каталог</a>
+        <a href="{{ www_root }}/shop/cart/">Корзина</a>
+        <a href="{{ www_root }}/shop/orders/">Мои заказы</a>
+    </div>
+
+    {% if breadcrumbs %}{{ breadcrumbs }}{% endif %}
+
+    <div class="shop-heading">
+        <h1>Мои заказы</h1>
+    </div>
+
+    {% if orders %}
+    <div class="shop-table-wrap">
+        <table class="shop-table">
+            <thead>
+                <tr>
+                    <th>Заказ</th>
+                    <th>Дата</th>
+                    <th>Статус</th>
+                    <th>Сумма</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td><strong>№{{ order.number }}</strong></td>
+                    <td>{{ order.created_at_formatted|escape }}</td>
+                    <td><span class="shop-status shop-status-{{ order.status }}">{{ order.status_label|escape }}</span></td>
+                    <td>{{ order.total_formatted }}</td>
+                    <td><a class="shop-btn shop-btn-small shop-btn-secondary" href="{{ order.url }}">Открыть</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="shop-empty">
+        <p>У вас пока нет заказов.</p>
+        <a class="shop-btn" href="{{ shop_url }}">Перейти в каталог</a>
+    </div>
+    {% endif %}
+</div>

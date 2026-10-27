@@ -1,0 +1,24 @@
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css" />
+<div class="shop-page">
+    <div class="shop-topbar">
+        <a href="{{ shop_url }}">Каталог</a>
+        <a href="{{ www_root }}/shop/cart/">Корзина</a>
+        <a href="{{ orders_url }}">Мои заказы</a>
+    </div>
+
+    {% if breadcrumbs %}{{ breadcrumbs }}{% endif %}
+
+    <div class="shop-success">
+        <div class="shop-success-icon">✓</div>
+        <h1>Спасибо! Заказ оформлен</h1>
+        <p>Номер заказа: <strong>№{{ order.number }}</strong></p>
+        <p>Мы отправили подтверждение на <strong>{{ order.email|escape }}</strong>.</p>
+        <p>Статус: <span class="shop-status shop-status-{{ order.status }}">{{ order.status_label|escape }}</span></p>
+        <p>Сумма заказа: <strong>{{ order.total_formatted }}</strong></p>
+
+        <div class="shop-success-actions">
+            <a class="shop-btn" href="{{ order_url }}">Посмотреть заказ</a>
+            <a class="shop-btn shop-btn-secondary" href="{{ shop_url }}">Продолжить покупки</a>
+        </div>
+    </div>
+</div>

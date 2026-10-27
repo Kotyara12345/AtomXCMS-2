@@ -1,0 +1,86 @@
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css" />
+<div class="shop-page">
+    <div class="shop-topbar">
+        <a href="{{ shop_url }}">Каталог</a>
+        <a href="{{ cart_url }}">Корзина{% if shop_cart_count %} ({{ shop_cart_count }}){% endif %}</a>
+        <a href="{{ www_root }}/shop/orders/">Мои заказы</a>
+    </div>
+
+    {% if breadcrumbs %}{{ breadcrumbs }}{% endif %}
+
+    {% if flash %}
+    <div class="shop-alert {% if flash.type == 'error' %}shop-alert-error{% else %}shop-alert-success{% endif %}">{{ flash.message|escape }}</div>
+    {% endif %}
+
+    <div class="shop-heading">
+        <h1>Корзина</h1>
+    </div>
+
+    {% if items %}
+    <form method="post" action="{{ update_action }}" class="shop-cart">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="shop-table-wrap">
+            <table class="shop-table shop-cart-table">
+                <thead>
+                    <tr>
+                        <th>Товар</th>
+                        <th>Цена</th>
+                        <th>Количество</th>
+                        <th>Итого</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>
+                            <div class="shop-cart-product">
+                                {% if item.image_url %}
+                                <img src="{{ item.image_url }}" alt="{{ item.product_title|escape }}" />
+                                {% else %}
+                                <span class="shop-noimage shop-noimage-small">Нет фото</span>
+                                {% endif %}
+                                <div>
+                                    <a class="shop-cart-title" href="{{ item.url }}">{{ item.product_title|escape }}</a>
+                                    <div class="shop-muted">{{ item.variant_title|escape }}</div>
+                                    {% if item.sku %}<div class="shop-muted">Артикул: {{ item.sku|escape }}</div>{% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>{{ item.price_formatted }}</td>
+                        <td>
+                            <input class="shop-qty-input" type="number" name="qty[{{ item.variant_id }}]" value="{{ item.quantity }}" min="0" max="{{ item.stock }}" />
+                        </td>
+                        <td><strong>{{ item.total_formatted }}</strong></td>
+                        <td>
+                            <button type="submit" class="shop-link-danger" formaction="{{ remove_action }}" name="variant_id" value="{{ item.variant_id }}">Удалить</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="shop-cart-actions">
+            <button type="submit" class="shop-btn shop-btn-secondary">Обновить корзину</button>
+            <a class="shop-btn shop-btn-secondary" href="{{ shop_url }}">Продолжить покупки</a>
+        </div>
+    </form>
+
+    <div class="shop-cart-summary">
+        <div class="shop-summary-row">
+            <span>Товаров:</span>
+            <span>{{ totals.quantity }}</span>
+        </div>
+        <div class="shop-summary-row shop-summary-total">
+            <span>Итого:</span>
+            <span>{{ totals.subtotal_formatted }}</span>
+        </div>
+        <a class="shop-btn shop-btn-block" href="{{ checkout_url }}">Оформить заказ</a>
+    </div>
+    {% else %}
+    <div class="shop-empty">
+        <p>Ваша корзина пуста.</p>
+        <a class="shop-btn" href="{{ shop_url }}">Перейти в каталог</a>
+    </div>
+    {% endif %}
+</div>
