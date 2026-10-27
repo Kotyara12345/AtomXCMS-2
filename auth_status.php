@@ -6,6 +6,9 @@
  * otherwise polling would keep an otherwise expired session alive.
  */
 
+require_once __DIR__ . '/sys/inc/https.lib.php';
+atm_force_https();
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -19,6 +22,10 @@ if ($sessionId !== '' && preg_match('/^[a-zA-Z0-9,\-]+$/', $sessionId)
 	ini_set('session.use_cookies', '0');
 	ini_set('session.use_only_cookies', '1');
 	ini_set('session.use_strict_mode', '1');
+	// Keep the same lifetime as sys/boot.php. Otherwise this read-only
+	// endpoint can garbage-collect a session that the rest of the site
+	// still considers valid.
+	ini_set('session.gc_maxlifetime', '10000');
 
 	session_id($sessionId);
 	@session_start(array('read_and_close' => true));

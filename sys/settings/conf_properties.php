@@ -331,6 +331,15 @@ $settingsInfo = array(
 			'value' => '1',
 			'row_class' => 'protocol-switch',
 		),
+		'force_https' => array(
+			'type' => 'checkbox',
+			'title' => __('Force HTTPS'),
+			'description' => __('Redirects all HTTP requests to HTTPS. Enable only if a valid HTTPS certificate is installed; otherwise visitors will see a certificate warning.'),
+			'help' => __('Prevents the session from breaking when the admin panel and the public site use different schemes.'),
+			'checked' => '1',
+			'value' => '1',
+			'row_class' => 'protocol-switch',
+		),
 	),
 
 	/* SECURE */

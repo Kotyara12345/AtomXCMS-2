@@ -26,6 +26,9 @@
  * session_start(). HttpOnly + SameSite=Lax are enabled, the Secure
  * flag is set automatically when the site works over HTTPS.
  */
+require_once __DIR__ . '/inc/https.lib.php';
+atm_force_https();
+
 if (session_status() === PHP_SESSION_NONE) {
 	if (function_exists('ini_set')) {
 		@ini_set('session.use_strict_mode', '1');
@@ -37,7 +40,7 @@ if (session_status() === PHP_SESSION_NONE) {
 			'lifetime' => 3000,
 			'path'     => '/',
 			'domain'   => '',
-			'secure'   => (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off'),
+			'secure'   => atm_request_is_https(),
 			'httponly' => true,
 			'samesite' => 'Lax',
 		));

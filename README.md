@@ -85,6 +85,10 @@ panel keeps them after regenerating the configuration.
   directive in Nginx, `Protocols h2 http/1.1` in Apache), and HTTP/3
   requires a server or CDN with QUIC support - configure this in the
   hosting control panel.
+* "Force HTTPS" in the same section redirects HTTP requests handled by
+  the CMS to HTTPS before the session starts. This keeps one Secure
+  session for the public site and the admin panel; enable it only when
+  the certificate is valid for the site domain.
 * Uploaded images can be converted to WebP (System settings → "Convert
   uploaded images to WebP"). The original JPEG/PNG/GIF file is kept and
   served automatically to browsers without WebP support; animated GIFs
@@ -223,6 +227,10 @@ location / {
   `h2` по TLS (параметр `http2` у директивы `listen` в Nginx,
   `Protocols h2 http/1.1` в Apache), а для HTTP/3 нужен сервер или CDN
   с поддержкой QUIC — это настраивается в панели хостинга.
+* Переключатель «Принудительный HTTPS» в том же разделе перенаправляет
+  HTTP-запросы, обрабатываемые CMS, на HTTPS до старта сессии. Так
+  публичная часть и админка используют одну Secure-сессию; включайте
+  только при наличии действующего сертификата для домена сайта.
 * Загружаемые изображения можно конвертировать в WebP (Системные
   настройки → «Конвертировать загружаемые изображения в WebP»).
   Исходный файл JPEG/PNG/GIF сохраняется и автоматически отдаётся
