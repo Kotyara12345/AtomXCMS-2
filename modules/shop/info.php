@@ -9,6 +9,7 @@ $menuInfo = array(
         'shop.php?tab=products' => 'Товары',
         'shop.php?tab=attributes' => 'Атрибуты',
         'shop.php?tab=categories' => 'Категории',
+        'shop.php?tab=landings' => 'Посадочные страницы',
         'shop.php?tab=orders' => 'Заказы',
         'settings.php?m=shop' => 'Настройки',
         'design.php?m=shop' => 'Дизайн',

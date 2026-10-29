@@ -16,6 +16,10 @@ function resampleImage($path, $new_path, $sizew, $sizeh = false, $format = null)
 			case IMAGETYPE_GIF: $img = imagecreatefromgif($path); break;
 			case IMAGETYPE_PNG: $img = imagecreatefrompng($path); break;
 			case IMAGETYPE_BMP: $img = imagecreatefrombmp($path); break;
+			case IMAGETYPE_WEBP:
+				if (!function_exists('imagecreatefromwebp')) return false;
+				$img = @imagecreatefromwebp($path);
+				break;
 			default: return false;
 		}
 		if(!$img) return false;
@@ -28,6 +32,10 @@ function resampleImage($path, $new_path, $sizew, $sizeh = false, $format = null)
 			case 'image/gif': $img = imagecreatefromgif($path); break;
 			case 'image/png': $img = imagecreatefrompng($path); break;
 			case 'image/bmp': $img = imagecreatefrombmp($path); break;
+			case 'image/webp':
+				if (!function_exists('imagecreatefromwebp')) return false;
+				$img = @imagecreatefromwebp($path);
+				break;
 			default: return false;
 		}
 	} else {
@@ -52,8 +60,10 @@ function resampleImage($path, $new_path, $sizew, $sizeh = false, $format = null)
 	switch ($itype) {
 		case 'image/gif':
 		case 'image/png':
+		case 'image/webp':
 		case 3:
 		case 1:
+		case 18:
 			imagecolortransparent($dest, imagecolortransparent($img));
 			imagealphablending($dest, false);
 			imagesavealpha($dest, true);
@@ -88,6 +98,11 @@ function resampleImage($path, $new_path, $sizew, $sizeh = false, $format = null)
 		case 3:
 		case 'image/png':
 			imagepng($dest, $new_path, $quality_png);
+			break;
+		case 18:
+		case 'image/webp':
+			if (!function_exists('imagewebp')) return false;
+			imagewebp($dest, $new_path, $quality_jpeg);
 			break;
 		default:
 			imagejpeg($dest, $new_path, $quality_jpeg);

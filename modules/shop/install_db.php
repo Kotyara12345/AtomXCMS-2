@@ -49,6 +49,37 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_categories
     KEY `clean_url_title` (`clean_url_title`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8";
 
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_landing_pages` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `title` VARCHAR(255) NOT NULL DEFAULT '',
+    `clean_url_title` VARCHAR(255) NOT NULL DEFAULT '',
+    `description` TEXT,
+    `active` TINYINT(1) NOT NULL DEFAULT 1,
+    `position` INT NOT NULL DEFAULT 0,
+    `meta_title` VARCHAR(255) NOT NULL DEFAULT '',
+    `meta_description` TEXT,
+    `meta_keywords` TEXT,
+    `created_at` DATETIME DEFAULT NULL,
+    `updated_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `clean_url_title` (`clean_url_title`),
+    KEY `active_position` (`active`, `position`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_landing_page_categories` (
+    `landing_page_id` INT UNSIGNED NOT NULL,
+    `category_id` INT UNSIGNED NOT NULL,
+    PRIMARY KEY (`landing_page_id`, `category_id`),
+    KEY `category_id` (`category_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_landing_page_attribute_values` (
+    `landing_page_id` INT UNSIGNED NOT NULL,
+    `attribute_value_id` INT UNSIGNED NOT NULL,
+    PRIMARY KEY (`landing_page_id`, `attribute_value_id`),
+    KEY `attribute_value_id` (`attribute_value_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_products` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `category_id` INT UNSIGNED NOT NULL DEFAULT 0,
@@ -70,6 +101,16 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_products` 
     KEY `category_id` (`category_id`),
     KEY `active_position` (`active`, `position`),
     KEY `clean_url_title` (`clean_url_title`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_product_images` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `product_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `image` VARCHAR(255) NOT NULL DEFAULT '',
+    `position` INT NOT NULL DEFAULT 0,
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `product_position` (`product_id`, `position`, `id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_attributes` (

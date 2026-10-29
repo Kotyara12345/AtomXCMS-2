@@ -27,6 +27,32 @@
 header('Content-Type: text/html; charset=utf-8');
 
 
+/*
+ * Collapse duplicate index.html URLs to their canonical directory URL.
+ * Examples: /index.html -> /, /shop/index.html -> /shop/
+ */
+$requestMethod = isset($_SERVER['REQUEST_METHOD'])
+    ? strtoupper((string)$_SERVER['REQUEST_METHOD']) : 'GET';
+$requestUri = isset($_SERVER['REQUEST_URI']) ? (string)$_SERVER['REQUEST_URI'] : '';
+$requestPath = $requestUri !== '' ? parse_url($requestUri, PHP_URL_PATH) : null;
+$requestQuery = $requestUri !== '' ? parse_url($requestUri, PHP_URL_QUERY) : null;
+if (($requestMethod === 'GET' || $requestMethod === 'HEAD')
+    && is_string($requestPath)
+    && preg_match('#/index\.html/?$#i', $requestPath)) {
+    $target = preg_replace('#/index\.html/?$#i', '/', $requestPath);
+    if ($target === '') $target = '/';
+    if (is_string($requestQuery) && $requestQuery !== '') {
+        $requestQuery = str_replace(array("\r", "\n"), '', $requestQuery);
+        // "url" is the CMS routing parameter and must not leak into canonical URLs.
+        $requestQuery = preg_replace('/(?:^|&)url(?:=[^&]*)?(?=&|$)/', '', $requestQuery);
+        $requestQuery = trim($requestQuery, '&');
+        if ($requestQuery !== '') $target .= '?' . $requestQuery;
+    }
+    header('Location: ' . $target, true, 301);
+    exit;
+}
+
+
 
 
 if (file_exists('install')) {

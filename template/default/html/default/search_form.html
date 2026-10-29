@@ -18,6 +18,11 @@
 
             <input id="smdloads" type="checkbox" value="loads" name="m[]" {{ context.loads }}>
             <label for="smdloads">{{ 'Files'|lang }}</label>
+            {% if context.shop_available %}
+            <br />
+            <input id="smdshop" type="checkbox" value="shop" name="m[]" {{ context.shop }}>
+            <label for="smdshop">{{ context.shop_title }}</label>
+            {% endif %}
        </div>
 </div>
 </form>

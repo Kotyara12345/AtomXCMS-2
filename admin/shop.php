@@ -32,7 +32,7 @@ if (!$canProducts && !$canOrders) {
 }
 
 $tab = isset($_GET['tab']) ? preg_replace('/[^a-z_]/', '', (string)$_GET['tab']) : 'dashboard';
-$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category');
+$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing');
 $orderTabs = array('orders', 'order');
 if (!in_array($tab, array_merge($productTabs, $orderTabs), true)) $tab = 'dashboard';
 if (in_array($tab, $productTabs, true) && !$canProducts) $tab = 'orders';
@@ -99,6 +99,10 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         $saveResult = $DB->save('shop_products', $data);
         if ($id < 1) $id = (int)$saveResult;
 
+        $removeGallery = isset($_POST['remove_gallery']) ? (array)$_POST['remove_gallery'] : array();
+        if ($removeGallery) shop_admin_remove_product_gallery($id, $removeGallery);
+        shop_admin_upload_product_gallery($id);
+
         $values = isset($_POST['attributes']) ? (array)$_POST['attributes'] : array();
         ShopHelper::syncProductAttributeValues($id, $values);
         ShopHelper::syncProductVariants($id);
@@ -125,6 +129,7 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
             $DB->query("DELETE FROM `" . ShopHelper::table('variants') . "` WHERE `id` IN ({$ids})");
         }
         $DB->query("DELETE FROM `" . ShopHelper::table('product_attribute_values') . "` WHERE `product_id` = {$id}");
+        shop_admin_delete_product_gallery($id);
         $DB->query("DELETE FROM `" . ShopHelper::table('products') . "` WHERE `id` = {$id}");
         if (!empty($product['image'])) shop_admin_delete_upload($product['image']);
 
@@ -218,9 +223,12 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
                 WHERE `attribute_value_id` IN ({$ids})");
             $usedVariants = $DB->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('variant_values') . "`
                 WHERE `attribute_value_id` IN ({$ids})");
+            $usedLandings = $DB->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('landing_page_attribute_values') . "`
+                WHERE `attribute_value_id` IN ({$ids})");
             if ((!empty($usedProducts[0]['cnt']) && (int)$usedProducts[0]['cnt'] > 0)
-                || (!empty($usedVariants[0]['cnt']) && (int)$usedVariants[0]['cnt'] > 0)) {
-                $_SESSION['errors'] = 'Атрибут используется в товарах и не может быть удалён.';
+                || (!empty($usedVariants[0]['cnt']) && (int)$usedVariants[0]['cnt'] > 0)
+                || (!empty($usedLandings[0]['cnt']) && (int)$usedLandings[0]['cnt'] > 0)) {
+                $_SESSION['errors'] = 'Атрибут используется в товарах или посадочных страницах и не может быть удалён.';
                 shop_admin_go(array('tab' => 'attribute', 'id' => $id));
             }
             $DB->query("DELETE FROM `" . ShopHelper::table('attribute_values') . "` WHERE `id` IN ({$ids})");
@@ -274,9 +282,12 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
             WHERE `attribute_value_id` = {$id}");
         $usedVariants = $DB->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('variant_values') . "`
             WHERE `attribute_value_id` = {$id}");
+        $usedLandings = $DB->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('landing_page_attribute_values') . "`
+            WHERE `attribute_value_id` = {$id}");
         if ((!empty($usedProducts[0]['cnt']) && (int)$usedProducts[0]['cnt'] > 0)
-            || (!empty($usedVariants[0]['cnt']) && (int)$usedVariants[0]['cnt'] > 0)) {
-            $_SESSION['errors'] = 'Значение используется в товарах и не может быть удалено.';
+            || (!empty($usedVariants[0]['cnt']) && (int)$usedVariants[0]['cnt'] > 0)
+            || (!empty($usedLandings[0]['cnt']) && (int)$usedLandings[0]['cnt'] > 0)) {
+            $_SESSION['errors'] = 'Значение используется в товарах или посадочных страницах и не может быть удалено.';
             shop_admin_go(array('tab' => 'attribute', 'id' => $attributeId));
         }
         $DB->query("DELETE FROM `" . ShopHelper::table('attribute_values') . "` WHERE `id` = {$id}");
@@ -340,9 +351,12 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
             WHERE `parent_id` = {$id}");
         $products = $DB->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('products') . "`
             WHERE `category_id` = {$id}");
+        $landings = $DB->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('landing_page_categories') . "`
+            WHERE `category_id` = {$id}");
         if ((!empty($children[0]['cnt']) && (int)$children[0]['cnt'] > 0)
-            || (!empty($products[0]['cnt']) && (int)$products[0]['cnt'] > 0)) {
-            $_SESSION['errors'] = 'Категория содержит подкатегории или товары и не может быть удалена.';
+            || (!empty($products[0]['cnt']) && (int)$products[0]['cnt'] > 0)
+            || (!empty($landings[0]['cnt']) && (int)$landings[0]['cnt'] > 0)) {
+            $_SESSION['errors'] = 'Категория содержит подкатегории, товары или посадочные страницы и не может быть удалена.';
             shop_admin_go(array('tab' => 'categories'));
         }
         $category = ShopHelper::getCategory($id);
@@ -350,6 +364,87 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         if ($category && !empty($category['image'])) shop_admin_delete_upload($category['image']);
         $_SESSION['message'] = 'Категория удалена.';
         shop_admin_go(array('tab' => 'categories'));
+    }
+
+    if ($action === 'landing_save') {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $existing = $id > 0 ? ShopHelper::getLandingPage($id, false) : false;
+        if ($id > 0 && !$existing) {
+            $_SESSION['errors'] = 'Посадочная страница не найдена.';
+            shop_admin_go(array('tab' => 'landings'));
+        }
+
+        $title = trim((string)(isset($_POST['title']) ? $_POST['title'] : ''));
+        if ($title === '') {
+            $_SESSION['errors'] = 'Укажите название посадочной страницы.';
+            shop_admin_go(array('tab' => 'landing', 'id' => $id));
+        }
+
+        $categoryIds = isset($_POST['category_ids']) ? (array)$_POST['category_ids'] : array();
+        $categoryIds = array_values(array_unique(array_filter(array_map('intval', $categoryIds))));
+        $availableCategoryIds = array();
+        foreach (ShopHelper::getCategories(false) as $category) {
+            $availableCategoryIds[] = (int)$category['id'];
+        }
+        $categoryIds = array_values(array_intersect($categoryIds, $availableCategoryIds));
+        if (!$categoryIds) {
+            $_SESSION['errors'] = 'Выберите хотя бы одну категорию.';
+            shop_admin_go(array('tab' => 'landing', 'id' => $id));
+        }
+
+        $valueIds = isset($_POST['attribute_value_ids']) ? (array)$_POST['attribute_value_ids'] : array();
+        $valueIds = array_values(array_unique(array_filter(array_map('intval', $valueIds))));
+        $availableValueIds = array();
+        foreach (ShopHelper::getAttributeValues(null, false) as $value) {
+            $availableValueIds[] = (int)$value['id'];
+        }
+        $valueIds = array_values(array_intersect($valueIds, $availableValueIds));
+        if (!$valueIds) {
+            $_SESSION['errors'] = 'Выберите хотя бы одно значение свойства товара.';
+            shop_admin_go(array('tab' => 'landing', 'id' => $id));
+        }
+
+        $slugSource = trim((string)(isset($_POST['clean_url_title']) ? $_POST['clean_url_title'] : ''));
+        if ($slugSource === '') $slugSource = $title;
+        $slug = ShopHelper::uniqueSlug('shop_landing_pages', $slugSource, $id);
+
+        $now = date('Y-m-d H:i:s');
+        $data = array(
+            'title' => $title,
+            'clean_url_title' => $slug,
+            'description' => (string)(isset($_POST['description']) ? $_POST['description'] : ''),
+            'active' => !empty($_POST['active']) ? 1 : 0,
+            'position' => isset($_POST['position']) ? (int)$_POST['position'] : 0,
+            'meta_title' => trim((string)(isset($_POST['meta_title']) ? $_POST['meta_title'] : '')),
+            'meta_description' => trim((string)(isset($_POST['meta_description']) ? $_POST['meta_description'] : '')),
+            'meta_keywords' => trim((string)(isset($_POST['meta_keywords']) ? $_POST['meta_keywords'] : '')),
+            'created_at' => $existing && !empty($existing['created_at']) ? $existing['created_at'] : $now,
+            'updated_at' => $now,
+        );
+        if ($id > 0) $data['id'] = $id;
+        $saveResult = $DB->save('shop_landing_pages', $data);
+        if ($id < 1) $id = (int)$saveResult;
+
+        ShopHelper::syncLandingPageCategories($id, $categoryIds);
+        ShopHelper::syncLandingPageAttributeValues($id, $valueIds);
+
+        $_SESSION['message'] = 'Посадочная страница сохранена.';
+        shop_admin_go(array('tab' => 'landings'));
+    }
+
+    if ($action === 'landing_delete') {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $landing = $id > 0 ? ShopHelper::getLandingPage($id, false) : false;
+        if (!$landing) {
+            $_SESSION['errors'] = 'Посадочная страница не найдена.';
+            shop_admin_go(array('tab' => 'landings'));
+        }
+
+        $DB->delete(ShopHelper::table('landing_page_categories'), array('landing_page_id' => $id));
+        $DB->delete(ShopHelper::table('landing_page_attribute_values'), array('landing_page_id' => $id));
+        $DB->delete(ShopHelper::table('landing_pages'), array('id' => $id));
+        $_SESSION['message'] = 'Посадочная страница удалена.';
+        shop_admin_go(array('tab' => 'landings'));
     }
 
     if ($action === 'order_status') {
@@ -407,6 +502,10 @@ if ($tab === 'dashboard') {
     $output .= shop_admin_categories();
 } elseif ($tab === 'category') {
     $output .= shop_admin_category_form();
+} elseif ($tab === 'landings') {
+    $output .= shop_admin_landings();
+} elseif ($tab === 'landing') {
+    $output .= shop_admin_landing_form();
 } elseif ($tab === 'orders') {
     $output .= shop_admin_orders();
 } elseif ($tab === 'order') {
@@ -414,6 +513,10 @@ if ($tab === 'dashboard') {
 }
 
 $output .= '</div>';
+
+if (in_array($tab, array('product', 'category', 'landing'), true)) {
+    $output .= shop_admin_editor_script();
+}
 
 include_once ROOT . '/admin/template/header.php';
 echo $output;
@@ -437,6 +540,19 @@ function shop_admin_go($params = array())
 function shop_admin_csrf()
 {
     return '<input type="hidden" name="csrf_token" value="' . h(atm_admin_csrf_token()) . '" />';
+}
+
+function shop_admin_editor_script()
+{
+    $base = h(WWW_ROOT . '/sys/plugins/wysibb/public');
+    return '<link rel="stylesheet" href="' . $base . '/wbbtheme.css" />'
+        . '<script src="' . $base . '/jquery.wysibb.min.js"></script>'
+        . '<script src="' . $base . '/fapos2.js"></script>'
+        . '<script>'
+        . '$(function () {'
+        . '    $(".shop-admin-editor").wysibb();'
+        . '});'
+        . '</script>';
 }
 
 function shop_admin_currency_codes()
@@ -473,6 +589,68 @@ function shop_admin_resync_value_products($valueId)
     }
 }
 
+function shop_admin_image_error($message)
+{
+    if (!empty($_SESSION['errors'])) {
+        $_SESSION['errors'] .= '<br />' . $message;
+    } else {
+        $_SESSION['errors'] = $message;
+    }
+}
+
+function shop_admin_save_uploaded_image($tmp)
+{
+    $info = @getimagesize($tmp);
+    if (!$info) {
+        shop_admin_image_error('Файл не является изображением.');
+        return '';
+    }
+
+    $typeMap = array(
+        IMAGETYPE_JPEG => 'jpg',
+        IMAGETYPE_PNG => 'png',
+        IMAGETYPE_GIF => 'gif',
+        IMAGETYPE_WEBP => 'webp',
+    );
+    $type = isset($info[2]) ? (int)$info[2] : 0;
+    if (!isset($typeMap[$type])) {
+        shop_admin_image_error('Допустимы только изображения JPG, PNG, GIF или WEBP.');
+        return '';
+    }
+    $extension = $typeMap[$type];
+
+    $fullDir = ROOT . '/sys/files/shop/full';
+    $previewDir = ROOT . '/sys/files/shop/preview';
+    if (!is_dir($fullDir)) @mkdir($fullDir, 0775, true);
+    if (!is_dir($previewDir)) @mkdir($previewDir, 0775, true);
+
+    $filename = '';
+    for ($attempt = 0; $attempt < 10; $attempt++) {
+        $candidate = 'shop_' . date('YmdHis') . '_' . mt_rand(100000, 999999) . '.' . $extension;
+        if (!file_exists($fullDir . '/' . $candidate) && !file_exists($previewDir . '/' . $candidate)) {
+            $filename = $candidate;
+            break;
+        }
+    }
+    if ($filename === '') {
+        shop_admin_image_error('Не удалось подобрать имя для изображения.');
+        return '';
+    }
+
+    $fullPath = $fullDir . '/' . $filename;
+    $previewPath = $previewDir . '/' . $filename;
+    if (!@move_uploaded_file($tmp, $fullPath)) {
+        shop_admin_image_error('Не удалось сохранить изображение.');
+        return '';
+    }
+
+    if (!function_exists('resampleImage')) include_once ROOT . '/sys/fnc/thumb.php';
+    if (!resampleImage($fullPath, $previewPath, 600, 600) && !@copy($fullPath, $previewPath)) {
+        @unlink($previewPath);
+    }
+    return $filename;
+}
+
 function shop_admin_upload_image($field, $old = '')
 {
     if (empty($_FILES[$field]) || !isset($_FILES[$field]['error'])
@@ -480,42 +658,53 @@ function shop_admin_upload_image($field, $old = '')
         return $old;
     }
     if ((int)$_FILES[$field]['error'] !== UPLOAD_ERR_OK) {
-        $_SESSION['errors'] = 'Не удалось загрузить изображение.';
+        shop_admin_image_error('Не удалось загрузить изображение.');
         return $old;
     }
 
-    $tmp = $_FILES[$field]['tmp_name'];
-    $info = @getimagesize($tmp);
-    if (!$info) {
-        $_SESSION['errors'] = 'Файл не является изображением.';
-        return $old;
-    }
+    $filename = shop_admin_save_uploaded_image($_FILES[$field]['tmp_name']);
+    return $filename !== '' ? $filename : $old;
+}
 
-    $extension = strtolower(pathinfo((string)$_FILES[$field]['name'], PATHINFO_EXTENSION));
-    if (!in_array($extension, array('jpg', 'jpeg', 'png', 'gif'), true)) {
-        $_SESSION['errors'] = 'Допустимы только изображения JPG, PNG или GIF.';
-        return $old;
-    }
-    if ($extension === 'jpeg') $extension = 'jpg';
+function shop_admin_upload_product_gallery($productId)
+{
+    $productId = (int)$productId;
+    if ($productId < 1 || empty($_FILES['gallery']) || !isset($_FILES['gallery']['name'])) return 0;
 
-    $fullDir = ROOT . '/sys/files/shop/full';
-    $previewDir = ROOT . '/sys/files/shop/preview';
-    if (!is_dir($fullDir)) @mkdir($fullDir, 0775, true);
-    if (!is_dir($previewDir)) @mkdir($previewDir, 0775, true);
+    $names = is_array($_FILES['gallery']['name']) ? $_FILES['gallery']['name'] : array($_FILES['gallery']['name']);
+    $tmpNames = isset($_FILES['gallery']['tmp_name']) && is_array($_FILES['gallery']['tmp_name'])
+        ? $_FILES['gallery']['tmp_name'] : array();
+    $errors = isset($_FILES['gallery']['error']) && is_array($_FILES['gallery']['error'])
+        ? $_FILES['gallery']['error'] : array();
 
-    $filename = 'shop_' . date('YmdHis') . '_' . mt_rand(1000, 9999) . '.' . $extension;
-    $fullPath = $fullDir . '/' . $filename;
-    $previewPath = $previewDir . '/' . $filename;
-    if (!move_uploaded_file($tmp, $fullPath)) {
-        $_SESSION['errors'] = 'Не удалось сохранить изображение.';
-        return $old;
-    }
+    $DB = ShopHelper::db();
+    $positionRows = $DB->query("SELECT COALESCE(MAX(`position`), -1) AS max_position
+        FROM `" . ShopHelper::table('product_images') . "`
+        WHERE `product_id` = {$productId}");
+    $position = !empty($positionRows[0]['max_position']) ? (int)$positionRows[0]['max_position'] + 1 : 0;
 
-    if (!function_exists('resampleImage')) include_once ROOT . '/sys/fnc/thumb.php';
-    if (!resampleImage($fullPath, $previewPath, 600, 600) && !copy($fullPath, $previewPath)) {
-        @unlink($previewPath);
+    $added = 0;
+    foreach ($names as $index => $name) {
+        $error = isset($errors[$index]) ? (int)$errors[$index] : UPLOAD_ERR_NO_FILE;
+        if ($error === UPLOAD_ERR_NO_FILE) continue;
+        if ($error !== UPLOAD_ERR_OK) {
+            shop_admin_image_error('Не удалось загрузить изображение галереи.');
+            continue;
+        }
+        $tmp = isset($tmpNames[$index]) ? $tmpNames[$index] : '';
+        if ($tmp === '') continue;
+        $filename = shop_admin_save_uploaded_image($tmp);
+        if ($filename === '') continue;
+
+        $DB->save('shop_product_images', array(
+            'product_id' => $productId,
+            'image' => $filename,
+            'position' => $position++,
+            'created_at' => date('Y-m-d H:i:s'),
+        ));
+        $added++;
     }
-    return $filename;
+    return $added;
 }
 
 function shop_admin_delete_upload($filename)
@@ -524,6 +713,40 @@ function shop_admin_delete_upload($filename)
     if ($filename === '') return;
     @unlink(ROOT . '/sys/files/shop/full/' . $filename);
     @unlink(ROOT . '/sys/files/shop/preview/' . $filename);
+}
+
+function shop_admin_remove_product_gallery($productId, $imageIds)
+{
+    $productId = (int)$productId;
+    $imageIds = array_values(array_unique(array_filter(array_map('intval', (array)$imageIds))));
+    if ($productId < 1 || !$imageIds) return;
+
+    $DB = ShopHelper::db();
+    $mainRows = $DB->query("SELECT `image` FROM `" . ShopHelper::table('products') . "`
+        WHERE `id` = {$productId}");
+    $mainImage = !empty($mainRows[0]['image']) ? $mainRows[0]['image'] : '';
+
+    $rows = $DB->query("SELECT `id`, `image` FROM `" . ShopHelper::table('product_images') . "`
+        WHERE `product_id` = {$productId} AND `id` IN (" . implode(',', $imageIds) . ")");
+    foreach ($rows as $row) {
+        $DB->query("DELETE FROM `" . ShopHelper::table('product_images') . "`
+            WHERE `id` = " . (int)$row['id'] . " AND `product_id` = {$productId}");
+        if ($mainImage === '' || $mainImage !== $row['image']) {
+            shop_admin_delete_upload($row['image']);
+        }
+    }
+}
+
+function shop_admin_delete_product_gallery($productId)
+{
+    $productId = (int)$productId;
+    if ($productId < 1) return;
+    $DB = ShopHelper::db();
+    $rows = $DB->query("SELECT `id` FROM `" . ShopHelper::table('product_images') . "`
+        WHERE `product_id` = {$productId}");
+    $ids = array();
+    foreach ($rows as $row) $ids[] = (int)$row['id'];
+    if ($ids) shop_admin_remove_product_gallery($productId, $ids);
 }
 
 function shop_admin_category_options($selected, $excludeIds = array(), $includeRoot = true)
@@ -552,6 +775,37 @@ function shop_admin_category_options($selected, $excludeIds = array(), $includeR
     return $html . $walk(0, 0);
 }
 
+function shop_admin_category_checkboxes($selectedIds = array())
+{
+    $selectedIds = array_values(array_unique(array_filter(array_map('intval', (array)$selectedIds))));
+    $categories = ShopHelper::getCategories(false);
+    $byId = array();
+    $children = array();
+    foreach ($categories as $category) {
+        $id = (int)$category['id'];
+        $byId[$id] = $category;
+        $children[(int)$category['parent_id']][] = $id;
+    }
+
+    $walk = function ($parentId, $level) use (&$walk, $byId, $children, $selectedIds) {
+        if (empty($children[$parentId])) return '';
+        $out = '';
+        foreach ($children[$parentId] as $id) {
+            $category = $byId[$id];
+            $checked = in_array($id, $selectedIds, true) ? ' checked="checked"' : '';
+            $out .= '<label class="shop-admin-check-line" style="padding-left:' . ($level * 18) . 'px">'
+                . '<input type="checkbox" name="category_ids[]" value="' . $id . '"' . $checked . ' /> '
+                . h($category['title'])
+                . (empty($category['active']) ? ' <span class="shop-admin-muted">(скрыта)</span>' : '')
+                . '</label>';
+            $out .= $walk($id, $level + 1);
+        }
+        return $out;
+    };
+
+    return $walk(0, 0);
+}
+
 function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
 {
     $tabs = array();
@@ -560,6 +814,7 @@ function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
         $tabs['products'] = 'Товары';
         $tabs['attributes'] = 'Атрибуты';
         $tabs['categories'] = 'Категории';
+        $tabs['landings'] = 'Посадочные страницы';
     }
     if ($canOrders) $tabs['orders'] = 'Заказы';
 
@@ -588,6 +843,7 @@ function shop_admin_dashboard($canProducts, $canOrders)
         'categories' => 0,
         'attributes' => 0,
         'variants' => 0,
+        'landings' => 0,
         'orders' => 0,
         'new_orders' => 0,
     );
@@ -596,6 +852,7 @@ function shop_admin_dashboard($canProducts, $canOrders)
         'categories' => 'categories',
         'attributes' => 'attributes',
         'variants' => 'variants',
+        'landings' => 'landing_pages',
         'orders' => 'orders',
     );
     foreach ($map as $key => $table) {
@@ -632,6 +889,10 @@ function shop_admin_dashboard($canProducts, $canOrders)
         <a class="shop-admin-card" href="<?php echo h(shop_admin_url(array('tab' => 'categories'))); ?>">
             <span class="shop-admin-card-value"><?php echo $counts['categories']; ?></span>
             <span class="shop-admin-card-label">Категорий</span>
+        </a>
+        <a class="shop-admin-card" href="<?php echo h(shop_admin_url(array('tab' => 'landings'))); ?>">
+            <span class="shop-admin-card-value"><?php echo $counts['landings']; ?></span>
+            <span class="shop-admin-card-label">Посадочные</span>
         </a>
         <a class="shop-admin-card" href="<?php echo h(shop_admin_url(array('tab' => 'attributes'))); ?>">
             <span class="shop-admin-card-value"><?php echo $counts['attributes']; ?></span>
@@ -802,6 +1063,7 @@ function shop_admin_product_form()
     $categories = ShopHelper::getCategories(false);
     $selectedValues = $id > 0 ? ShopHelper::getProductAttributeValueIds($id) : array();
     $attributes = ShopHelper::getAttributes(true);
+    $gallery = $id > 0 ? ShopHelper::getProductImages($id, true) : array();
     $isActive = $product ? !empty($product['active']) : true;
     $isFeatured = $product ? !empty($product['featured']) : false;
 
@@ -814,7 +1076,7 @@ function shop_admin_product_form()
     <?php if (!empty($product['image'])): ?>
     <div class="shop-admin-current-image">
         <img src="<?php echo h(ShopHelper::imageUrl($product['image'], true)); ?>" alt="" />
-        <label><input type="checkbox" name="remove_image" value="1" form="shop-product-form" /> Удалить изображение</label>
+        <label><input type="checkbox" name="remove_image" value="1" form="shop-product-form" /> Удалить главное изображение</label>
     </div>
     <?php endif; ?>
 
@@ -849,15 +1111,36 @@ function shop_admin_product_form()
             </div>
             <div class="shop-admin-field shop-admin-field-wide">
                 <label for="shop-product-description">Описание</label>
-                <textarea id="shop-product-description" name="description" rows="10"><?php echo h($product ? $product['description'] : ''); ?></textarea>
+                <textarea id="shop-product-description" class="shop-admin-editor" name="description" rows="10"><?php echo h($product ? $product['description'] : ''); ?></textarea>
             </div>
             <div class="shop-admin-field">
-                <label for="shop-product-image">Изображение</label>
-                <input id="shop-product-image" type="file" name="image" accept="image/jpeg,image/png,image/gif" />
+                <label for="shop-product-image">Главное изображение</label>
+                <input id="shop-product-image" type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" />
+                <span class="shop-admin-file-note">JPG, PNG, GIF или WebP.</span>
             </div>
             <div class="shop-admin-field shop-admin-checkboxes">
                 <label><input type="checkbox" name="active" value="1"<?php echo $isActive ? ' checked="checked"' : ''; ?> /> Активен</label>
                 <label><input type="checkbox" name="featured" value="1"<?php echo $isFeatured ? ' checked="checked"' : ''; ?> /> Рекомендуемый</label>
+            </div>
+        </div>
+
+        <div class="shop-admin-section">
+            <h2>Галерея товара</h2>
+            <p class="shop-admin-muted">Дополнительные изображения показываются на странице товара под главным фото.</p>
+            <?php if ($gallery): ?>
+            <div class="shop-admin-gallery-grid">
+                <?php foreach ($gallery as $galleryImage): ?>
+                <label class="shop-admin-gallery-item">
+                    <img src="<?php echo h($galleryImage['image_url']); ?>" alt="" />
+                    <span><input type="checkbox" name="remove_gallery[]" value="<?php echo (int)$galleryImage['id']; ?>" /> Удалить</span>
+                </label>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <div class="shop-admin-field">
+                <label for="shop-product-gallery">Добавить изображения</label>
+                <input id="shop-product-gallery" type="file" name="gallery[]" accept="image/jpeg,image/png,image/gif,image/webp" multiple="multiple" />
+                <span class="shop-admin-file-note">Можно выбрать сразу несколько файлов. JPG, PNG, GIF или WebP.</span>
             </div>
         </div>
 
@@ -1193,6 +1476,11 @@ function shop_admin_categories()
         . ShopHelper::table('products') . "` GROUP BY `category_id`");
     foreach ($rows as $row) $productCounts[(int)$row['category_id']] = (int)$row['cnt'];
 
+    $landingCounts = array();
+    $rows = ShopHelper::db()->query("SELECT `category_id`, COUNT(*) AS cnt FROM `"
+        . ShopHelper::table('landing_page_categories') . "` GROUP BY `category_id`");
+    foreach ($rows as $row) $landingCounts[(int)$row['category_id']] = (int)$row['cnt'];
+
     foreach ($categories as &$category) {
         $depth = 0;
         $parent = (int)$category['parent_id'];
@@ -1204,6 +1492,7 @@ function shop_admin_categories()
         }
         $category['depth'] = $depth;
         $category['products_count'] = isset($productCounts[(int)$category['id']]) ? $productCounts[(int)$category['id']] : 0;
+        $category['landings_count'] = isset($landingCounts[(int)$category['id']]) ? $landingCounts[(int)$category['id']] : 0;
     }
     unset($category);
 
@@ -1218,7 +1507,7 @@ function shop_admin_categories()
             <div class="shop-admin-panel-head"><h2>Дерево категорий</h2></div>
             <?php if ($categories): ?>
             <table class="grid shop-admin-table">
-                <thead><tr><th>Название</th><th>Товаров</th><th>Позиция</th><th>Статус</th><th></th></tr></thead>
+                <thead><tr><th>Название</th><th>Товаров</th><th>Подборки</th><th>Позиция</th><th>Статус</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($categories as $category): ?>
                     <tr>
@@ -1226,6 +1515,7 @@ function shop_admin_categories()
                             <span style="padding-left:<?php echo (int)$category['depth'] * 18; ?>px;"><?php echo $category['depth'] ? '— ' : ''; ?><a href="<?php echo h(shop_admin_url(array('tab' => 'category', 'id' => (int)$category['id']))); ?>"><?php echo h($category['title']); ?></a></span>
                         </td>
                         <td><?php echo (int)$category['products_count']; ?></td>
+                        <td><a href="<?php echo h(shop_admin_url(array('tab' => 'landings', 'category_id' => (int)$category['id']))); ?>"><?php echo (int)$category['landings_count']; ?></a></td>
                         <td><?php echo (int)$category['position']; ?></td>
                         <td><?php echo !empty($category['active']) ? '<span class="shop-admin-badge ok">Активна</span>' : '<span class="shop-admin-badge off">Скрыта</span>'; ?></td>
                         <td class="shop-admin-actions">
@@ -1273,6 +1563,7 @@ function shop_admin_category_form()
     if ($id > 0 && !$category) return '<div class="shop-admin-empty">Категория не найдена.</div>';
     $exclude = $id > 0 ? ShopHelper::categoryDescendantIds($id) : array();
     $isActive = $category ? !empty($category['active']) : true;
+    $categoryLandings = $category ? ShopHelper::getLandingPages(false, (int)$category['id']) : array();
 
     ob_start(); ?>
     <div class="shop-admin-page-head">
@@ -1311,11 +1602,11 @@ function shop_admin_category_form()
             </div>
             <div class="shop-admin-field shop-admin-field-wide">
                 <label for="shop-category-description">Описание</label>
-                <textarea id="shop-category-description" name="description" rows="5"><?php echo h($category ? $category['description'] : ''); ?></textarea>
+                <textarea id="shop-category-description" class="shop-admin-editor" name="description" rows="5"><?php echo h($category ? $category['description'] : ''); ?></textarea>
             </div>
             <div class="shop-admin-field">
                 <label for="shop-category-image">Изображение</label>
-                <input id="shop-category-image" type="file" name="image" accept="image/jpeg,image/png,image/gif" />
+                <input id="shop-category-image" type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" />
             </div>
             <div class="shop-admin-field shop-admin-checkboxes">
                 <label><input type="checkbox" name="active" value="1"<?php echo $isActive ? ' checked="checked"' : ''; ?> /> Активна</label>
@@ -1336,6 +1627,258 @@ function shop_admin_category_form()
         <div class="shop-admin-form-actions">
             <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Сохранить категорию</button>
             <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'categories'))); ?>">Отмена</a>
+        </div>
+    </form>
+
+    <?php if ($category): ?>
+    <div class="shop-admin-panel shop-admin-category-landings">
+        <div class="shop-admin-panel-head">
+            <h2>Посадочные страницы категории</h2>
+            <a href="<?php echo h(shop_admin_url(array('tab' => 'landing', 'id' => 0, 'category_id' => (int)$category['id']))); ?>">+ Создать</a>
+        </div>
+        <?php if ($categoryLandings): ?>
+        <table class="grid shop-admin-table">
+            <thead><tr><th>Название</th><th>URL</th><th>Статус</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($categoryLandings as $categoryLanding): ?>
+                <tr>
+                    <td><a class="shop-admin-title-link" href="<?php echo h(shop_admin_url(array('tab' => 'landing', 'id' => (int)$categoryLanding['id']))); ?>"><?php echo h($categoryLanding['title']); ?></a></td>
+                    <td class="shop-admin-muted"><?php echo h($categoryLanding['url']); ?></td>
+                    <td><?php echo !empty($categoryLanding['active']) ? '<span class="shop-admin-badge ok">Активна</span>' : '<span class="shop-admin-badge off">Скрыта</span>'; ?></td>
+                    <td><a href="<?php echo h(shop_admin_url(array('tab' => 'landing', 'id' => (int)$categoryLanding['id']))); ?>">Изменить</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php else: ?>
+        <div class="shop-admin-empty">У категории пока нет посадочных страниц.</div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <?php
+    return ob_get_clean();
+}
+
+function shop_admin_landings()
+{
+    $categoryId = isset($_GET['category_id']) ? (int)$_GET['category_id'] : 0;
+    $category = $categoryId > 0 ? ShopHelper::getCategory($categoryId) : false;
+    if ($categoryId > 0 && !$category) $categoryId = 0;
+    $landings = ShopHelper::getLandingPages(false, $categoryId);
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1>Посадочные страницы</h1>
+        <a class="shop-admin-btn shop-admin-btn-primary" href="<?php echo h(shop_admin_url(array('tab' => 'landing', 'id' => 0, 'category_id' => $categoryId))); ?>">+ Создать страницу</a>
+    </div>
+
+    <p class="shop-admin-help">
+        Посадочная страница показывает товары из выбранных категорий с фильтром по значениям свойств.
+        Внутри одного свойства значения объединяются по «ИЛИ», разные свойства — по «И».
+    </p>
+
+    <div class="shop-admin-toolbar">
+        <form method="get" action="<?php echo h(get_url('/admin/shop.php')); ?>">
+            <input type="hidden" name="tab" value="landings" />
+            <label>Категория:
+                <select name="category_id">
+                    <option value="0">Все категории</option>
+                    <?php echo shop_admin_category_options($categoryId, array(), false); ?>
+                </select>
+            </label>
+            <button type="submit" class="shop-admin-btn">Применить</button>
+            <?php if ($categoryId > 0): ?>
+                <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'landings'))); ?>">Сбросить</a>
+            <?php endif; ?>
+        </form>
+    </div>
+
+    <?php if ($landings): ?>
+    <div class="shop-admin-table-wrap">
+        <table class="shop-admin-table">
+            <thead>
+            <tr>
+                <th>Название</th>
+                <th>URL</th>
+                <th>Категории</th>
+                <th>Свойства</th>
+                <th>Позиция</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($landings as $landing): ?>
+                <?php
+                $landingFull = ShopHelper::getLandingPage((int)$landing['id'], false);
+                $categoryTitles = array();
+                $valueTitles = array();
+                if ($landingFull) {
+                    foreach ($landingFull['categories'] as $landingCategory) {
+                        $categoryTitles[] = $landingCategory['title'];
+                    }
+                    foreach ($landingFull['attribute_groups'] as $group) {
+                        foreach ($group['values'] as $value) {
+                            $valueTitles[] = $group['title'] . ': ' . $value['title'];
+                        }
+                    }
+                }
+                ?>
+                <tr>
+                    <td><a class="shop-admin-title-link" href="<?php echo h(shop_admin_url(array('tab' => 'landing', 'id' => (int)$landing['id']))); ?>"><?php echo h($landing['title']); ?></a></td>
+                    <td class="shop-admin-muted"><a href="<?php echo h($landing['url']); ?>" target="_blank" rel="noopener"><?php echo h($landing['url']); ?></a></td>
+                    <td><?php echo h(implode(', ', $categoryTitles)); ?></td>
+                    <td><?php echo h(implode('; ', $valueTitles)); ?></td>
+                    <td><?php echo (int)$landing['position']; ?></td>
+                    <td><?php echo !empty($landing['active']) ? '<span class="shop-admin-badge ok">Активна</span>' : '<span class="shop-admin-badge off">Скрыта</span>'; ?></td>
+                    <td class="shop-admin-actions">
+                        <a href="<?php echo h(shop_admin_url(array('tab' => 'landing', 'id' => (int)$landing['id']))); ?>">Изменить</a>
+                        <form method="post" action="" onsubmit="return confirm('Удалить посадочную страницу?');">
+                            <?php echo shop_admin_csrf(); ?>
+                            <input type="hidden" name="action" value="landing_delete" />
+                            <input type="hidden" name="tab" value="landings" />
+                            <input type="hidden" name="id" value="<?php echo (int)$landing['id']; ?>" />
+                            <button type="submit" class="shop-admin-link-danger">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php else: ?>
+        <div class="shop-admin-empty">
+            <?php echo $categoryId > 0 ? 'У выбранной категории пока нет посадочных страниц.' : 'Посадочных страниц пока нет.'; ?>
+        </div>
+    <?php endif; ?>
+    <?php
+    return ob_get_clean();
+}
+
+function shop_admin_landing_form()
+{
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    $landing = $id > 0 ? ShopHelper::getLandingPage($id, false) : false;
+    if ($id > 0 && !$landing) return '<div class="shop-admin-empty">Посадочная страница не найдена.</div>';
+
+    $selectedCategoryIds = $landing ? $landing['category_ids'] : array();
+    if (!$landing && isset($_GET['category_id'])) {
+        $selectedCategoryIds = array((int)$_GET['category_id']);
+    }
+    $selectedValueIds = $landing ? $landing['attribute_value_ids'] : array();
+    $attributes = ShopHelper::getAttributes(false);
+    $attributeValues = ShopHelper::getAttributeValues(null, false);
+    $valuesByAttribute = array();
+    foreach ($attributeValues as $value) {
+        $attributeId = (int)$value['attribute_id'];
+        if (!isset($valuesByAttribute[$attributeId])) $valuesByAttribute[$attributeId] = array();
+        $valuesByAttribute[$attributeId][] = $value;
+    }
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1><?php echo $landing ? 'Редактирование посадочной страницы' : 'Новая посадочная страница'; ?></h1>
+        <a href="<?php echo h(shop_admin_url(array('tab' => 'landings'))); ?>">← К посадочным страницам</a>
+    </div>
+
+    <?php if ($landing): ?>
+        <p class="shop-admin-help">Публичный адрес: <a href="<?php echo h($landing['url']); ?>" target="_blank" rel="noopener"><?php echo h($landing['url']); ?></a></p>
+    <?php endif; ?>
+
+    <form id="shop-landing-form" method="post" action="">
+        <?php echo shop_admin_csrf(); ?>
+        <input type="hidden" name="action" value="landing_save" />
+        <input type="hidden" name="tab" value="landing" />
+        <input type="hidden" name="id" value="<?php echo (int)$id; ?>" />
+
+        <div class="shop-admin-form-grid">
+            <div class="shop-admin-field">
+                <label for="shop-landing-title">Название *</label>
+                <input id="shop-landing-title" type="text" name="title" required="required" value="<?php echo h($landing ? $landing['title'] : ''); ?>" />
+            </div>
+            <div class="shop-admin-field">
+                <label for="shop-landing-slug">URL (slug)</label>
+                <input id="shop-landing-slug" type="text" name="clean_url_title" value="<?php echo h($landing ? $landing['clean_url_title'] : ''); ?>" placeholder="Заполнится из названия" />
+            </div>
+            <div class="shop-admin-field">
+                <label for="shop-landing-position">Позиция</label>
+                <input id="shop-landing-position" type="number" name="position" value="<?php echo $landing ? (int)$landing['position'] : 0; ?>" />
+            </div>
+            <div class="shop-admin-field">
+                <label class="shop-admin-inline-check">
+                    <input type="checkbox" name="active" value="1"<?php echo (!$landing || !empty($landing['active'])) ? ' checked="checked"' : ''; ?> />
+                    Активна
+                </label>
+            </div>
+        </div>
+
+        <div class="shop-admin-field shop-admin-field-wide shop-admin-landing-section">
+            <label>Категории *</label>
+            <p class="shop-admin-help">Можно выбрать одну или несколько категорий. Будут показаны также товары из их подкатегорий.</p>
+            <div class="shop-admin-check-tree">
+                <?php
+                $categoryCheckboxes = shop_admin_category_checkboxes($selectedCategoryIds);
+                echo $categoryCheckboxes !== '' ? $categoryCheckboxes : '<span class="shop-admin-muted">Сначала создайте хотя бы одну категорию.</span>';
+                ?>
+            </div>
+        </div>
+
+        <div class="shop-admin-field shop-admin-field-wide shop-admin-landing-section">
+            <label>Значения свойств товаров *</label>
+            <p class="shop-admin-help">
+                Выберите значения свойств, по которым будет строиться подборка.
+                Значения одного свойства объединяются по «ИЛИ» (например, красный или синий),
+                а разные свойства — по «И» (например, красный и шерсть).
+            </p>
+            <?php if ($attributes && $valuesByAttribute): ?>
+                <div class="shop-admin-landing-values">
+                    <?php foreach ($attributes as $attribute): ?>
+                        <?php
+                        $attributeId = (int)$attribute['id'];
+                        if (empty($valuesByAttribute[$attributeId])) continue;
+                        ?>
+                        <fieldset class="shop-admin-attribute-values">
+                            <legend><?php echo h($attribute['title']); ?></legend>
+                            <?php foreach ($valuesByAttribute[$attributeId] as $value): ?>
+                                <label class="shop-admin-check-line">
+                                    <input type="checkbox" name="attribute_value_ids[]" value="<?php echo (int)$value['id']; ?>"<?php echo in_array((int)$value['id'], array_map('intval', $selectedValueIds), true) ? ' checked="checked"' : ''; ?> />
+                                    <?php echo h($value['title']); ?>
+                                    <?php if (empty($value['active'])): ?><span class="shop-admin-muted">(неактивно)</span><?php endif; ?>
+                                </label>
+                            <?php endforeach; ?>
+                        </fieldset>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="shop-admin-empty">
+                    У товаров ещё нет свойств и значений.
+                    <a href="<?php echo h(shop_admin_url(array('tab' => 'attributes'))); ?>">Перейти к атрибутам</a>.
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <div class="shop-admin-form-grid">
+            <div class="shop-admin-field shop-admin-field-wide">
+                <label for="shop-landing-description">Описание</label>
+                <textarea id="shop-landing-description" class="shop-admin-editor" name="description" rows="6" placeholder="Текст над списком товаров"><?php echo h($landing ? $landing['description'] : ''); ?></textarea>
+            </div>
+            <div class="shop-admin-field">
+                <label for="shop-landing-meta-title">Meta title</label>
+                <input id="shop-landing-meta-title" type="text" name="meta_title" value="<?php echo h($landing ? $landing['meta_title'] : ''); ?>" />
+            </div>
+            <div class="shop-admin-field">
+                <label for="shop-landing-meta-keywords">Meta keywords</label>
+                <input id="shop-landing-meta-keywords" type="text" name="meta_keywords" value="<?php echo h($landing ? $landing['meta_keywords'] : ''); ?>" />
+            </div>
+            <div class="shop-admin-field shop-admin-field-wide">
+                <label for="shop-landing-meta-description">Meta description</label>
+                <textarea id="shop-landing-meta-description" name="meta_description" rows="3"><?php echo h($landing ? $landing['meta_description'] : ''); ?></textarea>
+            </div>
+        </div>
+
+        <div class="shop-admin-form-actions">
+            <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Сохранить страницу</button>
+            <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'landings'))); ?>">Отмена</a>
         </div>
     </form>
     <?php

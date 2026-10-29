@@ -132,6 +132,38 @@
     margin: 4px 0 10px;
 }
 
+.shop-category-description p,
+.shop-product-description p {
+    margin: 0 0 10px;
+}
+
+.shop-category-description p:last-child,
+.shop-product-description p:last-child {
+    margin-bottom: 0;
+}
+
+.shop-category-description ul,
+.shop-category-description ol,
+.shop-product-description ul,
+.shop-product-description ol {
+    margin: 0 0 10px;
+    padding-left: 22px;
+}
+
+.shop-category-description img,
+.shop-product-description img {
+    max-width: 100%;
+    height: auto;
+}
+
+.shop-product-description blockquote,
+.shop-category-description blockquote {
+    margin: 0 0 10px;
+    padding-left: 14px;
+    border-left: 3px solid #d8e0e7;
+    color: #52677d;
+}
+
 .shop-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -401,6 +433,34 @@
     display: block;
     width: 100%;
     height: auto;
+}
+
+.shop-product-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    gap: 8px;
+    padding: 10px;
+    border-top: 1px solid #e3e6ea;
+    background: #fff;
+}
+
+.shop-product-gallery a {
+    display: block;
+    overflow: hidden;
+    border: 1px solid #e1e6eb;
+    border-radius: 5px;
+    background: #f4f6f8;
+}
+
+.shop-product-gallery a:hover {
+    border-color: #1f5f9e;
+}
+
+.shop-product-gallery img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
 }
 
 .shop-product-info h1 {
@@ -899,4 +959,53 @@
     .shop-success {
         margin-top: 18px;
     }
+}
+
+/* Landing pages in catalogue */
+.shop-landing-description {
+    margin-bottom: 10px;
+}
+
+.shop-landing-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    margin: 4px 0 10px;
+    padding: 9px 12px;
+    background: #f5f8fb;
+    border: 1px solid #e1e8ef;
+    border-radius: 5px;
+    color: #44576a;
+    font-size: 13px;
+}
+
+.shop-landing-filters-label,
+.shop-landing-links-label {
+    font-weight: 700;
+    color: #30465c;
+}
+
+.shop-landing-filter strong {
+    color: #30465c;
+}
+
+.shop-landing-categories,
+.shop-landing-links {
+    margin: 6px 0 10px;
+    color: #6b7b8b;
+    font-size: 13px;
+}
+
+.shop-landing-categories a,
+.shop-landing-links a {
+    display: inline-block;
+    margin-right: 8px;
+    color: #1f5f9e;
+    text-decoration: none;
+}
+
+.shop-landing-categories a:hover,
+.shop-landing-links a:hover {
+    text-decoration: underline;
 }

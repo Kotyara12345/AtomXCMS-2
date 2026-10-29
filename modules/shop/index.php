@@ -57,13 +57,30 @@ class ShopModule extends Module
         return $this->renderCatalog($category, $id, $category['title']);
     }
 
+    public function landing($id = null)
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        $slug = trim((string)$id);
+        if ($slug === '') $this->Parser->showHttpError();
+
+        $extension = (string)Config::read('hlu_extention');
+        if ($extension !== '' && substr($slug, -strlen($extension)) === $extension) {
+            $slug = substr($slug, 0, -strlen($extension));
+        }
+
+        $landing = ShopHelper::getLandingPage($slug, true);
+        if (!$landing || empty($landing['categories'])) $this->Parser->showHttpError();
+
+        return $this->renderCatalog(null, 0, $landing['title'], $landing);
+    }
+
     public function search()
     {
         $this->ACL->turn(array('shop', 'view_catalog'));
         return $this->renderCatalog(null, 0, 'Поиск по каталогу');
     }
 
-    private function renderCatalog($category, $categoryId, $pageTitle)
+    private function renderCatalog($category, $categoryId, $pageTitle, $landing = null)
     {
         $currency = ShopHelper::activeCurrency();
         $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
@@ -73,18 +90,39 @@ class ShopModule extends Module
 
         $page = max(1, (int)(isset($_GET['page']) ? $_GET['page'] : 1));
         $perPage = max(1, (int)ShopHelper::cfg('per_page', 12));
-        $categoryIds = $categoryId > 0 ? ShopHelper::categoryDescendantIds($categoryId) : array();
 
-        $result = ShopHelper::getProducts(array(
+        $categoryIds = array();
+        if ($landing) {
+            foreach ($landing['categories'] as $landingCategory) {
+                foreach (ShopHelper::categoryDescendantIds((int)$landingCategory['id']) as $id) {
+                    $categoryIds[] = (int)$id;
+                }
+            }
+            $categoryIds = array_values(array_unique($categoryIds));
+        } elseif ($categoryId > 0) {
+            $categoryIds = ShopHelper::categoryDescendantIds($categoryId);
+        }
+
+        $filters = array(
             'category_ids' => $categoryIds,
             'q' => $q,
             'page' => $page,
             'limit' => $perPage,
             'sort' => $sort,
             'currency' => $currency['code'],
-        ));
+        );
+        if ($landing && !empty($landing['attribute_value_ids'])) {
+            $filters['attribute_value_ids'] = $landing['attribute_value_ids'];
+        }
+        $result = ShopHelper::getProducts($filters);
 
-        $baseUrl = $categoryId > 0 ? '/shop/category/' . $categoryId . '/' : '/shop/';
+        if ($landing) {
+            $baseUrl = ShopHelper::landingPath($landing);
+        } elseif ($categoryId > 0) {
+            $baseUrl = '/shop/category/' . $categoryId . '/';
+        } else {
+            $baseUrl = '/shop/';
+        }
         $query = array();
         if ($q !== '') $query['q'] = $q;
         if ($sort !== 'default') $query['sort'] = $sort;
@@ -99,17 +137,33 @@ class ShopModule extends Module
 
         $this->categories = $this->buildCategoriesHtml($categoryId);
         $this->page_title = h($pageTitle) . ' — ' . h(Config::read('title', 'shop'));
-        if ($category) {
+        if ($landing) {
+            if (!empty($landing['meta_title'])) $this->page_title = h($landing['meta_title']);
+            $this->addToPageMetaContext('landing_title', h($landing['title']));
+            $description = trim(ShopHelper::descriptionText(!empty($landing['meta_description'])
+                ? $landing['meta_description'] : $landing['description']));
+            if ($description !== '') $this->page_meta_description = h($description);
+            if (!empty($landing['meta_keywords'])) $this->page_meta_keywords = h($landing['meta_keywords']);
+        } elseif ($category) {
             if (!empty($category['meta_title'])) $this->page_title = h($category['meta_title']);
             $this->addToPageMetaContext('category_title', h($category['title']));
-            $description = trim(strip_tags((string)(!empty($category['meta_description'])
-                ? $category['meta_description'] : $category['description'])));
+            $description = trim(ShopHelper::descriptionText(!empty($category['meta_description'])
+                ? $category['meta_description'] : $category['description']));
             if ($description !== '') $this->page_meta_description = h($description);
             if (!empty($category['meta_keywords'])) $this->page_meta_keywords = h($category['meta_keywords']);
         }
 
-        $sortOptions = $this->buildSortOptions($categoryId, $q, $sort);
-        $breadcrumbs = $this->buildCatalogBreadcrumbs($category);
+        $sortOptions = $this->buildSortOptions($categoryId, $q, $sort, $landing);
+        $breadcrumbs = $landing
+            ? $this->buildLandingBreadcrumbs($landing)
+            : $this->buildCatalogBreadcrumbs($category);
+        $landingPages = (!$landing && $categoryId > 0)
+            ? ShopHelper::getLandingPagesForCategory($categoryId, true)
+            : array();
+        $filterGroups = $this->buildLandingFilterGroups($landing);
+        $searchPath = $landing
+            ? ShopHelper::landingPath($landing)
+            : ($categoryId > 0 ? '/shop/category/' . $categoryId . '/' : '/shop/');
 
         $source = $this->render('list.html', array(
             'products' => $result['items'],
@@ -119,14 +173,17 @@ class ShopModule extends Module
             'search_query' => $q,
             'category' => $category,
             'category_id' => $categoryId,
+            'landing' => $landing,
+            'landing_filter_groups' => $filterGroups,
+            'landing_pages' => $landingPages,
             'categories_html' => $this->categories,
             'breadcrumbs' => $breadcrumbs,
             'currency' => $currency,
             'shop_url' => get_url('/shop/'),
             'cart_url' => get_url('/shop/cart/'),
-            'search_action' => get_url($categoryId > 0 ? '/shop/category/' . $categoryId . '/' : '/shop/'),
+            'search_action' => get_url($searchPath),
             'flash' => ShopHelper::getFlash(),
-            'empty_text' => 'Товары не найдены.',
+            'empty_text' => $landing ? 'По выбранным свойствам товары не найдены.' : 'Товары не найдены.',
         ));
 
         return $this->_view($source);
@@ -140,6 +197,12 @@ class ShopModule extends Module
 
         $product = ShopHelper::getProduct($id, true);
         if (!$product) $this->Parser->showHttpError();
+
+        $gallery = ShopHelper::getProductImages($product['id'], true);
+        if (empty($product['image_url']) && !empty($gallery)) {
+            $product['image_url'] = $gallery[0]['full_url'];
+            array_shift($gallery);
+        }
 
         $currency = ShopHelper::activeCurrency();
         $variants = ShopHelper::getProductVariants($product['id'], $currency['code']);
@@ -177,6 +240,7 @@ class ShopModule extends Module
 
         $source = $this->render('product.html', array(
             'product' => $product,
+            'gallery' => $gallery,
             'variants' => $variants,
             'attributes' => $attributes,
             'stock_total' => $stockTotal,
@@ -593,9 +657,13 @@ class ShopModule extends Module
         return $html;
     }
 
-    private function buildSortOptions($categoryId, $q, $selected)
+    private function buildSortOptions($categoryId, $q, $selected, $landing = null)
     {
-        $base = $categoryId > 0 ? '/shop/category/' . $categoryId . '/' : '/shop/';
+        if ($landing) {
+            $base = ShopHelper::landingPath($landing);
+        } else {
+            $base = $categoryId > 0 ? '/shop/category/' . $categoryId . '/' : '/shop/';
+        }
         $options = array(
             'default' => 'По умолчанию',
             'price_asc' => 'Сначала дешёвые',
@@ -631,6 +699,36 @@ class ShopModule extends Module
         }
         $html .= '</div>';
         return $html;
+    }
+
+    private function buildLandingBreadcrumbs($landing)
+    {
+        $html = '<div class="shop-breadcrumbs"><a href="' . h(get_url('/')) . '">Главная</a> / '
+            . '<a href="' . h(get_url('/shop/')) . '">Магазин</a>';
+        $categoryLinks = array();
+        foreach ($landing['categories'] as $category) {
+            $categoryLinks[] = '<a href="' . h($category['url']) . '">' . h($category['title']) . '</a>';
+        }
+        if ($categoryLinks) $html .= ' / ' . implode(', ', $categoryLinks);
+        $html .= ' / <span>' . h($landing['title']) . '</span></div>';
+        return $html;
+    }
+
+    private function buildLandingFilterGroups($landing)
+    {
+        if (!$landing || empty($landing['attribute_groups'])) return array();
+        $result = array();
+        foreach ($landing['attribute_groups'] as $group) {
+            $titles = array();
+            foreach ($group['values'] as $value) $titles[] = $value['title'];
+            if (!$titles) continue;
+            $result[] = array(
+                'id' => (int)$group['id'],
+                'title' => $group['title'],
+                'value_titles' => implode(', ', $titles),
+            );
+        }
+        return $result;
     }
 
     private function buildProductBreadcrumbs($product)

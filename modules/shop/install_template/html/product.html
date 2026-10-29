@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="{{ template_path }}/css/shop.css" />
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css?v=20261028" />
 <div class="shop-page">
     <div class="shop-topbar">
         <a href="{{ shop_url }}">Каталог</a>
@@ -24,6 +24,15 @@
                     <img src="{{ product.image_url }}" alt="{{ product.title|escape }}" />
                     {% else %}
                     <div class="shop-noimage shop-noimage-large">Нет фото</div>
+                    {% endif %}
+                    {% if gallery %}
+                    <div class="shop-product-gallery">
+                        {% for image in gallery %}
+                        <a href="{{ image.full_url }}" target="_blank" rel="noopener">
+                            <img src="{{ image.image_url }}" alt="{{ product.title|escape }}" loading="lazy" />
+                        </a>
+                        {% endfor %}
+                    </div>
                     {% endif %}
                 </div>
 

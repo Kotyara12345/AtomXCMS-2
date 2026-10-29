@@ -19,10 +19,38 @@
 
         <section class="shop-main">
             <div class="shop-heading">
-                <h1>{% if category %}{{ category.title|escape }}{% else %}Каталог товаров{% endif %}</h1>
+                <h1>{% if landing %}{{ landing.title|escape }}{% else %}{% if category %}{{ category.title|escape }}{% else %}Каталог товаров{% endif %}{% endif %}</h1>
                 {% if search_query %}<p class="shop-muted">Результаты поиска: «{{ search_query|escape }}»</p>{% endif %}
-                {% if category.description %}<div class="shop-category-description">{{ category.description|escape }}</div>{% endif %}
+                {% if landing %}
+                    {% if landing.description_html %}<div class="shop-category-description shop-landing-description">{{ landing.description_html }}</div>{% endif %}
+                    {% if landing_filter_groups %}
+                    <div class="shop-landing-filters">
+                        <span class="shop-landing-filters-label">Подборка:</span>
+                        {% for group in landing_filter_groups %}
+                        <span class="shop-landing-filter"><strong>{{ group.title|escape }}:</strong> {{ group.value_titles|escape }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if landing.categories %}
+                    <div class="shop-landing-categories">
+                        Категории:
+                        {% for landing_category in landing.categories %}
+                        <a href="{{ landing_category.url }}">{{ landing_category.title|escape }}</a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                {% else %}
+                    {% if category.description_html %}<div class="shop-category-description">{{ category.description_html }}</div>{% endif %}
+                {% endif %}
                 <p class="shop-muted">Найдено товаров: {{ total }}</p>
+                {% if landing_pages %}
+                <div class="shop-landing-links">
+                    <span class="shop-landing-links-label">Подборки в категории:</span>
+                    {% for landing_page in landing_pages %}
+                    <a href="{{ landing_page.url }}">{{ landing_page.title|escape }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
 
             <form class="shop-toolbar" method="get" action="{{ search_action }}">

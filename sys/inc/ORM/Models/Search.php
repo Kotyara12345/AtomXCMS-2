@@ -42,6 +42,10 @@ class SearchModel extends FpsModel
 	
 	public function getSearchResults($search, $limit, $modules)
 	{
+		if (empty($modules)) {
+			return array();
+		}
+
 		$lmsql = '';
 		if (is_array($modules)) {
 			$lmsql .= '(';

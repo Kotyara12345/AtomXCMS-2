@@ -255,6 +255,14 @@
     resize: vertical;
 }
 
+.shop-admin .shop-admin-editor {
+    height: 300px;
+}
+
+.shop-admin .wysibb {
+    width: 100%;
+}
+
 .shop-admin-table {
     width: 100%;
     border-collapse: collapse;
@@ -487,6 +495,51 @@
     object-fit: cover;
     border-radius: 4px;
     border: 1px solid #e2e7ec;
+}
+
+.shop-admin-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 12px;
+    margin: 12px 0 18px;
+}
+
+.shop-admin-gallery-item {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #dfe5eb;
+    border-radius: 7px;
+}
+
+.shop-admin-gallery-item img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 4px;
+    background: #f4f6f8;
+}
+
+.shop-admin-gallery-item span {
+    color: #6d7e8d;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.shop-admin-gallery-item input[type="checkbox"] {
+    margin: 0 4px 0 0;
+    vertical-align: -2px;
+}
+
+.shop-admin-file-note {
+    display: block;
+    margin-top: 5px;
+    color: #7b8b99;
+    font-size: 12px;
 }
 
 .shop-admin-form-grid {
@@ -782,4 +835,70 @@
     .shop-admin-variants-table {
         min-width: 760px;
     }
+}
+
+/* Landing page administration */
+.shop-admin-help {
+    margin: 0 0 14px;
+    color: #667a8d;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.shop-admin-landing-section {
+    margin: 14px 0;
+    padding: 14px;
+    background: #f8fafc;
+    border: 1px solid #dfe7ee;
+    border-radius: 6px;
+}
+
+.shop-admin-check-tree {
+    display: grid;
+    gap: 5px;
+    max-height: 300px;
+    overflow: auto;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #dde5ed;
+    border-radius: 5px;
+}
+
+.shop-admin-check-line {
+    display: block;
+    color: #35495c;
+    line-height: 1.45;
+}
+
+.shop-admin-check-line input {
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+.shop-admin-landing-values {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 10px;
+}
+
+.shop-admin-attribute-values {
+    margin: 0;
+    padding: 9px 12px 10px;
+    background: #fff;
+    border: 1px solid #dde5ed;
+    border-radius: 5px;
+}
+
+.shop-admin-attribute-values legend {
+    padding: 0 5px;
+    color: #30465c;
+    font-weight: 700;
+}
+
+.shop-admin-category-landings {
+    margin-top: 22px;
+}
+
+.shop-admin-category-landings .shop-admin-table {
+    margin-top: 10px;
 }

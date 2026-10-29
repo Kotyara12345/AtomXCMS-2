@@ -68,6 +68,11 @@ class SearchModule extends Module {
 		if (!empty($minInput))
 			$this->minInputStr = (int) $minInput;
 
+		// Shop products are indexed only when the module is installed and enabled.
+		if ($this->__isShopSearchAvailable() && !in_array('shop_products', $this->tables, true)) {
+			$this->tables[] = 'shop_products';
+		}
+
 		//check index
 		$this->__checkIndex();
 
@@ -75,15 +80,19 @@ class SearchModule extends Module {
 		$error = null;
 		$results = null;
 
+		$availableModules = array('forum', 'news', 'stat', 'loads');
+		if ($this->__isShopSearchAvailable()) {
+			$availableModules[] = 'shop';
+		}
+
 		if (isset($_POST['m'])) {
 			$modules = array();
-			foreach ($_POST['m'] as $m) {
-				if ($m == 'forum' or $m == 'news'
-						or $m == 'stat' or $m == 'loads')
-					Array_push($modules, $m);
+			foreach ((array) $_POST['m'] as $m) {
+				if (in_array($m, $availableModules, true) && !in_array($m, $modules, true))
+					$modules[] = $m;
 			}
 		} else {
-			$modules = array('forum', 'news', 'stat', 'loads');
+			$modules = $availableModules;
 		}
 		$_SESSION['m'] = $modules;
 
@@ -172,6 +181,19 @@ class SearchModule extends Module {
 	}
 
 	/**
+	 * Shop products are searchable only when the shop module is installed and enabled.
+	 *
+	 * @return boolean
+	 */
+	private function __isShopSearchAvailable() {
+		if (empty($this->Register['ModManager'])) {
+			return false;
+		}
+		return ($this->Register['ModManager']->moduleExists('shop')
+			&& (string) $this->Register['Config']->read('active', 'shop') === '1');
+	}
+
+	/**
 	 * @return string search form
 	 */
 	public function form() {
@@ -182,7 +204,18 @@ class SearchModule extends Module {
 			'news' => '0',
 			'stat' => '0',
 			'loads' => '0',
+			'shop' => '0',
+			'shop_available' => '',
+			'shop_title' => '',
 		);
+
+		if ($this->__isShopSearchAvailable()) {
+			$markers['shop_available'] = '1';
+			$markers['shop_title'] = (string) $this->Register['Config']->read('title', 'shop');
+			if ($markers['shop_title'] === '') {
+				$markers['shop_title'] = 'Магазин';
+			}
+		}
 
 
 		//if an errors
@@ -208,21 +241,33 @@ class SearchModule extends Module {
 	 */
 	private function __checkIndex() {
 		$meta_file = $this->getTmpPath('meta.dat');
+		$indexVersion = 2;
+		$shopIndexed = $this->__isShopSearchAvailable() ? 1 : 0;
+		$meta = array();
 		if (file_exists($meta_file) && is_readable($meta_file)) {
-			$meta = unserialize(file_get_contents($meta_file));
-			if (!empty($meta['expire']) && $meta['expire'] > time() && $this->__indexIsFilled()) {
+			$meta = @unserialize(file_get_contents($meta_file));
+			if (!is_array($meta)) {
+				$meta = array();
+			}
+			if (!empty($meta['expire']) && $meta['expire'] > time() && $this->__indexIsFilled()
+					&& isset($meta['version']) && (int) $meta['version'] === $indexVersion
+					&& isset($meta['shop']) && (int) $meta['shop'] === $shopIndexed) {
 				return true;
 			}
 		} else {
 			touchDir($this->getTmpPath());
 		}
 
-		$this->__createIndex();
+		if ($this->__createIndex() === false) {
+			return false;
+		}
 
 		$index_interval = intval($this->Register['Config']->read('index_interval', $this->module));
 		if ($index_interval < 1)
 			$index_interval = 1;
 		$meta['expire'] = (time() + ($index_interval * 84000));
+		$meta['version'] = $indexVersion;
+		$meta['shop'] = $shopIndexed;
 		file_put_contents($meta_file, serialize($meta));
 		return true;
 	}
@@ -417,8 +462,14 @@ class SearchModule extends Module {
 	private function __createIndex() {
         $lock_file = $this->getTmpPath('lock.dat');
 
-        if (file_exists($lock_file)) return false;
-        file_put_contents($lock_file, '');
+        // Use an advisory lock instead of a plain file-existence check so two
+        // concurrent requests cannot rebuild the same index at once.
+        $lock_handle = @fopen($lock_file, 'c');
+        if (!$lock_handle) return false;
+        if (!flock($lock_handle, LOCK_EX | LOCK_NB)) {
+            fclose($lock_handle);
+            return false;
+        }
 
 
 		if (function_exists('ignore_user_abort'))
@@ -435,13 +486,22 @@ class SearchModule extends Module {
 
 		foreach ($this->tables as $table) {
 			// the forum sections table ('forums') is handled by the ForumModel class
-			$className = ($table === 'forums')
-				? 'ForumModel'
-				: $this->Register['ModManager']->getModelNameFromModule($table);
+			// and shop products by the module's ShopModel class.
+			if ($table === 'forums') {
+				$className = 'ForumModel';
+			} elseif ($table === 'shop_products') {
+				$className = 'ShopModel';
+			} else {
+				$className = $this->Register['ModManager']->getModelNameFromModule($table);
+			}
+			if (!class_exists($className)) {
+				continue;
+			}
 			$Model = new $className;
+			$conditions = ($table === 'shop_products') ? array('active' => 1) : array();
 			
 			for ($i = 1; $i < 10000; $i++) {
-				$records = $Model->getCollection(array(), array('limit' => 100, 'page' => $i));
+				$records = $Model->getCollection($conditions, array('limit' => 100, 'page' => $i));
 				if (empty($records)) break;
 
 
@@ -457,6 +517,20 @@ class SearchModule extends Module {
 									continue 2;
 								$entity_view = '/view/';
 								$module = $table;
+								$entity_id = $rec->getId();
+								$entity_title = $rec->getTitle();
+								break;
+
+							case 'shop_products':
+								// Shop descriptions may contain the same BBCode as news.
+								$text = $rec->getTitle() . ' ' . $rec->getShort_description() . ' ' . $rec->getDescription();
+								if (!is_string($text))
+									continue 2;
+								$text = preg_replace('#<[^>]*>|\[[^\]]*\]#u', ' ', $text);
+								if (!is_string($text) || mb_strlen($text) < $this->minInputStr)
+									continue 2;
+								$entity_view = '/view/';
+								$module = 'shop';
 								$entity_id = $rec->getId();
 								$entity_title = $rec->getTitle();
 								break;
@@ -539,7 +613,10 @@ class SearchModule extends Module {
 			}
 		}
 
-        unlink($lock_file);
+        flock($lock_handle, LOCK_UN);
+        fclose($lock_handle);
+        @unlink($lock_file);
+        return true;
 	}
 
 	/**

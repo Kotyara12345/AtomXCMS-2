@@ -644,7 +644,7 @@ function atm_password_needs_rehash($hash) {
 * @param string $table
 */
 function atm_invalidate_search_index($table) {
-	$tables = array('news', 'stat', 'loads', 'posts', 'themes', 'forums', 'forum_cat');
+	$tables = array('news', 'stat', 'loads', 'posts', 'themes', 'forums', 'forum_cat', 'shop_products');
 	if (!in_array($table, $tables)) return;
 	$meta_file = ROOT . '/sys/tmp/search/meta.dat';
 	if (file_exists($meta_file)) @unlink($meta_file);

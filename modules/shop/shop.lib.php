@@ -55,6 +55,87 @@ class ShopHelper
         return h($value);
     }
 
+    /**
+     * Render an administrator-entered description.
+     *
+     * The shop uses the same WysiBB editor as news articles, so new values are
+     * BBCode. Older values may be plain text or HTML saved by the previous
+     * editor; both remain supported.
+     */
+    public static function formatDescription($text)
+    {
+        $text = (string)$text;
+        if (trim($text) === '') return '';
+
+        // Legacy descriptions saved by the Redactor-based editor.
+        if (preg_match('/<\/?[a-z][^>]*>/i', $text)) {
+            return self::sanitizeDescriptionHtml($text);
+        }
+
+        return self::parseBbcodeDescription($text);
+    }
+
+    private static function parseBbcodeDescription($text)
+    {
+        $register = self::register();
+        if (!empty($register['PrintText'])) {
+            return $register['PrintText']->parseBBCodes($text);
+        }
+        if (class_exists('PrintText')) {
+            $parser = new PrintText();
+            return $parser->parseBBCodes($text);
+        }
+        return nl2br(h($text));
+    }
+
+    private static function sanitizeDescriptionHtml($html)
+    {
+        $html = (string)$html;
+        $blocked = 'script|style|iframe|object|embed|form|input|textarea|select|button|meta|link';
+
+        // Remove element contents first, then any remaining standalone tags.
+        $html = preg_replace('#<(' . $blocked . ')\b[^>]*>.*?</\1>#is', '', $html);
+        $html = preg_replace('#</?(?:' . $blocked . ')\b[^>]*>#is', '', $html);
+        $html = preg_replace('#\s+on[a-z]+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)#is', '', $html);
+        $html = preg_replace_callback('#\s+style\s*=\s*(["\'])(.*?)\1#is', array('self', 'sanitizeDescriptionStyle'), $html);
+        $html = preg_replace('#\s+(href|src)\s*=\s*(["\'])\s*(?:javascript|vbscript|data):[^"\']*\2#is', ' $1="#"', $html);
+        $html = preg_replace('#\s+(href|src)\s*=\s*(?:javascript|vbscript|data):[^\s>]*#is', ' $1="#"', $html);
+
+        $allowed = '<p><br><strong><b><em><i><u><s><strike><ul><ol><li><a><img>'
+            . '<h1><h2><h3><h4><h5><h6><blockquote><pre><code><hr>'
+            . '<table><thead><tbody><tfoot><tr><th><td><figure><figcaption><span><div>';
+        return strip_tags($html, $allowed);
+    }
+
+    private static function sanitizeDescriptionStyle($matches)
+    {
+        $safe = array();
+        foreach (explode(';', $matches[2]) as $declaration) {
+            if (!preg_match('/^\s*(text-align|color|background-color|font-weight|font-style|text-decoration)\s*:\s*(.+?)\s*$/i', $declaration, $parts)) {
+                continue;
+            }
+            $value = trim($parts[2]);
+            if ($value === '' || preg_match('/(?:expression|url\s*\(|javascript|behavior|@import)/i', $value)) {
+                continue;
+            }
+            if (preg_match('/^[#a-z0-9\s(),.%\-]+$/i', $value)) {
+                $safe[] = strtolower($parts[1]) . ': ' . $value;
+            }
+        }
+        return $safe ? ' style="' . implode('; ', $safe) . '"' : '';
+    }
+
+    public static function descriptionText($text)
+    {
+        $html = self::formatDescription($text);
+        $html = preg_replace('#<br\s*/?>#i', ' ', $html);
+        $html = preg_replace('#</?(?:p|div|li|h[1-6]|blockquote|tr|pre|ul|ol|table)\b[^>]*>#i', ' ', $html);
+        $text = trim(strip_tags($html));
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/\s+/u', ' ', $text);
+        return trim((string)$text);
+    }
+
     public static function currencies($onlyEnabled = true)
     {
         if (self::$currencyCache === null) {
@@ -268,7 +349,11 @@ class ShopHelper
 
         $rows = self::db()->query("SELECT v.`id` AS variant_id, v.`product_id`, v.`title` AS variant_title,
                 v.`sku`, v.`stock`, v.`image` AS variant_image, v.`active` AS variant_active,
-                p.`title` AS product_title, p.`clean_url_title`, p.`image` AS product_image,
+                p.`title` AS product_title, p.`clean_url_title`,
+                COALESCE(NULLIF(p.`image`, ''), (
+                    SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
+                    WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1
+                )) AS product_image,
                 p.`active` AS product_active, vp.`price` AS price
             FROM `{$variants}` v
             INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
@@ -465,7 +550,7 @@ class ShopHelper
         $product['category_url'] = $product['category_id'] > 0
             ? self::categoryUrl(array('id' => $product['category_id'], 'title' => $product['category_title']))
             : '';
-        $product['description_html'] = nl2br(h((string)$product['description']));
+        $product['description_html'] = self::formatDescription($product['description']);
         $product['short_description_html'] = nl2br(h((string)$product['short_description']));
         $product['price_from'] = self::productMinPrice($product['id']);
         $product['price_from_formatted'] = $product['price_from'] > 0
@@ -473,10 +558,32 @@ class ShopHelper
         return $product;
     }
 
+    public static function getProductImages($productId, $preview = true)
+    {
+        $productId = (int)$productId;
+        if ($productId < 1) return array();
+
+        $images = self::table('product_images');
+        $rows = self::db()->query("SELECT * FROM `{$images}`
+            WHERE `product_id` = {$productId}
+            ORDER BY `position` ASC, `id` ASC");
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['product_id'] = (int)$row['product_id'];
+            $row['position'] = (int)$row['position'];
+            $row['image_url'] = self::imageUrl($row['image'], $preview);
+            $row['full_url'] = self::imageUrl($row['image'], false);
+        }
+        unset($row);
+        return $rows;
+    }
+
     public static function getProducts($filters = array())
     {
         $products = self::table('products');
         $categories = self::table('categories');
+        $pav = self::table('product_attribute_values');
+        $attributeValues = self::table('attribute_values');
         $currency = isset($filters['currency']) ? self::currency($filters['currency']) : self::activeCurrency();
         $code = self::esc($currency['code']);
 
@@ -488,6 +595,19 @@ class ShopHelper
             $ids = array_map('intval', (array)$filters['category_ids']);
             $ids = array_filter($ids);
             if ($ids) $where[] = 'p.`category_id` IN (' . implode(',', $ids) . ')';
+        }
+        if (!empty($filters['attribute_value_ids'])) {
+            $groups = self::getAttributeValueGroupsByIds($filters['attribute_value_ids']);
+            foreach ($groups as $attributeId => $valueIds) {
+                if (empty($valueIds)) continue;
+                $where[] = "EXISTS (
+                    SELECT 1 FROM `{$pav}` pav
+                    INNER JOIN `{$attributeValues}` av ON av.`id` = pav.`attribute_value_id`
+                    WHERE pav.`product_id` = p.`id`
+                        AND av.`attribute_id` = " . (int)$attributeId . "
+                        AND pav.`attribute_value_id` IN (" . implode(',', array_map('intval', $valueIds)) . ")
+                )";
+            }
         }
         if (!empty($filters['q'])) {
             $q = self::esc(trim((string)$filters['q']));
@@ -517,12 +637,14 @@ class ShopHelper
             INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
             WHERE v.`product_id` = p.`id` AND v.`active` = 1
                 AND vp.`currency_code` = '{$code}' AND vp.`price` > 0)";
+        $gallerySql = "(SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
+            WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1)";
 
         $countRows = self::db()->query("SELECT COUNT(*) AS cnt FROM `{$products}` p" . $whereSql);
         $total = !empty($countRows[0]['cnt']) ? (int)$countRows[0]['cnt'] : 0;
 
         $rows = self::db()->query("SELECT p.*, c.`title` AS category_title, c.`clean_url_title` AS category_slug,
-                {$minSql} AS min_price
+                {$minSql} AS min_price, {$gallerySql} AS gallery_image
             FROM `{$products}` p
             LEFT JOIN `{$categories}` c ON c.`id` = p.`category_id`
             {$whereSql}
@@ -534,7 +656,8 @@ class ShopHelper
             $row['id'] = (int)$row['id'];
             $row['category_id'] = (int)$row['category_id'];
             $row['url'] = self::productUrl($row);
-            $row['image_url'] = self::imageUrl($row['image'], true);
+            $image = !empty($row['image']) ? $row['image'] : $row['gallery_image'];
+            $row['image_url'] = self::imageUrl($image, true);
             $row['category_url'] = $row['category_id'] > 0
                 ? self::categoryUrl(array('id' => $row['category_id'], 'title' => $row['category_title']))
                 : '';
@@ -580,7 +703,12 @@ class ShopHelper
         $products = self::table('products');
         $prices = self::table('variant_prices');
 
-        $rows = self::db()->query("SELECT v.*, p.`image` AS product_image, vp.`price` AS price
+        $rows = self::db()->query("SELECT v.*,
+                COALESCE(NULLIF(p.`image`, ''), (
+                    SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
+                    WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1
+                )) AS product_image,
+                vp.`price` AS price
             FROM `{$variants}` v
             INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
             LEFT JOIN `{$prices}` vp ON vp.`variant_id` = v.`id` AND vp.`currency_code` = '{$code}'
@@ -647,6 +775,7 @@ class ShopHelper
             $row['id'] = (int)$row['id'];
             $row['parent_id'] = (int)$row['parent_id'];
             $row['url'] = self::categoryUrl($row);
+            $row['description_html'] = self::formatDescription($row['description']);
             $row['image_url'] = self::imageUrl($row['image'], true);
         }
         unset($row);
@@ -661,6 +790,7 @@ class ShopHelper
         $rows[0]['id'] = (int)$rows[0]['id'];
         $rows[0]['parent_id'] = (int)$rows[0]['parent_id'];
         $rows[0]['url'] = self::categoryUrl($rows[0]);
+        $rows[0]['description_html'] = self::formatDescription($rows[0]['description']);
         return $rows[0];
     }
 
@@ -767,6 +897,218 @@ class ShopHelper
         return get_url('/shop/category/' . $id . '/');
     }
 
+    /* ---------------------------------------------------------------------
+     * Landing pages
+     * ------------------------------------------------------------------ */
+
+    public static function getLandingPages($activeOnly = true, $categoryId = 0)
+    {
+        $table = self::table('landing_pages');
+        $links = self::table('landing_page_categories');
+        $values = self::table('landing_page_attribute_values');
+        $where = array();
+        if ($activeOnly) $where[] = 'lp.`active` = 1';
+
+        $categoryId = (int)$categoryId;
+        if ($categoryId > 0) {
+            $where[] = "EXISTS (
+                SELECT 1 FROM `{$links}` lpc_filter
+                WHERE lpc_filter.`landing_page_id` = lp.`id`
+                    AND lpc_filter.`category_id` = {$categoryId}
+            )";
+        }
+
+        $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+        $rows = self::db()->query("SELECT lp.*,
+                (SELECT COUNT(*) FROM `{$links}` lpc_count
+                    WHERE lpc_count.`landing_page_id` = lp.`id`) AS categories_count,
+                (SELECT COUNT(*) FROM `{$values}` lpav_count
+                    WHERE lpav_count.`landing_page_id` = lp.`id`) AS values_count
+            FROM `{$table}` lp
+            {$whereSql}
+            ORDER BY lp.`position` ASC, lp.`id` ASC");
+
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['active'] = (int)$row['active'];
+            $row['position'] = (int)$row['position'];
+            $row['categories_count'] = (int)$row['categories_count'];
+            $row['values_count'] = (int)$row['values_count'];
+            $row['url'] = self::landingUrl($row);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function getLandingPage($idOrSlug, $activeOnly = true)
+    {
+        $table = self::table('landing_pages');
+        if (is_numeric($idOrSlug)) {
+            $where = '`id` = ' . (int)$idOrSlug;
+        } else {
+            $where = "`clean_url_title` = '" . self::esc((string)$idOrSlug) . "'";
+        }
+        if ($activeOnly) $where .= ' AND `active` = 1';
+
+        $rows = self::db()->query("SELECT * FROM `{$table}` WHERE {$where} LIMIT 1");
+        if (empty($rows[0])) return false;
+
+        $landing = $rows[0];
+        $landing['id'] = (int)$landing['id'];
+        $landing['active'] = (int)$landing['active'];
+        $landing['position'] = (int)$landing['position'];
+        $landing['categories'] = self::getLandingPageCategories($landing['id'], $activeOnly);
+        $landing['category_ids'] = array();
+        foreach ($landing['categories'] as $category) {
+            $landing['category_ids'][] = (int)$category['id'];
+        }
+        $landing['attribute_groups'] = self::getLandingPageAttributeGroups($landing['id'], false);
+        $landing['attribute_value_ids'] = array();
+        foreach ($landing['attribute_groups'] as $group) {
+            foreach ($group['values'] as $value) {
+                $landing['attribute_value_ids'][] = (int)$value['id'];
+            }
+        }
+        $landing['url'] = self::landingUrl($landing);
+        $landing['description_html'] = self::formatDescription($landing['description']);
+        return $landing;
+    }
+
+    public static function getLandingPageCategories($landingId, $activeOnly = false)
+    {
+        $landingId = (int)$landingId;
+        if ($landingId < 1) return array();
+
+        $links = self::table('landing_page_categories');
+        $categories = self::table('categories');
+        $where = "l.`landing_page_id` = {$landingId}";
+        if ($activeOnly) $where .= ' AND c.`active` = 1';
+        $rows = self::db()->query("SELECT c.* FROM `{$links}` l
+            INNER JOIN `{$categories}` c ON c.`id` = l.`category_id`
+            WHERE {$where}
+            ORDER BY c.`position` ASC, c.`id` ASC");
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['parent_id'] = (int)$row['parent_id'];
+            $row['url'] = self::categoryUrl($row);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function getLandingPageAttributeGroups($landingId, $activeOnly = false)
+    {
+        $landingId = (int)$landingId;
+        if ($landingId < 1) return array();
+
+        $links = self::table('landing_page_attribute_values');
+        $values = self::table('attribute_values');
+        $attributes = self::table('attributes');
+        $where = "l.`landing_page_id` = {$landingId}";
+        if ($activeOnly) $where .= ' AND av.`active` = 1 AND a.`active` = 1';
+        $rows = self::db()->query("SELECT av.`id` AS value_id, av.`attribute_id`,
+                av.`title` AS value_title, a.`title` AS attribute_title,
+                a.`position` AS attribute_position, av.`position` AS value_position
+            FROM `{$links}` l
+            INNER JOIN `{$values}` av ON av.`id` = l.`attribute_value_id`
+            INNER JOIN `{$attributes}` a ON a.`id` = av.`attribute_id`
+            WHERE {$where}
+            ORDER BY a.`position` ASC, a.`id` ASC, av.`position` ASC, av.`id` ASC");
+
+        $groups = array();
+        foreach ($rows as $row) {
+            $attributeId = (int)$row['attribute_id'];
+            if (!isset($groups[$attributeId])) {
+                $groups[$attributeId] = array(
+                    'id' => $attributeId,
+                    'title' => $row['attribute_title'],
+                    'values' => array(),
+                );
+            }
+            $groups[$attributeId]['values'][] = array(
+                'id' => (int)$row['value_id'],
+                'title' => $row['value_title'],
+            );
+        }
+        return $groups;
+    }
+
+    public static function getLandingPagesForCategory($categoryId, $activeOnly = true)
+    {
+        $categoryId = (int)$categoryId;
+        if ($categoryId < 1) return array();
+
+        $links = self::table('landing_page_categories');
+        $table = self::table('landing_pages');
+        $where = "l.`category_id` = {$categoryId}";
+        if ($activeOnly) $where .= ' AND lp.`active` = 1';
+        $rows = self::db()->query("SELECT lp.* FROM `{$links}` l
+            INNER JOIN `{$table}` lp ON lp.`id` = l.`landing_page_id`
+            WHERE {$where}
+            ORDER BY lp.`position` ASC, lp.`id` ASC");
+
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['active'] = (int)$row['active'];
+            $row['position'] = (int)$row['position'];
+            $row['url'] = self::landingUrl($row);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function landingUrl($landing)
+    {
+        $path = self::landingPath($landing);
+        return get_url($path);
+    }
+
+    public static function landingPath($landing)
+    {
+        if (is_object($landing)) {
+            $id = (int)$landing->getId();
+            $slug = (string)$landing->getClean_url_title();
+        } else {
+            $id = (int)(isset($landing['id']) ? $landing['id'] : 0);
+            $slug = (string)(isset($landing['clean_url_title']) ? $landing['clean_url_title'] : '');
+        }
+        return '/shop/landing/' . ($slug !== '' ? $slug : $id) . '/';
+    }
+
+    public static function syncLandingPageCategories($landingId, $categoryIds)
+    {
+        $landingId = (int)$landingId;
+        if ($landingId < 1) return;
+
+        $table = self::table('landing_page_categories');
+        self::db()->delete($table, array('landing_page_id' => $landingId));
+        $categoryIds = array_values(array_unique(array_filter(array_map('intval', (array)$categoryIds))));
+        foreach ($categoryIds as $categoryId) {
+            if ($categoryId < 1) continue;
+            self::db()->save('shop_landing_page_categories', array(
+                'landing_page_id' => $landingId,
+                'category_id' => $categoryId,
+            ));
+        }
+    }
+
+    public static function syncLandingPageAttributeValues($landingId, $valueIds)
+    {
+        $landingId = (int)$landingId;
+        if ($landingId < 1) return;
+
+        $table = self::table('landing_page_attribute_values');
+        self::db()->delete($table, array('landing_page_id' => $landingId));
+        $valueIds = array_values(array_unique(array_filter(array_map('intval', (array)$valueIds))));
+        foreach ($valueIds as $valueId) {
+            if ($valueId < 1) continue;
+            self::db()->save('shop_landing_page_attribute_values', array(
+                'landing_page_id' => $landingId,
+                'attribute_value_id' => $valueId,
+            ));
+        }
+    }
+
     public static function imageUrl($filename, $preview = true)
     {
         $filename = trim((string)$filename);
@@ -818,6 +1160,23 @@ class ShopHelper
     /* ---------------------------------------------------------------------
      * Product attributes and generated variants
      * ------------------------------------------------------------------ */
+
+    public static function getAttributeValueGroupsByIds($valueIds)
+    {
+        $valueIds = array_values(array_unique(array_filter(array_map('intval', (array)$valueIds))));
+        if (!$valueIds) return array();
+
+        $values = self::table('attribute_values');
+        $rows = self::db()->query("SELECT `id`, `attribute_id` FROM `{$values}`
+            WHERE `id` IN (" . implode(',', $valueIds) . ")");
+        $groups = array();
+        foreach ($rows as $row) {
+            $attributeId = (int)$row['attribute_id'];
+            if (!isset($groups[$attributeId])) $groups[$attributeId] = array();
+            $groups[$attributeId][] = (int)$row['id'];
+        }
+        return $groups;
+    }
 
     public static function getAttributes($activeOnly = false)
     {
