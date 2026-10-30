@@ -11,3 +11,6 @@
 /sys/img/counter.png
 /TODO.txt
 /.idea/*
+/graphify-out/
+/.opencode/
+/AGENTS.md
