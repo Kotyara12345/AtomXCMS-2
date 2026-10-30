@@ -40,17 +40,17 @@ class Config {
     public function __construct($path = null)
     {
 		/*
-		 * The installer writes the live config from an empty settings array,
-		 * so every fresh installation used to lose all defaults (template,
-		 * language, SEO fields...). Start from the tracked defaults and
-		 * overlay the live config on top.
+		 * Loaded once per request. read() creates Config instances without a
+		 * path, so reloading here would reset the live settings to defaults.
 		 */
-		$defaults = ROOT . '/sys/settings/config.default.php';
-		if (is_file($defaults)) {
-			$set = null;
-			include ($defaults);
-			if (isset($set) && is_array($set)) {
-				self::$settings = $set;
+		if (empty(self::$settings)) {
+			$defaults = ROOT . '/sys/settings/config.default.php';
+			if (is_file($defaults)) {
+				$set = null;
+				include ($defaults);
+				if (isset($set) && is_array($set)) {
+					self::$settings = $set;
+				}
 			}
 		}
 
@@ -70,7 +70,24 @@ class Config {
 	* @param array $set - settings for save
 	*/
 	static public function write($set) {
-		if ($fopen=@fopen(ROOT . '/sys/settings/config.php', 'w')) {
+		$file = ROOT . '/sys/settings/config.php';
+		/*
+		 * A settings save must never wipe the database credentials. If the
+		 * new settings have no db user, keep the credentials from the file.
+		 */
+		if (is_array($set) && empty($set['db']['user']) && is_file($file)) {
+			$newSet = $set;
+			$current = null;
+			include ($file);
+			if (isset($set) && is_array($set)) {
+				$current = $set;
+			}
+			$set = $newSet;
+			if (!empty($current['db']['user'])) {
+				$set['db'] = $current['db'];
+			}
+		}
+		if ($fopen=@fopen($file, 'w')) {
             $data = '<?php ' . "\n" . '$set = ' . var_export($set, true) . ";\n" . '?>';
 			fputs($fopen, $data);
 			fclose($fopen);
