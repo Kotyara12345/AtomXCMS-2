@@ -34,14 +34,32 @@
 class Config {
 
 
-    static public $settings;
+    static public $settings = array();
 
 
     public function __construct($path = null)
     {
-		if ($path) {
+		/*
+		 * The installer writes the live config from an empty settings array,
+		 * so every fresh installation used to lose all defaults (template,
+		 * language, SEO fields...). Start from the tracked defaults and
+		 * overlay the live config on top.
+		 */
+		$defaults = ROOT . '/sys/settings/config.default.php';
+		if (is_file($defaults)) {
+			$set = null;
+			include ($defaults);
+			if (isset($set) && is_array($set)) {
+				self::$settings = $set;
+			}
+		}
+
+		if ($path && is_file($path)) {
+			$set = null;
 			include ($path);
-			self::$settings = $set;
+			if (isset($set) && is_array($set)) {
+				self::$settings = array_replace_recursive(self::$settings, $set);
+			}
 		}
     }
 	

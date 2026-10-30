@@ -104,8 +104,13 @@ function isInstall() {
 
 /**
  * Include some core part (Application)
+ *
+ * The config file does not exist until the installer writes it.
  */
-include_once ROOT . '/sys/settings/config.php';
+$settingsConfigFile = ROOT . '/sys/settings/config.php';
+if (is_file($settingsConfigFile)) {
+	include_once $settingsConfigFile;
+}
 
 
 /**
@@ -121,7 +126,7 @@ spl_autoload_register(array('Autoload', 'load'));
  * Registry
  */
 $Register = Register::getInstance();
-$Register['Config'] = new Config(ROOT . '/sys/settings/config.php');
+$Register['Config'] = new Config($settingsConfigFile);
 
 
 

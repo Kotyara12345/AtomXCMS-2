@@ -56,7 +56,9 @@ if (($requestMethod === 'GET' || $requestMethod === 'HEAD')
 
 
 if (file_exists('install')) {
-	include_once ('sys/settings/config.php');
+	if (is_file('sys/settings/config.php')) {
+		include_once ('sys/settings/config.php');
+	}
 	if (!empty($set) &&
         !empty($set['db']['name']) &&
         (
