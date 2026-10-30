@@ -10,16 +10,11 @@ if ($_GET['type'] === true) {
 
 
 function checkUpdate() {
-	@$b = file_get_contents('http://home.atomx.net/cdn/versions.txt');
-	if ($b) {
-		if (preg_match('#[^></]+#i', $b)) {
-			echo '<a target="_blank" href="https://github.com/Drunyacoder/AtomXCMS-2/releases">Последняя версия ' . trim($b) . '</a>';
-		} else {
-			echo 'Не удалось узнать';
-		}
-	} else {
-		echo 'Не удалось узнать';
-	}
+	/*
+	 * The old update endpoint (home.atomx.net) no longer resolves, so the
+	 * installer showed "Не удалось узнать" on every fresh install.
+	 */
+	echo '<a target="_blank" href="https://github.com/Drunyacoder/AtomXCMS-2/releases">AtomX CMS — releases on GitHub</a>';
 }
 
 function checkRequest() {
