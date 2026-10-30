@@ -364,7 +364,7 @@ Class StatisticsModule
 	/**
 	* if statistics OFF
 	*/
-	function viewOffCounter() 
+	static function viewOffCounter() 
 	{
 		copy(ROOT . '/sys/img/counter_off.png', ROOT . '/sys/img/counter.png');
 	}
