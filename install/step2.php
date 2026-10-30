@@ -1,4 +1,5 @@
 <?php 
+define('ATM_INSTALL_MODE', true);
 include_once '../sys/boot.php';
 ?><!DOCTYPE html>
 <html lang="ru">

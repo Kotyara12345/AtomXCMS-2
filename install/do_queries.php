@@ -25,6 +25,7 @@
 session_start();
 define ('ROOT', dirname(dirname(__FILE__)));
 if (function_exists('set_time_limit')) set_time_limit(0);
+define('ATM_INSTALL_MODE', true);
 include_once '../sys/boot.php';
 
 

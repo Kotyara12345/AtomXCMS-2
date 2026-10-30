@@ -96,6 +96,11 @@ if (!defined('ADM_REFER_PROTECTED')) define('ADM_REFER_PROTECTED', 0);
  * whether the system is installed
  */
 function isInstall() {
+	/*
+	 * Installer scripts run before the tables exist and may live in a renamed
+	 * directory (install1), so the directory name alone is not reliable.
+	 */
+	if (defined('ATM_INSTALL_MODE')) return false;
 	return !file_exists(ROOT . '/install');
 }
 
