@@ -776,6 +776,32 @@ if (empty($errors['query'])) {
 }
 
 
+/*
+ * Bundled modules ship their own schema, settings, ACL rules and templates.
+ * The admin menu treats a module with settings as installed, so a module
+ * left half-installed here fatals on its first visit (the shop is the case:
+ * /admin/shop.php?tab=products queried a missing shop_products table).
+ * The bootstrap does not fill Register['DB'] in install mode.
+ */
+if (empty($errors['query'])) {
+	$Register = Register::getInstance();
+	$Register['DB'] = $DB;
+	try {
+		$ModulesInstaller = new FpsModuleInstaller();
+		foreach (glob(ROOT . '/modules/*/install_db.php') as $moduleSchema) {
+			$moduleName = basename(dirname($moduleSchema));
+			$ModulesInstaller->installModule($moduleName);
+			echo '<span style="color:#46B100; font-size:10px; line-height:10px;">module '
+				. htmlspecialchars($moduleName, ENT_QUOTES, 'UTF-8') . ' ...</span><br />';
+			flush();
+		}
+	} catch (Exception $e) {
+		$errors['query'] = __('Some error occurred during database creation')
+			. ' <br /> ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
+	}
+}
+
+
 
 if (empty($errors) && function_exists('atm_update_robots_domain')) {
 	atm_update_robots_domain();
