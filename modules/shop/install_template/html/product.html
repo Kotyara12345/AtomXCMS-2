@@ -3,6 +3,7 @@
     <div class="shop-topbar">
         <a href="{{ shop_url }}">Каталог</a>
         <a href="{{ cart_url }}">Корзина{% if shop_cart_count %} ({{ shop_cart_count }}){% endif %}</a>
+        <a href="{{ favorites_url }}">Избранное</a>
         <a href="{{ www_root }}/shop/orders/">Мои заказы</a>
     </div>
 
@@ -53,6 +54,19 @@
                         <span class="shop-price shop-price-large">от {{ product.price_from_formatted }}</span>
                         {% else %}
                         <span class="shop-muted">Цена по запросу</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="shop-product-favorite">
+                        {% if is_logged_in %}
+                        <form method="post" action="{{ favorite_action }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                            <input type="hidden" name="product_id" value="{{ product.id }}" />
+                            <input type="hidden" name="return" value="{{ return_url }}" />
+                            <button type="submit" class="shop-btn shop-btn-small">{% if is_favorite %}Убрать из избранного{% else %}Добавить в избранное{% endif %}</button>
+                        </form>
+                        {% else %}
+                        <a class="shop-btn shop-btn-small" href="{{ login_url }}">Войти, чтобы добавить в избранное</a>
                         {% endif %}
                     </div>
 

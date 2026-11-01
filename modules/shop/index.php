@@ -181,6 +181,7 @@ class ShopModule extends Module
             'currency' => $currency,
             'shop_url' => get_url('/shop/'),
             'cart_url' => get_url('/shop/cart/'),
+            'favorites_url' => get_url('/shop/favorites/'),
             'search_action' => get_url($searchPath),
             'flash' => ShopHelper::getFlash(),
             'empty_text' => $landing ? 'По выбранным свойствам товары не найдены.' : 'Товары не найдены.',
@@ -238,6 +239,9 @@ class ShopModule extends Module
         $this->categories = $this->buildCategoriesHtml($product['category_id']);
         $breadcrumbs = $this->buildProductBreadcrumbs($product);
 
+        $userId = (int)ShopHelper::currentUser()['id'];
+        $isFavorite = $userId > 0 && ShopHelper::isFavorite($userId, $product['id']);
+
         $source = $this->render('product.html', array(
             'product' => $product,
             'gallery' => $gallery,
@@ -254,6 +258,12 @@ class ShopModule extends Module
             'flash' => ShopHelper::getFlash(),
             'shop_url' => get_url('/shop/'),
             'cart_url' => get_url('/shop/cart/'),
+            'favorites_url' => get_url('/shop/favorites/'),
+            'is_logged_in' => $userId > 0,
+            'is_favorite' => $isFavorite,
+            'favorite_action' => get_url($isFavorite
+                ? '/shop/remove_from_favorites/' : '/shop/add_to_favorites/'),
+            'login_url' => get_url('/users/login_form/'),
         ));
 
         return $this->_view($source);
@@ -334,6 +344,85 @@ class ShopModule extends Module
         ShopHelper::removeFromCart(isset($_POST['variant_id']) ? $_POST['variant_id'] : 0);
         ShopHelper::flash('success', 'Товар удалён из корзины.');
         redirect('/shop/cart/');
+    }
+
+    /* ---------------------------------------------------------------------
+     * Favorites
+     * ------------------------------------------------------------------ */
+
+    public function favorites()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        $userId = $this->requireFavoriteUser();
+        $result = ShopHelper::getFavorites($userId);
+
+        $source = $this->render('favorites.html', array(
+            'products' => $result['items'],
+            'total' => $result['total'],
+            'categories_html' => $this->buildCategoriesHtml(0),
+            'breadcrumbs' => $this->buildSimpleBreadcrumbs('Избранное'),
+            'remove_action' => get_url('/shop/remove_from_favorites/'),
+            'csrf_token' => ShopHelper::csrfToken(),
+            'flash' => ShopHelper::getFlash(),
+            'shop_url' => get_url('/shop/'),
+            'cart_url' => get_url('/shop/cart/'),
+            'favorites_url' => get_url('/shop/favorites/'),
+        ));
+
+        $this->page_title = 'Избранное — ' . h(Config::read('title', 'shop'));
+        return $this->_view($source);
+    }
+
+    public function add_to_favorites()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        $this->handleFavoriteAction(true);
+    }
+
+    public function remove_from_favorites()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        $this->handleFavoriteAction(false);
+    }
+
+    private function handleFavoriteAction($add)
+    {
+        if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+            redirect('/shop/');
+        }
+
+        $userId = $this->requireFavoriteUser();
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
+            $this->redirectBack($add ? '/shop/' : '/shop/favorites/');
+        }
+
+        $productId = isset($_POST['product_id']) ? (int)$_POST['product_id'] : 0;
+        $product = $productId > 0 ? ShopHelper::getProduct($productId, true) : false;
+        if (!$product) {
+            ShopHelper::flash('error', 'Товар не найден.');
+            $this->redirectBack('/shop/');
+        }
+
+        if ($add) {
+            ShopHelper::addFavorite($userId, $productId);
+            ShopHelper::flash('success', 'Товар добавлен в избранное.');
+        } else {
+            ShopHelper::removeFavorite($userId, $productId);
+            ShopHelper::flash('success', 'Товар удалён из избранного.');
+        }
+
+        $this->redirectBack($add ? '/shop/' : '/shop/favorites/');
+    }
+
+    private function requireFavoriteUser()
+    {
+        $user = ShopHelper::currentUser();
+        if (empty($user['id'])) {
+            ShopHelper::flash('error', 'Войдите, чтобы пользоваться избранным.');
+            redirect('/users/login_form/');
+        }
+        return (int)$user['id'];
     }
 
     /* ---------------------------------------------------------------------
@@ -635,7 +724,7 @@ class ShopModule extends Module
         return $product ? (int)$product['id'] : 0;
     }
 
-    private function redirectBack()
+    private function redirectBack($fallback = '/shop/cart/')
     {
         $return = isset($_POST['return']) ? (string)$_POST['return'] : '';
         if ($return === '' || strpos($return, '/shop/') !== 0
@@ -643,7 +732,7 @@ class ShopModule extends Module
             || strpos($return, '\\') !== false
             || strpos($return, "\r") !== false
             || strpos($return, "\n") !== false) {
-            $return = '/shop/cart/';
+            $return = $fallback;
         }
         redirect($return);
     }

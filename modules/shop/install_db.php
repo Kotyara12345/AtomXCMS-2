@@ -219,3 +219,11 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_item
     KEY `product_id` (`product_id`),
     KEY `variant_id` (`variant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_favorites` (
+    `user_id` INT UNSIGNED NOT NULL,
+    `product_id` INT UNSIGNED NOT NULL,
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`user_id`, `product_id`),
+    KEY `product_id` (`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";

@@ -591,6 +591,13 @@ class ShopHelper
         if (!isset($filters['active_only']) || !empty($filters['active_only'])) {
             $where[] = 'p.`active` = 1';
         }
+        if (!empty($filters['ids'])) {
+            $ids = array_values(array_unique(array_filter(array_map('intval', (array)$filters['ids']))));
+            if (!$ids) {
+                return array('items' => array(), 'total' => 0, 'page' => 1, 'pages' => 0, 'limit' => 0, 'sort' => 'default');
+            }
+            $where[] = 'p.`id` IN (' . implode(',', $ids) . ')';
+        }
         if (!empty($filters['category_ids'])) {
             $ids = array_map('intval', (array)$filters['category_ids']);
             $ids = array_filter($ids);
@@ -1568,5 +1575,97 @@ class ShopHelper
             'email' => !empty($user['email']) ? (string)$user['email'] : '',
             'phone' => !empty($user['telephone']) ? (string)$user['telephone'] : '',
         );
+    }
+
+    /* ---------------------------------------------------------------------
+     * Favorites
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $favoritesTableReady = false;
+
+    /**
+     * Older installations do not have the favorites table yet: create it on
+     * first use instead of requiring a module reinstall.
+     */
+    public static function ensureFavoritesTable()
+    {
+        if (self::$favoritesTableReady) return true;
+
+        $table = self::table('favorites');
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+                `user_id` INT UNSIGNED NOT NULL,
+                `product_id` INT UNSIGNED NOT NULL,
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`user_id`, `product_id`),
+                KEY `product_id` (`product_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        } catch (Exception $e) {
+            return false;
+        }
+
+        self::$favoritesTableReady = true;
+        return true;
+    }
+
+    public static function favoriteIds($userId)
+    {
+        $userId = (int)$userId;
+        if ($userId < 1 || !self::ensureFavoritesTable()) return array();
+
+        $table = self::table('favorites');
+        $rows = self::db()->query("SELECT `product_id` FROM `{$table}`
+            WHERE `user_id` = {$userId}
+            ORDER BY `created_at` DESC, `product_id` DESC");
+
+        $ids = array();
+        foreach ($rows as $row) $ids[] = (int)$row['product_id'];
+        return $ids;
+    }
+
+    public static function isFavorite($userId, $productId)
+    {
+        $userId = (int)$userId;
+        $productId = (int)$productId;
+        if ($userId < 1 || $productId < 1 || !self::ensureFavoritesTable()) return false;
+
+        $table = self::table('favorites');
+        $rows = self::db()->query("SELECT 1 FROM `{$table}`
+            WHERE `user_id` = {$userId} AND `product_id` = {$productId} LIMIT 1");
+        return !empty($rows);
+    }
+
+    public static function addFavorite($userId, $productId)
+    {
+        $userId = (int)$userId;
+        $productId = (int)$productId;
+        if ($userId < 1 || $productId < 1 || !self::ensureFavoritesTable()) return false;
+
+        $table = self::table('favorites');
+        self::db()->query("INSERT IGNORE INTO `{$table}`
+            (`user_id`, `product_id`, `created_at`) VALUES ({$userId}, {$productId}, NOW())");
+        return true;
+    }
+
+    public static function removeFavorite($userId, $productId)
+    {
+        $userId = (int)$userId;
+        $productId = (int)$productId;
+        if ($userId < 1 || $productId < 1 || !self::ensureFavoritesTable()) return false;
+
+        $table = self::table('favorites');
+        self::db()->query("DELETE FROM `{$table}`
+            WHERE `user_id` = {$userId} AND `product_id` = {$productId}");
+        return true;
+    }
+
+    public static function getFavorites($userId, $limit = 100)
+    {
+        $ids = self::favoriteIds($userId);
+        if (!$ids) {
+            return array('items' => array(), 'total' => 0, 'page' => 1, 'pages' => 0, 'limit' => 0, 'sort' => 'default');
+        }
+        return self::getProducts(array('ids' => $ids, 'limit' => $limit));
     }
 }
