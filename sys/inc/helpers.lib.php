@@ -564,10 +564,9 @@ function getOveralStat($key = false) {
 * touch and create dir
 */
 function touchDir($path, $chmod = 0777) {
-	if (!file_exists($path)) {
-		mkdir($path, $chmod, true);
-		chmod($path, $chmod);
-	}
+	if (is_dir($path)) return true;
+	if (!@mkdir($path, $chmod, true) && !is_dir($path)) return false;
+	@chmod($path, $chmod);
 	return true;
 }
 
@@ -1036,6 +1035,10 @@ function copyr($source, $dest, $perms = 0555)
 {
     // Simple copy for a file
     if (is_file($source)) {
+        // A previous copy made the destination read-only (chmod 0555 maps to
+        // the read-only attribute on Windows), so a reinstall could not
+        // overwrite it.
+        if (is_file($dest)) @chmod($dest, 0666);
         copy($source, $dest);
         @chmod($dest, $perms);
         return true;
