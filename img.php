@@ -16,8 +16,13 @@ $FpsDB = $Register['DB'];
 
 
 $params = (!empty($_GET['url'])) ? explode('/', $_GET['url']) : array();
+// The first segment names a directory below sys/files/ and the second one
+// a file inside it. Both must be plain names: anything else (.., dots,
+// empty parts) is rejected so the path cannot leave sys/files.
+$allowed_dirs = array('forum', 'foto', 'loads', 'news', 'pages', 'shop', 'stat');
 if (!empty($params[0]) && !empty($params[1])) {
 	$params[0] = str_replace(' ', '/', $params[0]);
+	if (!in_array($params[0], $allowed_dirs) || strpos($params[1], '..') !== false) die();
 	$ext = strchr($params[1], '.');
 	$ext = strtolower($ext);
 	if (!in_array($ext, $allowed_ext)) die();

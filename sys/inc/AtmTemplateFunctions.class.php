@@ -175,7 +175,8 @@ class AtmTemplateFunctions
                 $url .= (!strstr($url, '?')) ? '?' : '&';
             }
 
-            return '<a href="' . $url . 'order=' . $new_order . ($asc ? '' : '&asc=1') . '">' . $params[1] . ($active ? ' ' . ($asc ? '↑' : '↓') : '') . '</a>';
+            return '<a href="' . h($url) . 'order=' . h($new_order) . ($asc ? '' : '&amp;asc=1') . '">' . h($params[1])
+                . ($active ? ' ' . ($asc ? '↑' : '↓') : '') . '</a>';
         };
 		
 		

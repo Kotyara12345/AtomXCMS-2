@@ -27,81 +27,38 @@ class UserAuth
 
 
     /**
+     * Restore the session from the "remember me" cookie.
+     *
+     * The legacy autologin cookies (userid + the raw password hash) are no
+     * longer trusted: whoever obtains the hash could sign in without
+     * knowing the password. They are removed if still present.
+     *
      * @return bool|void
      */
     public function autoLogin()
     {
         $Register = Register::getInstance();
-        $FpsDB = $Register['DB'];
 
-        
-        // Если не установлены cookie, содержащие логин и пароль
-        if ( !isset( $_COOKIE['userid'] ) or !isset( $_COOKIE['password'] ) ) {
-            $path ='/';
-            if ( isset( $_COOKIE['userid'] ) ) setcookie( 'userid', '', time() - 1, $path );
-            if ( isset( $_COOKIE['password'] ) ) setcookie( 'password', '', time() - 1, $path );
-            if ( isset( $_COOKIE['autologin'] ) ) setcookie( 'autologin', '', time() - 1, $path );
-            return false;
-        }
-        // Проверяем переменные cookie на недопустимые символы
-        $user_id = intval($_COOKIE['userid']);
-        if ($user_id < 1) return false;
-        // The cookie contains the password hash from the users table:
-        // a legacy md5 value (32 hex chars) or a password_hash() value.
-        $password = (string)$_COOKIE['password'];
-        if (strlen($password) < 32 || strlen($password) > 255) {
+        if (isset($_COOKIE['userid']) || isset($_COOKIE['password']) || isset($_COOKIE['autologin'])) {
             $path = '/';
-            setcookie( 'autologin', '', time() - 1, $path );
-            setcookie( 'userid', '', time() - 1, $path );
-            setcookie( 'password', '', time() - 1, $path );
+            setcookie('autologin', '', time() - 1, $path);
+            setcookie('userid', '', time() - 1, $path);
+            setcookie('password', '', time() - 1, $path);
+        }
+
+        $user = atm_user_remember_login();
+        if (empty($user) || empty($user['id'])) {
             return false;
         }
 
-
-		$res = $FpsDB->select('users', DB_FIRST, array(
-			'cond' => array(
-				'id' => $user_id,
-				'passw' => $password,
-			),
-			'fields' => array(
-				'*',
-				'UNIX_TIMESTAMP(last_visit) as unix_last_visit',
-			),
-		));
-
-
-        // Если пользователь с таким логином и паролем не найден -
-        // значит данные неверные и надо их удалить
-        if ( count( $res ) < 1 ) {
-            //$tmppos = strrpos( $_SERVER['PHP_SELF'], '/' ) + 1;
-            //$path = substr( $_SERVER['PHP_SELF'], 0, $tmppos );
-            $path = '/';
-            setcookie( 'autologin', '', time() - 1, $path );
-            setcookie( 'userid', '', time() - 1, $path );
-            setcookie( 'password', '', time() - 1, $path );
+        if (!empty($user['activation'])) {
+            atm_user_remember_forget();
             return false;
-        }
-
-
-        $user = $res[0];
-        if ( !empty( $user['activation'] ) ) {
-            //$tmppos = strrpos( $_SERVER['PHP_SELF'], '/' ) + 1;
-            //$path = substr( $_SERVER['PHP_SELF'], 0, $tmppos );
-            $path = '/';
-            setcookie( 'autologin', '', time() - 1, $path );
-            setcookie( 'userid', '', time() - 1, $path );
-            setcookie( 'password', '', time() - 1, $path );
-            return showInfoMessage(__('Your account not activated'), '/' );
         }
 
         // Если пользователь заблокирован
-        if ( $user['locked'] ) {
-            //$tmppos = strrpos( $_SERVER['PHP_SELF'], '/' ) + 1;
-            //$path = substr( $_SERVER['PHP_SELF'], 0, $tmppos );
-            $path = '/';
-            setcookie( 'autologin', '', time() - 1, $path );
-            setcookie( 'userid', '', time() - 1, $path );
-            setcookie( 'password', '', time() - 1, $path );
+        if (!empty($user['locked'])) {
+            atm_user_remember_forget();
             redirect('/users/baned/');
         }
 

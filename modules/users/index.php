@@ -587,6 +587,9 @@ Class UsersModule extends Module {
             $user = $this->Model->getById($id_user);
             $user->setPassw((!empty($file[1])) ? trim($file[1]) : $code); // new format: hash in file; legacy: code == md5(new password)
             $user->save();
+            // a password change invalidates all "remember me" tokens
+            atm_user_remember_purge($id_user);
+            atm_admin_remember_purge($id_user);
 			$message = __('New pass is ready');
 			if ($this->Log) $this->Log->write('activate new passw', 'user id(' . $id_user . ')');
 		} else {
@@ -604,14 +607,14 @@ Class UsersModule extends Module {
 	// Функция возвращает случайно сгенерированный пароль
 	private function _getNewPassword()
     {
-		$length = rand( 10, 30 );
+		$length = random_int( 12, 20 );
 		$password = '';
 		for( $i = 0; $i < $length; $i++ ) {
-			$range = rand(1, 3);
+			$range = random_int(1, 3);
 			switch( $range ) {
-				case 1: $password = $password.chr( rand(48, 57) );  break;
-				case 2: $password = $password.chr( rand(65, 90) );  break;
-				case 3: $password = $password.chr( rand(97, 122) ); break;
+				case 1: $password = $password.chr( random_int(48, 57) );  break;
+				case 2: $password = $password.chr( random_int(65, 90) );  break;
+				case 3: $password = $password.chr( random_int(97, 122) ); break;
 			}
 		}
 		return $password;
@@ -2102,6 +2105,9 @@ Class UsersModule extends Module {
 
 		// Если пользователь заблокирован
 		if ($user->getLocked()) return redirect('/users/baned/');
+
+		// Protect against session fixation.
+		session_regenerate_id(true);
 		$_SESSION['user'] = $user->asArray();
 
 		// Функция getNewThemes() помещает в массив $_SESSION['newThemes'] ID тем,
@@ -2109,12 +2115,12 @@ Class UsersModule extends Module {
 		$this->Register['UserAuth']->getNewThemes();
 
 
-		// Выставляем cookie, если пользователь хочет входить на форум автоматически
+		// Выставляем cookie, если пользователь хочет входить автоматически.
+		// В куке лежит случайный токен, в базе — только его sha256-хеш.
 		if ( isset ( $_POST['autologin'] ) ) {
-			$path = '/';
-			setcookie('autologin', 'yes', time() + 3600 * 24 * $this->Register['Config']->read('cookie_time'), $path);
-			setcookie('userid', $_SESSION['user']['id'], time() + 3600 * 24 * $this->Register['Config']->read('cookie_time'), $path);
-			setcookie('password', $_SESSION['user']['passw'], time() + 3600 * 24 * $this->Register['Config']->read('cookie_time'), $path);
+			atm_user_remember_create((int)$_SESSION['user']['id']);
+		} else {
+			atm_user_remember_forget();
 		}
 		
 		
@@ -2144,6 +2150,7 @@ Class UsersModule extends Module {
 	// Выход из системы
 	public function logout()
     {
+		atm_user_remember_forget();
 		if (isset($_SESSION['user'])) unset($_SESSION['user']);
 		if (isset($_SESSION)) unset($_SESSION);
 

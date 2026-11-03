@@ -2,6 +2,15 @@
 if (empty($_GET['url'])) die();
 $url = $_GET['url'];
 
+// Strip header-injection characters and dangerous URL schemes. The value
+// ends up both in a Refresh header and in an href attribute of the
+// redirect page, so javascript:/data: and similar schemes must not pass.
+$url = str_replace(array("\r", "\n", "\0"), '', $url);
+$urlScheme = parse_url($url, PHP_URL_SCHEME);
+if ($urlScheme !== null && !in_array(strtolower((string)$urlScheme), array('http', 'https'), true)) {
+    die('Invalid redirect URL');
+}
+
 
 function siteInList($site, $list) {
 	if ($site && $list && is_array($list) && count($list) > 0) {

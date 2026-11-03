@@ -29,6 +29,7 @@ if (empty($_GET['name'])) die('');
 $name = trim($_GET['name']);
 
 $usersModel = $Register['ModManager']->getModelInstance('users');
+$name = $Register['DB']->escape($name);
 $users = $usersModel->getCollection(array(
 	"name LIKE '$name%'"
 ), array(

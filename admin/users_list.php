@@ -86,8 +86,12 @@ function index(&$page_title) {
 		$order = 'ORDER BY ' . $_GET['cond'] . $order;
 	}
 
-	if (!empty($_POST['search'])) $str_search = "WHERE `name` LIKE '%{$_POST['search']}%'";
-	else $str_search = '';
+	if (!empty($_POST['search'])) {
+		$search = $FpsDB->escape($_POST['search']);
+		$str_search = "WHERE `name` LIKE '%{$search}%'";
+	} else {
+		$str_search = '';
+	}
 	$count = $FpsDB->query("SELECT COUNT(*) as cnt FROM `" . $FpsDB->getFullTableName('users') . "` {$str_search} {$order}");
 	$total = (!empty($count[0]['cnt'])) ? $count[0]['cnt'] : 0;
     list($pages, $page) = pagination($total, $limit, '/admin/users_list.php?ac=index');
@@ -120,14 +124,15 @@ function index(&$page_title) {
 	foreach ($query as $result) {
 		$status_info = $ACL->get_user_group($result['status']);
 		$status = $status_info['title'];
-		$color = (!empty($status_info['color'])) ? $status_info['color'] : '';
-		$content .= "<tr><td><a href='users_list.php?ac=ank&id={$result['id']}'>{$result['name']}</a></td>
-						<td>{$result['email']}</td>
-						<td>{$result['puttime']}</td>
-						<td><span style=\"color:#{$color}\">{$status}</span></td>
-						<td>{$result['themes']}</td>
-						<td>{$result['posts']}</td>
-						<td colspan=\"2\"><a class=\"edit\" href='users_list.php?ac=ank&id={$result['id']}'></a>
+		$color = (!empty($status_info['color'])) ? preg_replace('#[^0-9a-fA-F]#', '', (string)$status_info['color']) : '';
+		$uid = (int)$result['id'];
+		$content .= "<tr><td><a href='users_list.php?ac=ank&id={$uid}'>" . h($result['name']) . "</a></td>
+						<td>" . h($result['email']) . "</td>
+						<td>" . h($result['puttime']) . "</td>
+						<td><span style=\"color:#" . h($color) . "\">" . h($status) . "</span></td>
+						<td>" . (int)$result['themes'] . "</td>
+						<td>" . (int)$result['posts'] . "</td>
+						<td colspan=\"2\"><a class=\"edit\" href='users_list.php?ac=ank&id={$uid}'></a>
 						</td>";
 	}
 	$content .= '</table></div>';

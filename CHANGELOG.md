@@ -125,6 +125,31 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 - `sys/settings/config.php` (database credentials) and the generated
   `sys/img/counter.png` are no longer tracked by git; credentials were
   removed from the repository history.
+- User "remember me" autologin no longer stores the password hash in a
+  cookie. A random token is issued instead; only its sha256 hash is kept
+  in the new `user_remember` table (created automatically on demand).
+  Legacy `userid`/`password`/`autologin` cookies are cleared on the next
+  visit. Changing or resetting a password invalidates all remember
+  tokens of the user (front-end and admin panel).
+- Fixed SQL injection in the admin user search (`admin/users_list.php`)
+  and in the admin user-autocomplete endpoint (`admin/find_users.php`):
+  user input is escaped before being placed into LIKE conditions.
+- Fixed reflected XSS: the external-redirect page escapes the target URL
+  (`template/default/html/default/redirect.html`) and `redirect.php`
+  rejects URLs with schemes other than http/https and strips CR/LF;
+  `getOrderLink()` escapes the request URI it embeds into sorting links.
+- `h()` now escapes single quotes (`ENT_QUOTES`, explicit UTF-8).
+- The admin users list escapes user names, e-mails and group data in its
+  output (defence against stored XSS through profile fields).
+- `img.php` accepts only the known upload directories below `sys/files/`
+  and rejects `..` in file names (path traversal hardening).
+- The installer runs only when step 1 of the wizard has put the admin
+  credentials into the session; calling `install/do_queries.php` directly
+  is rejected.
+- Front-end login regenerates the session id on success (session fixation
+  protection, previously only the admin panel did this).
+- Password reset generates the temporary password with `random_int()`
+  instead of `rand()`.
 
 ## [2.8 Beta]
 
