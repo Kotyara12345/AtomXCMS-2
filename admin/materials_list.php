@@ -333,8 +333,10 @@ class MaterialsList {
 			<div class="clear"></div>
 		</div>
 		<link rel="stylesheet" href="' . WWW_ROOT . '/sys/plugins/wysibb/public/wbbtheme.css" />
+		<link rel="stylesheet" href="' . WWW_ROOT . '/sys/js/emoji/emoji-picker.css" />
 		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
 		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/fapos2.js"></script>
+		<script src="' . WWW_ROOT . '/sys/js/emoji/emoji-picker.js"></script>
 		<script>
 		$(document).ready(function() {
 			$("#editor").wysibb();
@@ -540,8 +542,10 @@ class MaterialsList {
 			<div class="clear"></div>
 		</div>
 		<link rel="stylesheet" href="' . WWW_ROOT . '/sys/plugins/wysibb/public/wbbtheme.css" />
+		<link rel="stylesheet" href="' . WWW_ROOT . '/sys/js/emoji/emoji-picker.css" />
 		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
 		<script src="' . WWW_ROOT . '/sys/plugins/wysibb/public/fapos2.js"></script>
+		<script src="' . WWW_ROOT . '/sys/js/emoji/emoji-picker.js"></script>
 		<script>
 		$(document).ready(function() {
 			$("#editor").wysibb();

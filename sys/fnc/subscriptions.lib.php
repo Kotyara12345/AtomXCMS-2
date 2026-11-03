@@ -52,7 +52,7 @@ function atm_subscription_table()
   UNIQUE KEY `token` (`token`),
   KEY `email` (`email`),
   KEY `target` (`module`, `category_id`, `active`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 	} catch (Exception $e) {
 		$table = null;
 	}

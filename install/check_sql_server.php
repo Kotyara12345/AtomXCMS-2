@@ -24,6 +24,7 @@ if (strpos($host, ':') !== false) {
 if ('base' === $_GET['type']) {
 	$link = @mysqli_connect($host, $user, $pass, '', $port);
 	if ($link !== false && @mysqli_select_db($link, $base) !== false) {
+		@mysqli_set_charset($link, 'utf8mb4');
 		echo '<span style="color:#46B100">База найдена</span>';
 	} else {
 		echo '<span style="color:#FF0000">Не удалось найти базу</span>';
@@ -32,6 +33,7 @@ if ('base' === $_GET['type']) {
 	if (false === @mysqli_connect($host, $user, $pass, '', $port)) {
 		echo '<span style="color:#FF0000">Не удалось подключиться</span>';
 	} else {
+		@mysqli_set_charset($link, 'utf8mb4');
 		echo '<span style="color:#46B100">Подключились</span>';
 	}
 }

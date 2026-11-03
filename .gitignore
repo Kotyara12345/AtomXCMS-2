@@ -9,6 +9,7 @@
 /sys/settings/server_config.php
 /sitemap.xml
 /sys/img/counter.png
+/.tmp-emoji/
 /TODO.txt
 /.idea/*
 /graphify-out/

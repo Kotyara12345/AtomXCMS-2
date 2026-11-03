@@ -96,7 +96,7 @@ if (!empty($_GET['ac']) && $_GET['ac'] == 'make_dump') {
 					
 					$i++;
 				}
-				$str .= ") \nENGINE=MyISAM  DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
+				$str .= ") \nENGINE=MyISAM  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;";
 				fwrite ($fp, "\n\n-- ----------------------------- --\n\n" . $str . "\n\n");
 				fwrite ($fp, 'TRUNCATE TABLE `' . current($table) . '`;' . "\n\n-- ----------------------------- --\n\n" . $str . "\n\n");
 				

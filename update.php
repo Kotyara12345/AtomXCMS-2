@@ -39,8 +39,8 @@ $queries = array(
 	"ALTER TABLE foto ADD clean_url_title VARCHAR(255) DEFAULT '' NOT NULL",
 
 	// Update users
-	"ALTER TABLE `users` ADD `first_name` VARCHAR(32) character set utf8 NOT NULL default ''",
-	"ALTER TABLE `users` ADD `last_name` VARCHAR(32) character set utf8 NOT NULL default ''",
+	"ALTER TABLE `users` ADD `first_name` VARCHAR(32) character set utf8mb4 NOT NULL default ''",
+	"ALTER TABLE `users` ADD `last_name` VARCHAR(32) character set utf8mb4 NOT NULL default ''",
 
 	// Hierarchical comments
 	"ALTER TABLE `comments` ADD `parent_id` INT(11) NOT NULL DEFAULT '0' AFTER `entity_id`",
@@ -75,6 +75,31 @@ foreach ($queries as $query) {
 	} catch (Exception $e) {
 		$errors[] = $e->getMessage();
 	}
+}
+
+// Emoji support: MySQL utf8 is 3-byte only and cannot store 4-byte UTF-8
+// characters (surrogate pairs / emoji). Convert all still-legacy tables.
+try {
+	$utf8Tables = array();
+	$sql = "SELECT TABLE_NAME FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = DATABASE()
+		AND TABLE_COLLATION LIKE 'utf8%' AND TABLE_COLLATION NOT LIKE 'utf8mb4%'";
+	foreach ($FpsDB->query($sql) as $row) {
+		$utf8Tables[] = $row['TABLE_NAME'];
+	}
+	foreach ($utf8Tables as $table) {
+		if (empty($table)) {
+			continue;
+		}
+		try {
+			$FpsDB->query("ALTER TABLE `$table` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci");
+		} catch (Exception $e) {
+			// Table may already be utf8mb4 or may be owned by another DB user.
+		}
+	}
+} catch (Exception $e) {
+	// information_schema access denied: migrations skipped, schema is
+	// created with utf8mb4 by the installer anyway.
 }
 
 if (!empty($errors)) {

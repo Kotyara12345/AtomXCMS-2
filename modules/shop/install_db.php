@@ -20,7 +20,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_currencies
     PRIMARY KEY (`id`),
     UNIQUE KEY `code` (`code`),
     KEY `enabled_position` (`enabled`, `position`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "INSERT IGNORE INTO `{$shopPrefix}shop_currencies`
     (`code`, `title`, `symbol`, `position`, `enabled`) VALUES
@@ -47,7 +47,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_categories
     KEY `parent_id` (`parent_id`),
     KEY `active_position` (`active`, `position`),
     KEY `clean_url_title` (`clean_url_title`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_landing_pages` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -64,21 +64,21 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_landing_pa
     PRIMARY KEY (`id`),
     UNIQUE KEY `clean_url_title` (`clean_url_title`),
     KEY `active_position` (`active`, `position`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_landing_page_categories` (
     `landing_page_id` INT UNSIGNED NOT NULL,
     `category_id` INT UNSIGNED NOT NULL,
     PRIMARY KEY (`landing_page_id`, `category_id`),
     KEY `category_id` (`category_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_landing_page_attribute_values` (
     `landing_page_id` INT UNSIGNED NOT NULL,
     `attribute_value_id` INT UNSIGNED NOT NULL,
     PRIMARY KEY (`landing_page_id`, `attribute_value_id`),
     KEY `attribute_value_id` (`attribute_value_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_products` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -101,7 +101,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_products` 
     KEY `category_id` (`category_id`),
     KEY `active_position` (`active`, `position`),
     KEY `clean_url_title` (`clean_url_title`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_product_images` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -111,7 +111,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_product_im
     `created_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `product_position` (`product_id`, `position`, `id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_attributes` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -122,7 +122,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_attributes
     `updated_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `active_position` (`active`, `position`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_attribute_values` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -135,14 +135,14 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_attribute_
     PRIMARY KEY (`id`),
     KEY `attribute_id` (`attribute_id`),
     KEY `active_position` (`active`, `position`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_product_attribute_values` (
     `product_id` INT UNSIGNED NOT NULL,
     `attribute_value_id` INT UNSIGNED NOT NULL,
     PRIMARY KEY (`product_id`, `attribute_value_id`),
     KEY `attribute_value_id` (`attribute_value_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_variants` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -158,14 +158,14 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_variants` 
     PRIMARY KEY (`id`),
     KEY `product_active` (`product_id`, `active`),
     KEY `sku` (`sku`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_variant_values` (
     `variant_id` INT UNSIGNED NOT NULL,
     `attribute_value_id` INT UNSIGNED NOT NULL,
     PRIMARY KEY (`variant_id`, `attribute_value_id`),
     KEY `attribute_value_id` (`attribute_value_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_variant_prices` (
     `variant_id` INT UNSIGNED NOT NULL,
@@ -173,7 +173,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_variant_pr
     `price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     PRIMARY KEY (`variant_id`, `currency_code`),
     KEY `currency_price` (`currency_code`, `price`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_orders` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -201,7 +201,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_orders` (
     KEY `status` (`status`),
     KEY `created_at` (`created_at`),
     KEY `access_token` (`access_token`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_items` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -218,7 +218,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_item
     KEY `order_id` (`order_id`),
     KEY `product_id` (`product_id`),
     KEY `variant_id` (`variant_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_favorites` (
     `user_id` INT UNSIGNED NOT NULL,
@@ -226,4 +226,4 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_favorites`
     `created_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`user_id`, `product_id`),
     KEY `product_id` (`product_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";

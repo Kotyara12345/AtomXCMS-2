@@ -1600,7 +1600,7 @@ class ShopHelper
                 `created_at` DATETIME DEFAULT NULL,
                 PRIMARY KEY (`user_id`, `product_id`),
                 KEY `product_id` (`product_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         } catch (Exception $e) {
             return false;
         }

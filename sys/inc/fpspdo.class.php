@@ -87,7 +87,7 @@ class FpsPDO {
 
 		
 		try {
-			$this->dbh = new PDO("mysql:host=$dblocation;dbname=$dbname;charset=utf8", $dbuser, $dbpasswd, array(
+			$this->dbh = new PDO("mysql:host=$dblocation;dbname=$dbname;charset=utf8mb4", $dbuser, $dbpasswd, array(
 				PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
 			));
 		} catch (PDOException $e) {

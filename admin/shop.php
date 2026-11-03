@@ -545,9 +545,12 @@ function shop_admin_csrf()
 function shop_admin_editor_script()
 {
     $base = h(WWW_ROOT . '/sys/plugins/wysibb/public');
+    $emojiBase = h(WWW_ROOT . '/sys/js/emoji');
     return '<link rel="stylesheet" href="' . $base . '/wbbtheme.css" />'
+        . '<link rel="stylesheet" href="' . $emojiBase . '/emoji-picker.css" />'
         . '<script src="' . $base . '/jquery.wysibb.min.js"></script>'
         . '<script src="' . $base . '/fapos2.js"></script>'
+        . '<script src="' . $emojiBase . '/emoji-picker.js"></script>'
         . '<script>'
         . '$(function () {'
         . '    $(".shop-admin-editor").wysibb();'

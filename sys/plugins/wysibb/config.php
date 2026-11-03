@@ -5,7 +5,9 @@ $editor_set = array (
     'title' => 'WysiBB (светлая схема)',
     'editor_head' => '<script src="{{ www_root }}/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
 <script src="{{ www_root }}/sys/plugins/wysibb/public/fapos2.js"></script>
-<link rel="stylesheet" href="{{ www_root }}/sys/plugins/wysibb/public/wbbtheme.css" />',
+<link rel="stylesheet" href="{{ www_root }}/sys/plugins/wysibb/public/wbbtheme.css" />
+<link rel="stylesheet" href="{{ www_root }}/sys/js/emoji/emoji-picker.css" />
+<script src="{{ www_root }}/sys/js/emoji/emoji-picker.js"></script>',
     'editor_body' => '<script>
 $(document).ready(function() {
 	var wbbOpt = {
@@ -30,7 +32,9 @@ $(document).ready(function() {
     'title' => 'WysiBB (темная схема)',
     'editor_head' => '<script src="{{ www_root }}/sys/plugins/wysibb/public/jquery.wysibb.min.js"></script>
 <script src="{{ www_root }}/sys/plugins/wysibb/public/fapos2.js"></script>
-<link rel="stylesheet" href="{{ www_root }}/sys/plugins/wysibb/public/wbbtheme_dark.css" />',
+<link rel="stylesheet" href="{{ www_root }}/sys/plugins/wysibb/public/wbbtheme_dark.css" />
+<link rel="stylesheet" href="{{ www_root }}/sys/js/emoji/emoji-picker.css" />
+<script src="{{ www_root }}/sys/js/emoji/emoji-picker.js"></script>',
     'editor_body' => '<script>
 $(document).ready(function() {
 	var wbbOpt = {

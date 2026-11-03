@@ -89,7 +89,7 @@ if (!function_exists('atm_admin_security_ensure_tables')) {
 				KEY `user_id` (`user_id`),
 				KEY `last_seen` (`last_seen`),
 				KEY `revoked` (`revoked`)
-			) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+			) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 
 			$db->query("CREATE TABLE IF NOT EXISTS `{$audit}` (
 				`id` int(11) NOT NULL auto_increment,
@@ -104,7 +104,7 @@ if (!function_exists('atm_admin_security_ensure_tables')) {
 				KEY `user_id` (`user_id`),
 				KEY `action` (`action`),
 				KEY `created` (`created`)
-			) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+			) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 
 			$db->query("CREATE TABLE IF NOT EXISTS `{$attempts}` (
 				`id` int(11) NOT NULL auto_increment,
@@ -116,7 +116,7 @@ if (!function_exists('atm_admin_security_ensure_tables')) {
 				KEY `login` (`login`),
 				KEY `ip` (`ip`),
 				KEY `created` (`created`)
-			) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+			) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 
 			$db->query("CREATE TABLE IF NOT EXISTS `{$twofa}` (
 				`user_id` int(11) NOT NULL,
@@ -126,7 +126,7 @@ if (!function_exists('atm_admin_security_ensure_tables')) {
 				`created` int(11) NOT NULL default '0',
 				`updated` int(11) NOT NULL default '0',
 				PRIMARY KEY (`user_id`)
-			) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+			) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 
 			$db->query("CREATE TABLE IF NOT EXISTS `{$notifications}` (
 				`id` int(11) NOT NULL auto_increment,
@@ -140,7 +140,7 @@ if (!function_exists('atm_admin_security_ensure_tables')) {
 				KEY `user_id` (`user_id`),
 				KEY `type` (`type`),
 				KEY `created` (`created`)
-			) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+			) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 
 			$db->query("CREATE TABLE IF NOT EXISTS `{$notificationReads}` (
 				`notification_id` int(11) NOT NULL,
@@ -148,14 +148,14 @@ if (!function_exists('atm_admin_security_ensure_tables')) {
 				`read_at` int(11) NOT NULL default '0',
 				PRIMARY KEY (`notification_id`, `user_id`),
 				KEY `user_id` (`user_id`)
-			) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+			) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 
 			$db->query("CREATE TABLE IF NOT EXISTS `{$notificationState}` (
 				`user_id` int(11) NOT NULL,
 				`counts` text,
 				`updated` int(11) NOT NULL default '0',
 				PRIMARY KEY (`user_id`)
-			) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
+			) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 		} catch (Exception $e) {
 			// Security features are optional; never break the panel here.
 		}
