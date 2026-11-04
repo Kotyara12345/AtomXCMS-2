@@ -38,7 +38,7 @@ class FpsSitemapGen {
 
 	public $output;
 	
-	private $host;
+	private $base;
 	
 	private $uniqUrl = array();
 	
@@ -48,9 +48,67 @@ class FpsSitemapGen {
 
 	public function __construct($params = array()) {
         $Register = Register::getInstance();
-		$this->host = $_SERVER['HTTP_HOST'];
-		$this->uniqUrl[] = 'http://' . $this->host;
+		$this->base = $this->detectBase();
+		$this->uniqUrl[] = $this->base . $this->installPath();
 		$this->DB = $Register['DB'];
+	}
+	
+	
+	/**
+	 * Scheme and host the current request was made with. Falls back to
+	 * localhost when the host is missing.
+	 *
+	 * @return string e.g. "https://www.example.com"
+	 */
+	private function detectBase() {
+		$scheme = function_exists('atm_sitemap_scheme') ? atm_sitemap_scheme() : 'http';
+
+		if (function_exists('atm_request_origin')) {
+			$origin = atm_request_origin(false);
+			if ($origin !== '') {
+				$host = substr($origin, strpos($origin, '://') + 3);
+				// Drop the port that belongs to the other scheme.
+				$host = preg_replace('/:' . ($scheme === 'https' ? '80' : '443') . '$/', '', $host);
+				return $scheme . '://' . $host;
+			}
+		}
+
+		$host = '';
+		if (!empty($_SERVER['HTTP_HOST'])) {
+			$host = (string)$_SERVER['HTTP_HOST'];
+		} elseif (!empty($_SERVER['SERVER_NAME'])) {
+			$host = (string)$_SERVER['SERVER_NAME'];
+		}
+		$host = trim($host);
+		if ($host === '' || !preg_match('/^(?:[a-z0-9._\-]+|\[[0-9a-f:.]+\])(?::[0-9]+)?$/i', $host)) {
+			$host = 'localhost';
+		}
+		// Drop the port that belongs to the other scheme.
+		$host = preg_replace('/:' . ($scheme === 'https' ? '80' : '443') . '$/', '', $host);
+
+		return $scheme . '://' . $host;
+	}
+
+
+	/**
+	 * Install subdirectory below the document root, e.g. "/cms" or "".
+	 *
+	 * @return string
+	 */
+	private function installPath() {
+		if (!defined('WWW_ROOT')) return '';
+		return '/' . trim((string)WWW_ROOT, '/');
+	}
+	
+	
+	/**
+	 * Whether a link already carries its own scheme and host.
+	 *
+	 * @param string $link
+	 * @return bool
+	 */
+	private function isAbsoluteUrl($link) {
+		return (bool)preg_match('#^(?:[a-z][a-z0-9+.\-]*:)?//#i', $link);
 	}
 	
 	
@@ -72,7 +130,7 @@ class FpsSitemapGen {
 				. 'http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">' . "\n";
 				
 				foreach ($this->uniqUrl as $page) {
-					if (substr($page, 0, 7) !== 'http://') $page = 'http://' . $page;
+					if (!$this->isAbsoluteUrl($page)) $page = $this->base . $page;
 					$this->output .= '<url>' . "\n"
 						. '<loc>' . $page . '</loc>' . "\n"
 						. '<changefreq>daily</changefreq>' . "\n"
@@ -105,7 +163,9 @@ class FpsSitemapGen {
 		foreach ($this->uniqUrl as $key => $link) {
 			//$link = trim($link, '/');
 			$link = str_replace(array_keys($entities), $entities, $link);
-			$this->uniqUrl[$key] = ('http://' !== substr($link, 0, 7)) ? $this->host . get_url($link) : get_url($link);
+			$this->uniqUrl[$key] = $this->isAbsoluteUrl($link)
+				? $link
+				: $this->base . get_url($link);
 		}
 	}
 	

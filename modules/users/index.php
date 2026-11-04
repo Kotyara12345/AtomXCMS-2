@@ -395,7 +395,7 @@ Class UsersModule extends Module {
 		if (!empty($email_activate)) {
             $entity->setPassw($password);
             $context = array(
-                'activation_link' => 'http://'.$_SERVER['SERVER_NAME'] . '/users/activate/'.$code,
+                'activation_link' => atm_site_origin() . '/users/activate/'.$code,
                 'user' => $entity,
             );
 			
@@ -545,7 +545,7 @@ Class UsersModule extends Module {
 
 
 		$context = array(
-			'activation_link' => 'http://'.$_SERVER['SERVER_NAME'] . '/users/activate_password/'.$code,
+			'activation_link' => atm_site_origin() . '/users/activate_password/'.$code,
 			'new_password' => $newPassword,
 			'user_name' => $name,
 		);
@@ -1567,7 +1567,7 @@ Class UsersModule extends Module {
                 $context = array(
                     'from_user' => $_SESSION['user'],
                     'user' => $toUser,
-                    'link' => get_url('/' . $this->module . '/pm_view/' . $_SESSION['user']['id']),
+                    'link' => atm_site_origin(false) . get_url('/' . $this->module . '/pm_view/' . $_SESSION['user']['id']),
                 );
 				
 				$mailer = new AtmMail(ROOT . '/sys/settings/email_templates/');

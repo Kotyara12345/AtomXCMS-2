@@ -120,6 +120,38 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   reused for up to two seconds, so the installer's AJAX step could run
   with the previous database settings. Saving the config now
   invalidates its OPcache entry.
+- Links in e-mail messages (registration and password-reset activation,
+  private-message notification, subscription confirmation, new-material
+  announcement and unsubscribe) were hardcoded to `http://`. They now
+  use `atm_site_origin()`, which follows the request scheme: an HTTPS
+  site sends `https://`, a site without a certificate keeps `http://`.
+  The private-message link is also absolute now instead of a
+  root-relative path.
+- RSS feeds (`/news/rss/`, `/stat/rss/`) lost the slash between the host
+  and the section (`https://site.runews/`), hardcoded `http://`, and
+  reused one cache entry for every scheme and host. The channel and item
+  links are now absolute with the request scheme, `www` is kept, the
+  titles and categories are XML-escaped, and the cache is split per site
+  origin.
+- Forum "link to the message" (`#` next to a post) was built as
+  `http://` plus the request host, so it pointed at the insecure scheme
+  on an HTTPS site and lost the install subdirectory. It now uses
+  `atm_site_origin()`. Returning to the previous page after editing a
+  post also failed on HTTPS, because the referer parser accepted only
+  `http://`; it now accepts both schemes, compares the host without the
+  port and rejects foreign referers.
+- Interim "please wait" pages (success and error messages in the forum,
+  profile, registration and other modules) redirected to `http://` even
+  when the site ran over HTTPS, which dropped the secure session cookie.
+  The `Refresh` header now carries a root-relative URL, so the browser
+  stays on the current scheme and host.
+- `sitemap.xml` always listed URLs with `http://`, even on sites served
+  over HTTPS. The scheme and host now come from the request that
+  generated the map (including `www`), and installations below the
+  document root keep their subdirectory prefix. A new "Sitemap links"
+  setting pins the protocol to HTTP or HTTPS for sites reachable over
+  both, so the map no longer depends on which request triggered the
+  daily regeneration; `robots.txt` follows the same choice.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated

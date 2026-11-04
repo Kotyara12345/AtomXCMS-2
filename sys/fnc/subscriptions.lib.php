@@ -622,7 +622,7 @@ function atm_subscription_get_recipients($module, $categoryIds)
 
 function atm_subscription_unsubscribe_url($token)
 {
-	return 'http://' . get_server_host()
+	return atm_site_origin(false)
 		. get_url('/subscribe.php?unsubscribe=' . urlencode((string)$token), false, false);
 }
 
@@ -681,7 +681,7 @@ function atm_subscription_notify_material($module, $entity, $categoryIds = null)
 	$moduleTitle = ($module === 'news') ? __('News') : __('Article');
 	$intro = sprintf(__('A new material has been published in the %s section.'), $moduleTitle);
 	$subject = sprintf(__('New publication: %s'), $title);
-	$materialUrl = 'http://' . get_server_host() . get_url('/' . $module . '/view/' . $id, false, false);
+	$materialUrl = atm_site_origin(false) . get_url('/' . $module . '/view/' . $id, false, false);
 
 	$announce = '';
 	if (is_callable(array($entity, 'getDescription'))) $announce = (string)$entity->getDescription();
@@ -779,7 +779,7 @@ function atm_subscription_redirect($status, $fallback = '/')
 {
 	$to = atm_subscription_safe_referer();
 	if ($to === '') {
-		$to = 'http://' . get_server_host() . get_url($fallback, false, false);
+		$to = atm_site_origin(false) . get_url($fallback, false, false);
 	}
 	$to = preg_replace('/([?&])mailing=[^&]*/', '$1', $to);
 	$to = rtrim($to, '?&');

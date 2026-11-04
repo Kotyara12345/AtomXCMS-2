@@ -31,14 +31,17 @@ function atm_update_robots_domain($robotsFile = null)
         return false;
     }
 
-    $scheme = 'http';
-    if (
-        (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
-        || (!empty($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443)
-        || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])
-            && strtolower((string) $_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
-    ) {
-        $scheme = 'https';
+    $scheme = function_exists('atm_sitemap_scheme') ? atm_sitemap_scheme() : 'http';
+    if ($scheme !== 'http' && $scheme !== 'https') {
+        $scheme = 'http';
+        if (
+            (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+            || (!empty($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443)
+            || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])
+                && strtolower((string) $_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+        ) {
+            $scheme = 'https';
+        }
     }
 
     $base = defined('WWW_ROOT') ? rtrim((string) WWW_ROOT, '/') : '';

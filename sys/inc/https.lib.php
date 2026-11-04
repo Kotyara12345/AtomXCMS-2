@@ -43,6 +43,78 @@ if (!function_exists('atm_request_is_https')) {
 }
 
 
+if (!function_exists('atm_request_origin')) {
+	/**
+	 * Origin of the current request: scheme, host and install subdirectory.
+	 *
+	 * The host comes from the request, so a site served on both example.com
+	 * and www.example.com (or over HTTP and HTTPS) keeps whatever the visitor
+	 * actually used. The install subdirectory is appended when the CMS lives
+	 * below the document root.
+	 *
+	 * @param bool $withBase Append the install subdirectory (WWW_ROOT).
+	 * @return string e.g. "https://www.example.com/subdir"; empty when the
+	 *                request has no usable host.
+	 */
+	function atm_request_origin($withBase = true)
+	{
+		$host = '';
+		if (!empty($_SERVER['HTTP_HOST'])) {
+			$host = (string)$_SERVER['HTTP_HOST'];
+		} elseif (!empty($_SERVER['SERVER_NAME'])) {
+			$host = (string)$_SERVER['SERVER_NAME'];
+		}
+
+		$host = trim($host);
+		if ($host === '' || !preg_match('/^(?:[a-z0-9._\-]+|\[[0-9a-f:.]+\])(?::[0-9]+)?$/i', $host)) {
+			return '';
+		}
+
+		$scheme = atm_request_is_https() ? 'https' : 'http';
+		$host = preg_replace('/:' . ($scheme === 'https' ? '443' : '80') . '$/', '', $host);
+
+		$base = $withBase && defined('WWW_ROOT') ? '/' . trim((string)WWW_ROOT, '/') : '';
+		return $scheme . '://' . $host . rtrim($base, '/');
+	}
+}
+
+
+if (!function_exists('atm_site_origin')) {
+	/**
+	 * Absolute site root for links that leave the current page (e-mail,
+	 * feeds). Uses the scheme of the request, so a site without a
+	 * certificate keeps http:// and is never pointed at HTTPS.
+	 *
+	 * Falls back to the server name when there is no request host
+	 * (CLI cron).
+	 *
+	 * @param bool $withBase Include the install subdirectory (WWW_ROOT).
+	 * @return string e.g. "https://www.example.com/subdir"
+	 */
+	function atm_site_origin($withBase = true)
+	{
+		$origin = atm_request_origin($withBase);
+		if ($origin !== '') {
+			return $origin;
+		}
+
+		$host = '';
+		if (!empty($_SERVER['HTTP_HOST'])) {
+			$host = (string)$_SERVER['HTTP_HOST'];
+		} elseif (!empty($_SERVER['SERVER_NAME'])) {
+			$host = (string)$_SERVER['SERVER_NAME'];
+		}
+		$host = trim($host);
+		if ($host === '' || !preg_match('/^(?:[a-z0-9._\-]+|\[[0-9a-f:.]+\])(?::[0-9]+)?$/i', $host)) {
+			$host = 'localhost';
+		}
+
+		$base = $withBase && defined('WWW_ROOT') ? '/' . trim((string)WWW_ROOT, '/') : '';
+		return 'http://' . $host . rtrim($base, '/');
+	}
+}
+
+
 if (!function_exists('atm_https_is_enabled')) {
 	/**
 	 * Whether the "Force HTTPS" option is enabled in the site config.

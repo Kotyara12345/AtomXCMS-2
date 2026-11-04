@@ -96,6 +96,17 @@ $settingsInfo = array(
 			'checked' => '1',
 			'value' => '1',
 		),
+		'sitemap_scheme' => array(
+			'type' => 'select',
+			'title' => __('Sitemap links'),
+			'description' => __('Protocol for the URLs in sitemap.xml and robots.txt. Auto uses the protocol of the request that generated the map. Choose HTTP or HTTPS when the site is reachable over both and one protocol must always win.'),
+			'options' => array(
+				'auto' => __('Auto (current request)'),
+				'http' => __('Always HTTP'),
+				'https' => __('Always HTTPS'),
+			),
+			'default' => 'auto',
+		),
 	),
 
 	/* SYS */

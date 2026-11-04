@@ -243,6 +243,7 @@ $set = array (
     'rss_cnt' => '10',
   ),
   'auto_sitemap' => 1,
+  'sitemap_scheme' => 'auto',
   'allow_smiles' => 1,
   'smiles_set' => 'fapos',
 );

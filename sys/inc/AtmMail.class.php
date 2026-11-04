@@ -98,7 +98,7 @@ class AtmMail {
             'to' => $to,
             'subject' => $subject,
             'site_title' => Config::read('site_title'),
-            'site_url' => 'http://' . $_SERVER['SERVER_NAME'] . '/',
+            'site_url' => atm_site_origin() . '/',
         ));
 
         try {

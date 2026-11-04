@@ -958,7 +958,7 @@ Class ForumModule extends Module {
 					$post_num++;
 					$post->setPost_number($post_num);
 				}
-				$post_number_url = 'http://' . $_SERVER['HTTP_HOST'] 
+				$post_number_url = atm_site_origin()
 				. get_url('/' . $this->module . '/view_post/' . $post->getId(), true);
 				$post->setPost_number_url($post_number_url);
 

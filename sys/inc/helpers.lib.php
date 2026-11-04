@@ -134,27 +134,54 @@ function getBornTodayUsers() {
 
 
 /**
+ * Path of the current referer when it points at this site.
+ *
+ * Accepts both http:// and https:// (and keeps the port out of the
+ * comparison), so returning to the previous page works on a site with
+ * a certificate and on one without. Returns an empty string for a
+ * foreign or malformed referer, which keeps the redirect on this site.
+ *
+ * @return string root-relative path, e.g. "/forum/view_theme/3"
+ */
+function atm_referer_path()
+{
+	if (empty($_SERVER['HTTP_REFERER'])) return '';
+
+	$parts = parse_url((string)$_SERVER['HTTP_REFERER']);
+	if (empty($parts['scheme']) || empty($parts['host'])) return '';
+	if (!in_array(strtolower($parts['scheme']), array('http', 'https'), true)) return '';
+
+	$host = get_server_host();
+	$host = preg_replace('/:[0-9]+$/', '', $host);
+	if (strcasecmp($parts['host'], $host) !== 0) return '';
+
+	$path = isset($parts['path']) ? (string)$parts['path'] : '';
+	if ($path === '' || $path[0] !== '/') return '';
+
+	return $path;
+}
+
+
+/**
  * Function for safe and get referer
  */
 function setReferer() {
-	if (!empty($_SERVER['HTTP_REFERER']) 
-	&& preg_match('#^http://([^/]+)/(.+)#', $_SERVER['HTTP_REFERER'], $match)) {
-		if (!empty($match[1]) && !empty($match[2]) && $match[1] == $_SERVER['SERVER_NAME']) {
-			$_SESSION['redirect_to'] = $match[2];
-		}
+	$path = atm_referer_path();
+	if ($path !== '') {
+		$_SESSION['redirect_to'] = $path;
 	}
 }
 function getReferer() {
 	$redirect_to = get_url('/');
 	
 	if (isset($_SESSION['redirect_to'])) {
-		$redirect_to = get_url('/' . $_SESSION['redirect_to']);
+		$redirect_to = get_url($_SESSION['redirect_to']);
 		unset($_SESSION['redirect_to']);
 		
-	} else if (!empty($_SERVER['HTTP_REFERER']) 
-	&& preg_match('#^http://([^/]+)/(.+)#', $_SERVER['HTTP_REFERER'], $match)) {
-		if (!empty($match[1]) && !empty($match[2]) && $match[1] == $_SERVER['SERVER_NAME']) {
-			$redirect_to = get_url('/' . $match[2]);
+	} else {
+		$path = atm_referer_path();
+		if ($path !== '') {
+			$redirect_to = get_url($path);
 		}
 	}
 	
@@ -212,6 +239,29 @@ function fpsCron($func, $interval) {
  
  
  
+/**
+ * Scheme for absolute site URLs (sitemap, robots).
+ *
+ * "auto" follows the current request. A site reachable over both HTTP and
+ * HTTPS can pin one scheme in the Sitemap settings, so the map does not
+ * depend on which request happened to trigger the daily regeneration.
+ *
+ * @return string "http" or "https"
+ */
+function atm_sitemap_scheme()
+{
+	if (class_exists('Config')) {
+		$scheme = Config::read('sitemap_scheme');
+		if ($scheme === 'http' || $scheme === 'https') {
+			return $scheme;
+		}
+	}
+
+	return (function_exists('atm_request_is_https') && atm_request_is_https()) ? 'https' : 'http';
+}
+
+
+
 /**
  * Launch auto sitemap generator
  */

@@ -1,6 +1,6 @@
 <?php
 
-$cache_key = $this->module . '_rss';
+$cache_key = $this->module . '_rss_' . md5(atm_site_origin());
 $cache_tags = array(
 	'module_' . $this->module,
 	'action_rss',
@@ -16,16 +16,16 @@ if ($this->Cache->check($cache_key)) {
 	
 	
 } else {
-	$sitename = '/';
-	if (!empty($_SERVER['SERVER_NAME'])) {
-		$sitename = 'http://' . $_SERVER['SERVER_NAME'] . '';
-	}
+	// Absolute site root with the current scheme: http for a site without
+	// a certificate, https for a site that has one.
+	$siteOrigin = atm_site_origin();
+	$moduleUrl = $siteOrigin . '/' . $this->module . '/';
 	
 	$html = '<?xml version="1.0" encoding="UTF-8"?>';
 	$html .= '<rss version="2.0">';
 	$html .= '<channel>';
 	$html .= '<title>' . h($this->getCompleteMetaTag($this->Register['Config']->read('title', $this->module))) . '</title>';
-	$html .= '<link>' . $sitename . $this->module . '/</link>';
+	$html .= '<link>' . h($moduleUrl) . '</link>';
 	$html .= '<description>' . h($this->getCompleteMetaTag($this->Register['Config']->read('description', $this->module))) . '</description>';
 	$html .= '<pubDate>' . date('r') . '</pubDate>';
 	$html .= '<generator>FPS RSS Generator (AtomX CMS)</generator>';
@@ -66,14 +66,19 @@ if ($this->Cache->check($cache_key)) {
 		$html .= '<lastBuildDate>' . date('r', strtotime($records[0]->getDate())) . '</lastBuildDate>';
 		
 		foreach ($records as $record) { 
+			$entryUrl = (string)entryUrl($record, $this->module);
+			$itemUrl = preg_match('#^[a-z][a-z0-9+.\-]*://#i', $entryUrl)
+				? $entryUrl
+				: $siteOrigin . '/' . ltrim($entryUrl, '/');
+
 			$html .= '<item>';
-			$html .= '<link>' . $sitename . entryUrl($record, $this->module) . '</link>';
+			$html .= '<link>' . h($itemUrl) . '</link>';
 			$html .= '<pubDate>' . date('r', strtotime($record->getDate())) . '</pubDate>';
-			$html .= '<title>' . $record->getTitle() . '</title>';
+			$html .= '<title>' . h($record->getTitle()) . '</title>';
 			$html .= '<description><![CDATA[' . mb_substr($record->getMain(), 0, $this->Register['Config']->read('rss_lenght', 'rss')) . '<br />';
 			$html .= 'Автор: ' . $record->getAuthor()->getName() . '<br />]]></description>';
-			$html .= '<category>' . $record->getCategory()->getTitle() . '</category>';
-			$html .= '<guid>' . $sitename . $this->module . '/view/' . $record->getId() . '</guid>';
+			$html .= '<category>' . h($record->getCategory()->getTitle()) . '</category>';
+			$html .= '<guid>' . h($siteOrigin . '/' . $this->module . '/view/' . $record->getId()) . '</guid>';
 			$html .= '</item>';
 		}
 	}
