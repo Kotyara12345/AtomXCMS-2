@@ -94,6 +94,10 @@ class AtmMail {
 
 
 	public function sendMail($to, $subject, $context = array()) {
+		if (!function_exists('mail')) {
+			$this->lastError = 'Mail transport is unavailable';
+			return false;
+		}
 		$context = array_merge($context, array(
             'to' => $to,
             'subject' => $subject,
@@ -104,8 +108,11 @@ class AtmMail {
         try {
             $body = $this->Viewer->parseTemplate($this->body, $context);
             $body = $this->joinBodyParts($body);
-            mail($to, $subject, $body, $this->headers);
-        } catch (Exception $e) {
+            if (!mail($to, $subject, $body, $this->headers)) {
+                $this->lastError = 'Mail transport rejected message';
+                return false;
+            }
+        } catch (Throwable $e) {
             $this->lastError = $e->getMessage();
             return false;
         }

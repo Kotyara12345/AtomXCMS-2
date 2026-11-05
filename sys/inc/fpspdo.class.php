@@ -74,6 +74,8 @@ class FpsPDO {
 	private $useTableAlias = true;
 	
 	private $queryParams = array();
+	private $sqlCacheGeneration = null;
+	private $pendingSearchTables = array();
 
     private $statement;
 	
@@ -116,6 +118,7 @@ class FpsPDO {
 	*/
 	public function select ($table, $type, $params = array()) {
 		$this->queryParams = array();
+		$this->sqlCacheGeneration = $this->readSqlCacheGeneration();
 		if (in_array($type, array('DB_FIRST', 'DB_ALL', 'DB_COUNT'))) $this->DB_TYPE = $type;
 
         if (!empty($params['alias'])) $this->table_alias = $this->__name($params['alias']);
@@ -123,9 +126,11 @@ class FpsPDO {
         $this->table_alias = null;
 
 		// trying cache querys 
-		if (Config::read('cache_querys') == 1) {
-			if ($this->turnSqlCache($query)) {
-				return $this->getSqlCache($query);
+		if ($this->canCacheSql($query)) {
+			$entry = $this->readSqlCacheEntry($query);
+			if ($entry !== false) {
+				$this->relationsMap = array();
+				return $entry['data'];
 			}
 		}
 		
@@ -158,7 +163,7 @@ class FpsPDO {
 		}
 		
 		// write cache 
-		if (Config::read('cache_querys') == 1) {
+		if ($this->canCacheSql($query)) {
 			$this->writeSqlCache($query, $_result);
 		}
 		return $_result;
@@ -235,8 +240,6 @@ class FpsPDO {
 			$result = $this->dbh->lastInsertId();
 		}
 
-		if (function_exists('atm_invalidate_search_index'))
-			atm_invalidate_search_index($table);
 
 		if ($Register['Config']->read('debug_mode') == 1)
             AtmDebug::addRow('DB Queries', array($this->getQueryDump($query), $took));
@@ -247,13 +250,13 @@ class FpsPDO {
 	
 	public function query($data, $cached = false) {
 		$this->queryParams = array();
+		$this->sqlCacheGeneration = $this->readSqlCacheGeneration();
 		if (empty($data)) die('argunent for query must not be NULL ');
 		
 		/* trying cache querys */
-		if (Config::read('cache_querys') == 1 && $cached) {
-			if ($this->turnSqlCache($data)) {
-				return $this->getSqlCache($data);
-			}
+		if ($cached && $this->canCacheSql($data)) {
+			$entry = $this->readSqlCacheEntry($data);
+			if ($entry !== false) return $entry['data'];
 		}
 	
 		
@@ -273,7 +276,7 @@ class FpsPDO {
 			}
 		}
 		/* write cache */
-		if (Config::read('cache_querys') == 1 && $cached && !empty($result)) {
+		if ($cached && $this->canCacheSql($data)) {
 			$this->writeSqlCache($data, $result);
 		}
 		return (!empty($result)) ? $result : array();
@@ -308,8 +311,6 @@ class FpsPDO {
 		$start = getMicroTime();
 		$this->runQuery($query);
 		$took = getMicroTime($start);
-		if (function_exists('atm_invalidate_search_index'))
-			atm_invalidate_search_index($table);
 		if (Config::read('debug_mode') == 1)
             AtmDebug::addRow('DB Queries', array($this->getQueryDump($query), $took));
 	}
@@ -582,7 +583,41 @@ class FpsPDO {
 			throw new Exception('FpsPDO Driver catch PDOException: ' . $e->getMessage());
 		}
 		
+		// Invalidate after writes and again after COMMIT: no uncommitted result
+		// may populate the generation that readers use after the commit.
+		if (!preg_match('/^\s*(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|START|BEGIN|SET|ROLLBACK)\b/i', $query)) {
+			$this->cleanSqlCache();
+		}
+		$this->invalidateSearchForQuery($query);
 		return $statement;
+	}
+
+	private function invalidateSearchForQuery($query) {
+		if (!function_exists('atm_invalidate_search_index')) return;
+		if (preg_match('/^\s*ROLLBACK\b/i', $query)) { $this->pendingSearchTables = array(); return; }
+		if (preg_match('/^\s*(?:INSERT(?:\s+IGNORE)?\s+INTO|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)\s+`?([a-z0-9_]+)/i', $query, $match)) {
+			$table = $match[1];
+			$prefix = (string)Config::read('prefix', 'db');
+			if ($prefix !== '' && strpos($table, $prefix) === 0) $table = substr($table, strlen($prefix));
+			$indexedFields = array(
+				'news'=>array('title','main','tags','available','premoder','category_id'),
+				'stat'=>array('title','main','tags','available','premoder','category_id'),
+				'loads'=>array('title','main','tags','available','premoder','category_id'),
+				'shop_products'=>array('title','description','short_description','active'),
+				'posts'=>array('message','id_theme'), 'themes'=>array('title','description','id_forum','group_access'),
+				'forums'=>array('title','description','parent_forum_id','lock_posts','lock_passwd','in_cat'), 'forum_cat'=>array('title')
+			);
+			$changed = true;
+			if (isset($indexedFields[$table]) && preg_match('/^\s*UPDATE\b/i', $query)
+				&& preg_match_all('/(?:\bSET|,)\s*(?:`?[a-z0-9_]+`?\.)?`?([a-z0-9_]+)`?\s*=/i', $query, $fields)) {
+				$changed = (bool)array_intersect($indexedFields[$table], array_map('strtolower', $fields[1]));
+			}
+			if ($changed) $this->pendingSearchTables[$table] = true;
+		}
+		if (!$this->dbh->inTransaction()) {
+			foreach ($this->pendingSearchTables as $table => $unused) atm_invalidate_search_index($table);
+			$this->pendingSearchTables = array();
+		}
 	}
 	
 	
@@ -1231,20 +1266,43 @@ class FpsPDO {
 	private function sqlCacheFilename($sql) {
 		$params = $this->queryParams;
 		ksort($params);
-		return hash('sha256', serialize(array('pdo-cache-v2', $sql, $params))) . '.dat';
+		$generation = $this->sqlCacheGeneration === null ? $this->readSqlCacheGeneration() : $this->sqlCacheGeneration;
+		return hash('sha256', serialize(array('pdo-cache-v3', $generation, $sql, $params))) . '.dat';
+	}
+
+	private function canCacheSql($sql) {
+		return Config::read('cache_querys') == 1
+			&& preg_match('/^\s*SELECT\b/i', $sql)
+			&& !preg_match('/\b(FOR\s+UPDATE|LOCK\s+IN\s+SHARE\s+MODE|[a-z0-9_]*users|[a-z0-9_]*remember|[a-z0-9_]*admin_[a-z0-9_]+)\b/i', $sql)
+			&& !($this->dbh && $this->dbh->inTransaction());
+	}
+
+	private function readSqlCacheGeneration() {
+		$path = ROOT . '/sys/cache/sql/.generation';
+		return is_file($path) ? (string)@file_get_contents($path) : '0';
+	}
+
+	private function writeSqlCacheFile($path, $contents) {
+		$dir = dirname($path);
+		if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) return false;
+		$tmp = @tempnam($dir, '.sql-');
+		if ($tmp === false) return false;
+		$ok = @file_put_contents($tmp, $contents, LOCK_EX) === strlen($contents) && @rename($tmp, $path);
+		if (is_file($tmp)) @unlink($tmp);
+		return $ok;
+	}
+
+	private function readSqlCacheEntry($sql) {
+		$file = ROOT . '/sys/cache/sql/' . $this->sqlCacheFilename($sql);
+		$raw = @file_get_contents($file);
+		if ($raw === false) return false;
+		$entry = @unserialize($raw, array('allowed_classes' => false));
+		if (!is_array($entry) || !isset($entry['expires']) || $entry['expires'] <= time() || !array_key_exists('data', $entry)) return false;
+		return $entry;
 	}
 
 	public function turnSqlCache($sql) {
-		/* uniq filename */
-		$cache_file_name = $this->sqlCacheFilename($sql);
-		/* check file */
-		if (!file_exists(ROOT . '/sys/cache/sql/' . $cache_file_name)){
-			return false;
-		}
-		if (!is_readable(ROOT . '/sys/cache/sql/' . $cache_file_name)) {
-			return false;
-		}
-		return true;
+		return $this->readSqlCacheEntry($sql) !== false;
 	}
 
 	
@@ -1255,12 +1313,8 @@ class FpsPDO {
 	* @return (array)     sql results
 	*/
 	public function getSqlCache($sql) {
-		/* uniq filename */
-		$cache_file_name = $this->sqlCacheFilename($sql);
-		/* get file data and unserialize */
-		$cache_data = file_get_contents(ROOT . '/sys/cache/sql/' . $cache_file_name);
-		$cache_data = unserialize($cache_data);
-		return $cache_data;
+		$entry = $this->readSqlCacheEntry($sql);
+		return $entry === false ? false : $entry['data'];
 	}  	
 
 
@@ -1272,16 +1326,10 @@ class FpsPDO {
 	* @return             none
 	*/
 	public function writeSqlCache($sql, $data) {
-		/* check and create cache dir  */
-		if (!file_exists(ROOT . '/sys/cache/sql/')) mkdir(ROOT . '/sys/cache/sql/', 0777, true);
-		clearstatcache();
-		/* uniq filename */
-		$cache_file_name = $this->sqlCacheFilename($sql);
-		/* get file data and unserialize */
-		$file = fopen(ROOT . '/sys/cache/sql/' . $cache_file_name, 'w');
-		fwrite($file, serialize($data));
-		fclose($file);
-		return;
+		$ttl = (int)Config::read('sql_cache_ttl');
+		if ($ttl < 1) $ttl = 300;
+		return $this->writeSqlCacheFile(ROOT . '/sys/cache/sql/' . $this->sqlCacheFilename($sql),
+			serialize(array('expires' => time() + min($ttl, 86400), 'data' => $data)));
 	}
 
 
@@ -1291,7 +1339,8 @@ class FpsPDO {
 	* @return             none
 	*/
 	public function cleanSqlCache() {
-		if (!file_exists(ROOT . '/sys/cache/sql/')) return;
+		$this->writeSqlCacheFile(ROOT . '/sys/cache/sql/.generation', bin2hex(random_bytes(16)));
+		$this->sqlCacheGeneration = null;
 		$files = glob(ROOT . '/sys/cache/sql/*');
 		if (!empty($files)){
 			foreach ($files as $file) {

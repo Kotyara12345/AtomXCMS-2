@@ -6,6 +6,11 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 ## [Unreleased]
 
 ### Added
+- Request-driven maintenance for newsletters and incremental search indexing,
+  with retries and protected queue storage inside the site's writable directory.
+  CLI access, cron and operating-system tasks are not required.
+- Runtime and database regression checks for remembered login, search visibility,
+  concurrent order cancellation, upload validation and background processing.
 - PHP 8.5 compatibility for the core, modules, admin panel and installer.
 - Bilingual README (English / Russian) with fork notes, requirements and
   installation instructions.
@@ -31,6 +36,16 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   related bindings.
 
 ### Changed
+- Search checks current publication, category and forum permissions before returning
+  results, including cached results and deleted forum posts. Its cache uses one
+  stable key containing the query, filters and access context.
+- Uploaded files use an allowlist, server-side MIME/image decoding and size limits;
+  filenames are randomized and form validation reports invalid uploads.
+- SQL cache entries expire, are written atomically and are invalidated after writes
+  and commits. Authentication and locking queries bypass caching.
+- Remembered user login uses the current cookie; visit timestamps are throttled
+  and unread-topic selection uses a date predicate.
+- Order cancellation locks the order and returns stock in the same transaction.
 - Passwords are now stored with `password_hash()` (bcrypt) instead of md5.
   Legacy md5 hashes keep working: they are verified and transparently
   re-hashed on the next successful login (front-end login form, admin

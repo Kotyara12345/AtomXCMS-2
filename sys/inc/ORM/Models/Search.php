@@ -46,6 +46,10 @@ class SearchModel extends FpsModel
 			return array();
 		}
 
+		$limit = max(1, min(100, (int)$limit));
+		$search = $this->getDbDriver()->escape(htmlspecialchars_decode((string)$search, ENT_QUOTES));
+		$modules = array_values(array_intersect((array)$modules, array('forum','news','stat','loads','shop')));
+		if (!$modules) return array();
 		$lmsql = '';
 		if (is_array($modules)) {
 			$lmsql .= '(';
@@ -57,14 +61,17 @@ class SearchModel extends FpsModel
 			}
 			$lmsql .= ') AND';
 		}
-		$results = $this->getDbDriver()->query("
+		$results = array();
+		for ($offset = 0; $offset < 10000 && count($results) < $limit; $offset += 100) {
+		$batch = $this->getDbDriver()->query("
 			SELECT * FROM `" . $this->getDbDriver()->getFullTableName('search_index') . "`
 			WHERE ".$lmsql." MATCH (`index`) AGAINST ('" . $search . "' IN BOOLEAN MODE)
-			ORDER BY MATCH (`index`) AGAINST ('" . $search . "' IN BOOLEAN MODE) DESC LIMIT " . $limit);
-		if ($results) {
-			foreach ($results as $key => $res) {
-				$results[$key] = new SearchEntity($res);
-			}
+			ORDER BY MATCH (`index`) AGAINST ('" . $search . "' IN BOOLEAN MODE) DESC, `id` ASC LIMIT " . $offset . ",100");
+		foreach ($batch as $res) {
+			if (atm_search_result_visible($res)) $results[] = new SearchEntity($res);
+			if (count($results) >= $limit) break;
+		}
+		if (count($batch) < 100) break;
 		}
 			
 		return $results;

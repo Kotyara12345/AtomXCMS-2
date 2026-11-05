@@ -1814,6 +1814,10 @@ Class ForumModule extends Module {
 					$file = $post_id . '-' . $i . '-' . date("YmdHi") . $ext;
 				$is_image = (in_array(strtolower($ext), $img_extentions)) ? 1 : 0;
 				// Перемещаем файл из временной директории сервера в директорию files
+				$validated = atm_validate_upload($_FILES[$attach_name]);
+				if ($validated === false) continue;
+				$file = getSecureFilename($_FILES[$attach_name]['name'], ROOT . '/sys/files/forum/');
+				$is_image = $validated['is_image'] ? 1 : 0;
 				if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], ROOT . '/sys/files/forum/' . $file)) {
 					chmod(ROOT . '/sys/files/forum/' . $file, 0644);
 					if ($is_image) {
@@ -2481,6 +2485,10 @@ Class ForumModule extends Module {
 					}
 
 					// Перемещаем файл из временной директории сервера в директорию files
+					$validated = atm_validate_upload($_FILES[$attach_name]);
+					if ($validated === false) continue;
+					$file = getSecureFilename($_FILES[$attach_name]['name'], ROOT . '/sys/files/forum/');
+					$is_image = $validated['is_image'] ? 1 : 0;
 					if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], ROOT . '/sys/files/forum/' . $file)) {
 						@chmod(ROOT . '/sys/files/forum/' . $file, 0644);
 						if ($is_image) {
@@ -2754,6 +2762,10 @@ Class ForumModule extends Module {
 				
 				
 				// Перемещаем файл из временной директории сервера в директорию files
+				$validated = atm_validate_upload($_FILES[$attach_name]);
+				if ($validated === false) continue;
+				$file = getSecureFilename($_FILES[$attach_name]['name'], ROOT . '/sys/files/forum/');
+				$is_image = $validated['is_image'] ? 1 : 0;
 				if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], ROOT . '/sys/files/forum/' . $file)) {
 					chmod(ROOT . '/sys/files/forum/' . $file, 0644);
 					if ($is_image) {

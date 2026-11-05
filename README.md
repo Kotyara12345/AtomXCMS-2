@@ -12,6 +12,16 @@ instead of the bundles the original shipped with.
 
 #### System Requirements
 
+Newsletter delivery and search indexing run in small batches during ordinary
+CMS requests. CLI, cron and operating-system tasks are not required. Without
+visits, queued work waits for the next request. The CMS must be able to write
+to `sys/tmp` and `sys/cache`. Queue files are protected PHP files; `ATM_JOB_DIR`
+can override the queue location. Search indexing uses existing tables and does
+not require runtime CREATE, RENAME or DROP permissions. The index updates
+gradually; current access rights are checked before displaying results.
+Failed tasks remain in `sys/tmp/jobs/failed`; details are recorded in the PHP
+error log. No installer or visitor needs a separate `bin` or `docs` directory.
+
 Reverse proxies: set the server environment variable `ATM_TRUSTED_PROXIES`
 to a comma-separated list of exact proxy IP addresses (IPv4 or IPv6).
 Forwarded scheme and client-IP headers are ignored by default. Configure the
@@ -21,7 +31,7 @@ proxy to overwrite `X-Forwarded-Proto` and append the real peer to
 * Operating system: Unix, Linux, Windows, Mac OS
 * Middleware: PHP 8.5 and MySQL 5.7+ / MariaDB 10.4+ (PDO MySQL driver).
   Developed and tested with PHP 8.5 and MariaDB 11.4.
-* PHP extensions: pdo_mysql, mbstring, gd, exif
+* PHP extensions: pdo_mysql, mbstring, gd, exif, fileinfo
 * Webserver: Apache with Mod Rewrite or Nginx with Rewrite Module.
 
 #### Front-end Stack
@@ -161,7 +171,17 @@ HTML5-разметка, адаптивная вёрстка) вместо биб
 * Операционная система: Unix, Linux, Windows, Mac OS
 * Серверное ПО: PHP 8.5 и MySQL 5.7+ / MariaDB 10.4+ (драйвер PDO MySQL).
   Разработка и тестирование выполнены на PHP 8.5 и MariaDB 11.4.
-* Расширения PHP: pdo_mysql, mbstring, gd, exif
+* Расширения PHP: pdo_mysql, mbstring, gd, exif, fileinfo
+
+Рассылка и индексация поиска выполняются небольшими порциями при обычных
+обращениях к CMS. CLI, cron и планировщик операционной системы не требуются.
+Без посещений очередь ждёт следующего запроса. Каталоги `sys/tmp` и
+`sys/cache` должны быть доступны PHP для записи. Файлы очереди защищены от
+чтения через браузер; путь можно изменить через `ATM_JOB_DIR`.
+Индекс обновляется постепенно в существующей таблице, без дополнительных
+прав CREATE, RENAME и DROP. Права доступа проверяются перед выдачей результатов.
+Неудачные задачи остаются в `sys/tmp/jobs/failed`, ошибки записываются в журнал
+PHP. Отдельные каталоги `bin` и `docs` для установки и работы CMS не нужны.
 * Веб-сервер: Apache с Mod Rewrite или Nginx с модулем перезаписи.
 
 #### Фронтенд-стек

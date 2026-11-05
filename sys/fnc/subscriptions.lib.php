@@ -561,14 +561,18 @@ function atm_subscription_render_user_settings($userId)
  * General rows (module = '') receive every new material. Category rows
  * receive only materials from the matching module and category.
  */
-function atm_subscription_get_recipients($module, $categoryIds)
+function atm_subscription_get_recipients($module, $categoryIds, $afterId = 0, $limit = null, &$lastId = null)
 {
 	$db = atm_subscription_db();
 	$table = atm_subscription_table();
 	if (empty($db) || empty($table)) return array();
 
 	$categoryIds = array_map('intval', (array)$categoryIds);
-	$rows = $db->query("SELECT * FROM `{$table}` WHERE `active` = 1");
+	$where = '';
+	if ($limit !== null) $where = " AND `id` > " . (int)$afterId . " AND (`module` = '' OR (`module` = '" . $db->escape($module) . "' AND `category_id` IN (" . implode(',', $categoryIds ?: array(0)) . "))) ORDER BY `id` LIMIT " . max(1, min(25, (int)$limit));
+	$rows = $db->query("SELECT * FROM `{$table}` WHERE `active` = 1" . $where);
+	$lastId = $afterId;
+	foreach ($rows as $row) if (isset($row['id'])) $lastId = max($lastId, (int)$row['id']);
 	if (empty($rows)) return array();
 
 	$userIds = array();
@@ -657,6 +661,18 @@ function atm_subscription_send_welcome($email, $name, $token)
  */
 function atm_subscription_notify_material($module, $entity, $categoryIds = null)
 {
+	if (!in_array((string)$module, array('news','stat'), true) || !is_object($entity)
+		|| !$entity->getId() || !$entity->getAvailable() || $entity->getPremoder() !== 'confirmed') return 0;
+	if (defined('ATM_MAILING_DRY_RUN') && ATM_MAILING_DRY_RUN) return atm_subscription_process_material($module, $entity, $categoryIds);
+	$event = hash('sha256', serialize(array($module, (int)$entity->getId(), $entity->getTitle(), $entity->getMain(), $entity->getDescription())));
+	try {
+		AtmJobs::enqueue('newsletter.material', array('module'=>$module,'id'=>(int)$entity->getId(),'event'=>$event), $event, true);
+		return 1;
+	} catch (Throwable $e) { error_log('AtomX cannot queue newsletter'); return 0; }
+}
+
+function atm_subscription_process_material($module, $entity, $categoryIds = null, $event = null, $afterId = 0, $limit = null, &$nextId = null)
+{
 	if (!in_array((string)$module, array('news', 'stat'), true) || !is_object($entity)) return 0;
 	if (is_callable(array($entity, 'getAvailable')) && !$entity->getAvailable()) return 0;
 	if (is_callable(array($entity, 'getPremoder')) && $entity->getPremoder() !== 'confirmed') return 0;
@@ -666,7 +682,7 @@ function atm_subscription_notify_material($module, $entity, $categoryIds = null)
 		if ($categoryIds === null) {
 			$categoryIds = atm_subscription_get_entity_category_ids($module, $entity);
 		}
-		$recipients = atm_subscription_get_recipients($module, $categoryIds);
+		$recipients = atm_subscription_get_recipients($module, $categoryIds, $afterId, $limit, $nextId);
 	} catch (Exception $e) {
 		return 0;
 	}
@@ -704,15 +720,38 @@ function atm_subscription_notify_material($module, $entity, $categoryIds = null)
 			'unsubscribe_text' => __('Unsubscribe from mailing'),
 			'unsubscribe_url'  => atm_subscription_unsubscribe_url($recipient['token']),
 		);
-		try {
-			$mailer = new AtmMail(ROOT . '/sys/settings/email_templates/');
-			$mailer->prepare('new_material');
-			if ($mailer->sendMail($email, $subject, $context)) $sent++;
-		} catch (Exception $e) {
-			// Do not interrupt content publishing because of one bad address.
-		}
+		AtmJobs::enqueue('newsletter.delivery', array('to'=>$email,'subject'=>$subject,'context'=>$context,
+			'token'=>$recipient['token'],'module'=>$module,'entity_id'=>$id), $event . ':' . $email, true);
+		$sent++;
 	}
 	return $sent;
+}
+
+function atm_subscription_deliver_job($payload)
+{
+	$db = atm_subscription_db();
+	$table = atm_subscription_table();
+	if (!$db || !$table) throw new RuntimeException('Subscription store unavailable');
+	$rows = $db->query("SELECT `active` FROM `{$table}` WHERE `token` = '" . $db->escape($payload['token']) . "' LIMIT 1");
+	if (empty($rows[0]['active'])) return; // Respect an unsubscribe while the mail was queued.
+	if (!atm_search_result_visible(array('entity_table'=>$payload['module'],'entity_id'=>$payload['entity_id']), true)) return;
+	$mailer = new AtmMail(ROOT . '/sys/settings/email_templates/');
+	$mailer->prepare('new_material');
+	if (!$mailer->sendMail($payload['to'], $payload['subject'], $payload['context'])) throw new RuntimeException('Mail transport rejected message');
+}
+
+function atm_subscription_process_batch($payload)
+{
+	if (!in_array($payload['module'], array('news','stat'), true)) throw new RuntimeException('Invalid newsletter module');
+	$registry = Register::getInstance();
+	$entity = $registry['ModManager']->getModelInstance($payload['module'])->getById((int)$payload['id']);
+	if (!$entity) return null;
+	$cursor = isset($payload['cursor']) ? (int)$payload['cursor'] : 0;
+	$next = $cursor;
+	atm_subscription_process_material($payload['module'], $entity, null, $payload['event'], $cursor, 25, $next);
+	if ($next <= $cursor) return null;
+	$payload['cursor'] = $next;
+	return $payload;
 }
 
 

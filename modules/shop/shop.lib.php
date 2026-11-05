@@ -1428,46 +1428,43 @@ class ShopHelper
 
     public static function releaseOrderStock($orderId)
     {
-        $order = self::getOrder($orderId);
-        if (!$order || !empty($order['stock_released'])) return true;
-
-        $items = self::getOrderItems($orderId);
-        $variants = self::table('variants');
-        $orders = self::table('orders');
-        try {
-            self::db()->query('START TRANSACTION');
-            foreach ($items as $item) {
-                $variantId = (int)$item['variant_id'];
-                $qty = (int)$item['quantity'];
-                if ($variantId < 1 || $qty < 1) continue;
-                self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` + {$qty} WHERE `id` = {$variantId}");
-            }
-            self::db()->query("UPDATE `{$orders}` SET `stock_released` = 1, `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "'
-                WHERE `id` = " . (int)$orderId);
-            self::db()->query('COMMIT');
-            return true;
-        } catch (Throwable $e) {
-            try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
-            return false;
-        }
+        return self::setOrderStatus($orderId, 'cancelled');
     }
 
     public static function setOrderStatus($orderId, $status)
     {
         $statuses = self::statuses();
         if (!isset($statuses[$status])) return false;
-        $order = self::getOrder($orderId);
-        if (!$order) return false;
-
-        if ($status === 'cancelled' && empty($order['stock_released'])) {
-            if (!self::releaseOrderStock($orderId)) return false;
+        $orders = self::table('orders');
+        $variants = self::table('variants');
+        $orderId = (int)$orderId;
+        try {
+            self::db()->query('START TRANSACTION');
+            $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
+            if (empty($rows[0])) throw new RuntimeException('Order not found');
+            $order = $rows[0];
+            // Released stock cannot be reserved again by just changing a label.
+            if (!empty($order['stock_released']) && $status !== 'cancelled') throw new RuntimeException('Cancelled order cannot be reopened');
+            $released = !empty($order['stock_released']) ? 1 : 0;
+            if ($status === 'cancelled' && !$released) {
+                $itemsTable = self::table('order_items');
+                $items = self::db()->query("SELECT `variant_id`, `quantity` FROM `{$itemsTable}` WHERE `order_id` = {$orderId} ORDER BY `variant_id`");
+                usort($items, function ($a, $b) { return (int)$a['variant_id'] <=> (int)$b['variant_id']; });
+                foreach ($items as $item) {
+                    $variantId = (int)$item['variant_id'];
+                    $qty = (int)$item['quantity'];
+                    if ($variantId > 0 && $qty > 0) self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` + {$qty} WHERE `id` = {$variantId}");
+                }
+                $released = 1;
+            }
+            self::db()->query("UPDATE `{$orders}` SET `status` = '" . self::esc($status) . "', `stock_released` = {$released},
+                `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "' WHERE `id` = {$orderId}");
+            self::db()->query('COMMIT');
+            return true;
+        } catch (Throwable $e) {
+            try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
+            return false;
         }
-
-        self::db()->save('shop_orders', array(
-            'status' => $status,
-            'updated_at' => date('Y-m-d H:i:s'),
-        ), array('id' => (int)$orderId));
-        return true;
     }
 
     public static function sendOrderEmails($order, $items)

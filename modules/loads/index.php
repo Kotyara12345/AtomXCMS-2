@@ -1462,6 +1462,7 @@ Class LoadsModule extends Module {
 	 */
 	private function __saveFile($file)
     {
+		if (atm_validate_upload($file) === false) return false;
 		$path = getSecureFilename($file['name'], $this->attached_files_path);
 		
 		

@@ -15,13 +15,18 @@ class UserAuth
      */
     public function setTimeVisit()
     {
+        $userId = !empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : 0;
+        if ($userId < 1) return;
+        $last = isset($_SESSION['last_visit_write']) ? $_SESSION['last_visit_write'] : array();
+        if (isset($last['user'], $last['time']) && (int)$last['user'] === $userId && (int)$last['time'] > time() - 60) return;
         $Register = Register::getInstance();
         $FpsDB = $Register['DB'];
         
         $query = "UPDATE `" . $FpsDB->getFullTableName('users') . "`
                 SET last_visit=NOW()
-                WHERE id=".$_SESSION['user']['id'];
+                WHERE id=" . $userId;
         $FpsDB->query( $query );
+        $_SESSION['last_visit_write'] = array('user' => $userId, 'time' => time());
     }
 
 
@@ -62,6 +67,7 @@ class UserAuth
             redirect('/users/baned/');
         }
 
+        if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
         $_SESSION['user'] = $user;
 
         // Функция getNewThemes() помещает в массив $_SESSION['newThemes'] ID тем,
@@ -80,8 +86,7 @@ class UserAuth
         
 	    $query = "SELECT id, UNIX_TIMESTAMP(last_post) AS unix_last_post
 			FROM `" . $FpsDB->getFullTableName('themes') . "` 
-			GROUP BY id
-			HAVING unix_last_post > " . $_SESSION['user']['unix_last_visit'];
+			WHERE last_post > FROM_UNIXTIME(" . (int)(isset($_SESSION['user']['unix_last_visit']) ? $_SESSION['user']['unix_last_visit'] : 0) . ")";
 
 	    $res = $FpsDB->query($query);
 

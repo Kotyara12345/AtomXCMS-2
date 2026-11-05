@@ -34,6 +34,16 @@ try {
     $db->writeSqlCache($sql, array('id'=>2));
     $params->setValue($db, array(':id1'=>1));
     check($db->getSqlCache($sql) === array('id'=>1), 'First cached result was overwritten');
+    $db->cleanSqlCache();
+    check(!$db->turnSqlCache($sql), 'Invalidated SQL result was reused');
+    $db->writeSqlCache($sql, array());
+    check($db->getSqlCache($sql) === array(), 'Empty SQL result could not be cached');
+    $cacheKey = new ReflectionMethod('FpsPDO', 'sqlCacheFilename'); $cacheKey->setAccessible(true);
+    $cachePath = ROOT.'/sys/cache/sql/'.$cacheKey->invoke($db, $sql);
+    file_put_contents($cachePath, serialize(array('expires'=>time()-1,'data'=>array('stale'))));
+    check(!$db->turnSqlCache($sql), 'Expired SQL result was reused');
+    file_put_contents($cachePath, 'truncated');
+    check(!$db->turnSqlCache($sql), 'Corrupt SQL cache was accepted');
 
     $log = new Logination;
     $logDir = ROOT . '/sys/logs/system_log/';
@@ -81,6 +91,7 @@ try {
     echo "Core regression checks passed.\n";
 } finally {
     foreach(glob(ROOT.'/sys/cache/sql/*.dat') as $file) unlink($file);
+    if(is_file(ROOT.'/sys/cache/sql/.generation')) unlink(ROOT.'/sys/cache/sql/.generation');
     rmdir(ROOT.'/sys/cache/sql');rmdir(ROOT.'/sys/cache');
     rmdir(ROOT.'/sys/logs/system_log');rmdir(ROOT.'/sys/logs');rmdir(ROOT.'/sys');rmdir(ROOT);
 }

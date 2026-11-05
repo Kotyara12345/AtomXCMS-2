@@ -257,37 +257,16 @@ class Validate {
 					if (@empty($_FILES[$title]['name'])) continue;
 					
 					
-					// type
-					if (!empty($params['type'])) {
-						$ext = strrchr($_FILES[$title]['name'], ".");
-						
-						switch ($params['type']) {
-							// image files
-							case 'image':
-								$img_extentions = array('.png','.jpg','.gif','.jpeg', '.PNG','.JPG','.GIF','.JPEG');
-								
-								if (($_FILES[$title]['type'] != 'image/jpeg'
-								&& $_FILES[$title]['type'] != 'image/jpg'
-								&& $_FILES[$title]['type'] != 'image/gif'
-								&& $_FILES[$title]['type'] != 'image/png')
-								|| !in_array(strtolower($ext), $img_extentions)) {
-									$errors[] = $this->getErrorMessage('type', $params, $title);
-								}
-								break;
-								
-							// other files (for example loads module attaches)	
-							case 'file':
-								$denied_exts = array('.php', '.phtml', '.php3', '.html', '.htm', '.pl', 'js');
-								if (in_array(strtolower($ext), $denied_exts)) 
-									$errors[] = $this->getErrorMessage('type', $params, $title);
-								break;
-						}
+					$validated = atm_validate_upload($_FILES[$title], isset($params['type']) && $params['type'] === 'image');
+					if ($validated === false) {
+						$errors[] = $this->getErrorMessage('type', $params, $title);
+						continue;
 					}
 					
 					// size
 					if (!empty($params['max_size'])) {
 						//pr($title);
-						if ($_FILES[$title]['size'] > $params['max_size']) {
+						if ($validated['size'] > $params['max_size']) {
 							$errors[] = $this->getErrorMessage('max_size', $params, $title);
 						}
 					}

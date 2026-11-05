@@ -225,6 +225,11 @@ function getMicroTime($start = null)
 	return $start === null ? microtime(true) : microtime(true) - $start;
 }
 
+function atm_invalidate_search_index($table)
+{
+	$GLOBALS['search_invalidations'][] = $table;
+}
+
 function atm_password_hash($password)
 {
 	return password_hash((string)$password, PASSWORD_DEFAULT);
@@ -418,6 +423,9 @@ $production = (new ReflectionClass('FpsPDO'))->newInstanceWithoutConstructor();
 $connection = new ReflectionProperty('FpsPDO', 'dbh');
 $connection->setAccessible(true);
 $connection->setValue($production, $pdo);
+$db->query("CREATE TABLE `" . $prefix . "cache_probe` (`id` int PRIMARY KEY, `value` varchar(32)) ENGINE=InnoDB");
+$db->query("INSERT INTO `" . $prefix . "cache_probe` VALUES (1,'first'),(2,'second')");
+$Register['Config'] = new Config;
 Config::$values['cache_querys'] = 1;
 $statement = new ReflectionProperty('FpsPDO', 'statement');
 $statement->setAccessible(true);
@@ -425,14 +433,44 @@ $cacheKey = new ReflectionMethod('FpsPDO', 'sqlCacheFilename');
 $cacheKey->setAccessible(true);
 $cacheFiles = array();
 try {
-	$first = $production->select('admin_audit', DB_ALL, array('cond'=>array('id'=>1)));
+	$first = $production->select('cache_probe', DB_ALL, array('cond'=>array('id'=>1)));
 	$cacheFiles[] = ROOT . '/sys/cache/sql/' . $cacheKey->invoke($production, $statement->getValue($production)->queryString);
-	$second = $production->select('admin_audit', DB_ALL, array('cond'=>array('id'=>2)));
+	$second = $production->select('cache_probe', DB_ALL, array('cond'=>array('id'=>2)));
 	$cacheFiles[] = ROOT . '/sys/cache/sql/' . $cacheKey->invoke($production, $statement->getValue($production)->queryString);
 	atm_it_assert(!empty($first[0]) && (int)$first[0]['id'] === 1, 'Production adapter lost the first result.');
 	atm_it_assert(!empty($second[0]) && (int)$second[0]['id'] === 2, 'Production cache mixed bound IDs.');
-	$again = $production->select('admin_audit', DB_ALL, array('cond'=>array('id'=>1)));
+	$before = $statement->getValue($production);
+	$again = $production->select('cache_probe', DB_ALL, array('cond'=>array('id'=>1)));
 	atm_it_assert($again === $first, 'Production cache did not preserve the first result.');
+	atm_it_assert($statement->getValue($production) === $before, 'Repeated select did not use the cache.');
+	$production->save('cache_probe', array('id'=>1,'value'=>'updated'));
+	$updated = $production->select('cache_probe', DB_ALL, array('cond'=>array('id'=>1)));
+	atm_it_assert($updated[0]['value'] === 'updated', 'save() left a stale SQL cache.');
+	$pdo->beginTransaction();
+	$production->query("UPDATE `" . $prefix . "cache_probe` SET `value`='committed' WHERE `id`=1");
+	$production->query('COMMIT');
+	$updated = $production->select('cache_probe', DB_ALL, array('cond'=>array('id'=>1)));
+	atm_it_assert($updated[0]['value'] === 'committed', 'COMMIT left a stale SQL cache.');
+	$production->delete($prefix . 'cache_probe', array('id'=>1));
+	atm_it_assert($production->select('cache_probe', DB_ALL, array('cond'=>array('id'=>1))) === array(), 'delete() left a stale SQL cache.');
+	$GLOBALS['search_invalidations'] = array();
+	$pdo->beginTransaction();
+	$production->query("UPDATE `" . $prefix . "cache_probe` SET `value`='pending' WHERE `id`=2");
+	atm_it_assert($GLOBALS['search_invalidations'] === array(), 'Uncommitted changes queued a search build.');
+	$production->query('COMMIT');
+	atm_it_assert(in_array('cache_probe', $GLOBALS['search_invalidations'], true), 'Committed raw SQL did not invalidate search.');
+	$GLOBALS['search_invalidations'] = array();
+	$pdo->beginTransaction();
+	$production->query("UPDATE `" . $prefix . "cache_probe` SET `value`='rolledback' WHERE `id`=2");
+	$production->query('ROLLBACK');
+	atm_it_assert($GLOBALS['search_invalidations'] === array(), 'Rolled-back changes queued a search build.');
+	$db->query("CREATE TABLE `" . $prefix . "news` (`id` int PRIMARY KEY, `title` varchar(32), `views` int) ENGINE=InnoDB");
+	$db->query("INSERT INTO `" . $prefix . "news` VALUES(1,'title',0)");
+	$GLOBALS['search_invalidations'] = array();
+	$production->query("UPDATE `" . $prefix . "news` SET `views` = `views` + 1 WHERE `id`=1");
+	atm_it_assert($GLOBALS['search_invalidations'] === array(), 'View counter unnecessarily queued a full search rebuild.');
+	$production->query("UPDATE `" . $prefix . "news` SET `title` = 'changed' WHERE `id`=1");
+	atm_it_assert(in_array('news', $GLOBALS['search_invalidations'], true), 'Changed searchable text did not queue a rebuild.');
 } finally {
 	foreach (array_unique($cacheFiles) as $file) if (is_file($file)) unlink($file);
 	Config::$values['cache_querys'] = 0;

@@ -110,13 +110,6 @@ class SearchModule extends Module {
 				$error = $error . '<li>' . sprintf(__('Very small query'), $this->minInputStr) . '</li>';
 
 
-			if ($this->cached) {
-				$this->cacheKey .= '_' . md5($str . '|keyboard-layout-v3');
-				if ($this->Cache->check($this->cacheKey)) {
-					$html = $this->Cache->read($this->cacheKey);
-					return $this->_view($html);
-				}
-			}
 
 			$_SESSION['search_query'] = $str;
 			if (!empty($error)) {
@@ -129,6 +122,9 @@ class SearchModule extends Module {
 			$str = Plugins::intercept('before_search', $str);
 			$results = $this->__search($str, $modules);
 			$results = Plugins::intercept('search_results', $results);
+			$results = array_values(array_filter((array)$results, function ($result) {
+				return is_object($result) && atm_search_result_visible($result->asArray());
+			}));
 			
 			
 			if (count($results) && is_array($results)) {
@@ -167,15 +163,7 @@ class SearchModule extends Module {
 				'error' => $error,
 				)));
 		
-		//write into cache
-		if ($this->cached && !empty($str)) {
-			//set users_id that are on this page
-			$this->setCacheTag(array(
-				'search_str_' . $str,
-			));
-			$this->cacheKey .= '_' . md5($str . '|keyboard-layout-v3');
-			$this->Cache->write($source, $this->cacheKey, $this->cacheTags);
-		}
+		// Cache data in __search(), never rendered snippets that bypass access checks.
 
 		return $this->_view($source);
 	}
@@ -241,7 +229,7 @@ class SearchModule extends Module {
 	 */
 	private function __checkIndex() {
 		$meta_file = $this->getTmpPath('meta.dat');
-		$indexVersion = 2;
+		$indexVersion = 4;
 		$shopIndexed = $this->__isShopSearchAvailable() ? 1 : 0;
 		$meta = array();
 		if (file_exists($meta_file) && is_readable($meta_file)) {
@@ -258,19 +246,35 @@ class SearchModule extends Module {
 			touchDir($this->getTmpPath());
 		}
 
-		if ($this->__createIndex() === false) {
-			return false;
-		}
-
-		$index_interval = intval($this->Register['Config']->read('index_interval', $this->module));
-		if ($index_interval < 1)
-			$index_interval = 1;
-		$meta['expire'] = (time() + ($index_interval * 84000));
-		$meta['version'] = $indexVersion;
-		$meta['shop'] = $shopIndexed;
-		file_put_contents($meta_file, serialize($meta));
-		return true;
+		try { AtmJobs::enqueue('search.rebuild', array(), 'search'); }
+		catch (Throwable $e) { error_log('AtomX cannot queue search rebuild'); }
+		return false;
 	}
+
+	public function rebuildIndexStep($state = array()) {
+        $min = (int)Config::read('min_lenght', 'search');
+        if ($min > 0) $this->minInputStr = $min;
+        if ($this->__isShopSearchAvailable() && !in_array('shop_products', $this->tables, true)) $this->tables[] = 'shop_products';
+        touchDir($this->getTmpPath());
+        if (!$state) {
+            $live = $this->DB->getFullTableName('search_index');
+            $latest = $this->DB->query("SELECT MAX(`date`) AS latest FROM `{$live}`");
+            $stamp = max(time(), !empty($latest[0]['latest']) ? strtotime($latest[0]['latest']) + 1 : 0);
+            $state = array('table'=>0,'cursor'=>0,'stamp'=>date('Y-m-d H:i:s', $stamp),
+                'dirty'=>(string)@file_get_contents($this->getTmpPath('dirty.dat')));
+        }
+        $next = $this->__createIndex($state);
+        if ($next === false) return $state;
+        if (is_array($next)) return $next;
+        if ((string)@file_get_contents($this->getTmpPath('dirty.dat')) !== $state['dirty']) return array();
+        $meta = serialize(array('expire'=>time() + max(1, (int)Config::read('index_interval', 'search')) * 86400,
+            'version'=>4,'shop'=>$this->__isShopSearchAvailable() ? 1 : 0,'built'=>bin2hex(random_bytes(8))));
+        $tmp = tempnam($this->getTmpPath(), '.meta-');
+        if ($tmp === false) throw new RuntimeException('Cannot save search metadata');
+        try { if (file_put_contents($tmp, $meta) !== strlen($meta) || !rename($tmp, $this->getTmpPath('meta.dat'))) throw new RuntimeException('Cannot save search metadata'); }
+        finally { if (is_file($tmp)) @unlink($tmp); }
+        return null;
+    }
 
 	/**
 	 * @return boolean
@@ -320,7 +324,25 @@ class SearchModule extends Module {
 		if ($limit < 1)
 			$limit = 10;
 		
+		sort($modules);
+		$access = array_intersect_key($_SESSION, array_flip(array_filter(array_keys($_SESSION), function ($key) { return strpos($key, 'access_forum_') === 0; })));
+		$meta = @file_get_contents($this->getTmpPath('meta.dat'));
+		$key = $this->cacheKey . '_' . hash('sha256', serialize(array('search-v4', $string, $modules, $limit,
+			isset($_SESSION['user']) ? $_SESSION['user'] : array(), $access, Config::read('language'), $meta)));
+		if ($this->cached && $this->Cache->check($key)) {
+			$rows = @unserialize($this->Cache->read($key), array('allowed_classes'=>false));
+			if (is_array($rows)) {
+				$results = array();
+				foreach ($rows as $row) if (is_array($row) && atm_search_result_visible($row)) $results[] = new SearchEntity($row);
+				if (count($results) === count($rows)) return $results;
+			}
+		}
 		$results = $this->Model->getSearchResults($string, $limit, $modules);
+		if ($this->cached) {
+			$rows = array();
+			foreach ($results as $result) $rows[] = $result->asArray();
+			$this->Cache->write(serialize($rows), $key, array('module_search'), array('lifetime'=>60));
+		}
 		
 		return $results;
 	}
@@ -459,7 +481,8 @@ class SearchModule extends Module {
 	 *
 	 * Create index for search engine
 	 */
-	private function __createIndex() {
+	private function __createIndex($state) {
+        touchDir($this->getTmpPath());
         $lock_file = $this->getTmpPath('lock.dat');
 
         // Use an advisory lock instead of a plain file-existence check so two
@@ -472,19 +495,15 @@ class SearchModule extends Module {
         }
 
 
-		if (function_exists('ignore_user_abort'))
-			ignore_user_abort();
-		if (function_exists('set_time_limit'))
-			set_time_limit(180);
-
-
-		$this->Model->truncateTable();
+        $build = 'search_index';
+        $live = $this->DB->getFullTableName($build);
+        try {
 
 		// cache of topic titles (forum messages are titled with their topic)
 		$themesModel = $this->Register['ModManager']->getModelInstance('Themes');
 		$themeTitles = array();
 
-		foreach ($this->tables as $table) {
+		foreach (array_slice($this->tables, (int)$state['table'], 1) as $table) {
 			// the forum sections table ('forums') is handled by the ForumModel class
 			// and shop products by the module's ShopModel class.
 			if ($table === 'forums') {
@@ -494,19 +513,19 @@ class SearchModule extends Module {
 			} else {
 				$className = $this->Register['ModManager']->getModelNameFromModule($table);
 			}
-			if (!class_exists($className)) {
-				continue;
-			}
+			if (!class_exists($className)) { $state['table']++; $state['cursor'] = 0; return $state; }
 			$Model = new $className;
 			$conditions = ($table === 'shop_products') ? array('active' => 1) : array();
+			if (in_array($table, array('news','stat','loads'), true)) $conditions = array('available'=>1,'premoder'=>'confirmed');
 			
-			for ($i = 1; $i < 10000; $i++) {
-				$records = $Model->getCollection($conditions, array('limit' => 100, 'page' => $i));
-				if (empty($records)) break;
+			{
+                $conditions[] = 'id > ' . (int)$state['cursor'];
+                $records = $Model->getCollection($conditions, array('limit'=>10, 'order'=>'id ASC'));
 
 
 				if (count($records) && is_array($records)) {
 					foreach ($records as $rec) {
+                        $state['cursor'] = (int)$rec->getId();
 
 						switch ($table) {
 							case 'news':
@@ -598,25 +617,32 @@ class SearchModule extends Module {
 
 						//we must update record if an exists
 						$data = array(
+							'source_id' => (int)$rec->getId(),
 							'index' => $text,
 							'entity_id' => $entity_id,
 							'entity_title' => $entity_title,
-							'entity_table' => $table,
+							'entity_table' => $table === 'posts' ? 'posts:' . (int)$rec->getId() : $table,
 							'entity_view' => $entity_view,
 							'module' => $module,
-							'date' => new Expr('NOW()'),
+							'date' => $state['stamp'],
 						);
-						$entity = new SearchEntity($data);
-						$entity->save();
+						if (atm_search_result_visible($data, true)) {
+                            unset($data['source_id']);
+                            $existing = $this->DB->query("SELECT `id` FROM `{$live}` WHERE `entity_table` = '" . $data['entity_table'] . "' AND `entity_id` = " . (int)$entity_id . " LIMIT 1");
+                            if (!empty($existing[0]['id'])) $data['id'] = (int)$existing[0]['id'];
+                            $this->DB->save($build, $data);
+                        }
 					}
 				}
 			}
 		}
 
-        flock($lock_handle, LOCK_UN);
-        fclose($lock_handle);
-        @unlink($lock_file);
-        return true;
+        if (isset($records) && count($records) < 10) { $state['table']++; $state['cursor'] = 0; }
+        if ($state['table'] < count($this->tables)) return $state;
+        $this->DB->query("DELETE FROM `{$live}` WHERE `date` <> '" . $this->DB->escape($state['stamp']) . "'");
+        return null;
+        } finally { flock($lock_handle, LOCK_UN); fclose($lock_handle); }
+
 	}
 
 	/**

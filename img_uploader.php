@@ -18,14 +18,16 @@ $dir = ROOT . '/sys/files/pages/';
 if (!file_exists($dir)) mkdir($dir, 0777, true);
 
 
-$_FILES['file']['type'] = strtolower($_FILES['file']['type']);
+$token = isset($_POST['csrf_token']) ? $_POST['csrf_token'] : (isset($_SERVER['HTTP_X_CSRF_TOKEN']) ? $_SERVER['HTTP_X_CSRF_TOKEN'] : '');
+if (empty($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST'
+    || !is_string($token) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $token)) {
+    http_response_code(403); exit;
+}
+$validated = atm_validate_upload(isset($_FILES['file']) ? $_FILES['file'] : null, true);
+if ($validated === false) { http_response_code(400); echo json_encode(array('error'=>'Invalid image')); exit; }
 
 
-if ($_FILES['file']['type'] == 'image/png'
-|| $_FILES['file']['type'] == 'image/jpg'
-|| $_FILES['file']['type'] == 'image/gif'
-|| $_FILES['file']['type'] == 'image/jpeg'
-|| $_FILES['file']['type'] == 'image/pjpeg')
+if ($validated['is_image'])
 {	
 	// setting file's mysterious name
 	$ext = '.jpg';
@@ -35,11 +37,11 @@ if ($_FILES['file']['type'] == 'image/png'
 	} else if ($info && $info[2] === IMAGETYPE_GIF) {
 		$ext = '.gif';
 	}
-	$filename = md5(uniqid('', true)) . $ext;
+	$filename = bin2hex(random_bytes(16)) . $validated['extension'];
 	$file = $dir.$filename;
 	 
 	// copying
-	copy($_FILES['file']['tmp_name'], $file);
+	if (!move_uploaded_file($_FILES['file']['tmp_name'], $file)) { http_response_code(500); exit; }
 	atm_webp_after_upload($file);
 	 
 	// displaying file

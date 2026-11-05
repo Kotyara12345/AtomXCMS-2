@@ -78,13 +78,15 @@ function downloadAttaches($module, $entity_id) {
 	for ($i = 1; $i <= $max_attach; $i++) {
 		$attach_name = 'attach' . $i;
 		if (!empty($_FILES[$attach_name]['name'])) {
+			$validated = atm_validate_upload($_FILES[$attach_name]);
+			if ($validated === false) { $attaches = false; continue; }
 		
 		
 			// Извлекаем из имени файла расширение
 			$filename = getSecureFilename($_FILES[$attach_name]['name'], $files_dir);
 			$ext = strrchr($_FILES[$attach_name]['name'], ".");
 
-			$is_image = isImageFile($_FILES[$attach_name]['type'], $ext) ? 1 : 0;
+			$is_image = $validated['is_image'] ? 1 : 0;
 
 			// Перемещаем файл из временной директории сервера в директорию files
 			if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], $files_dir . $filename)) {
@@ -141,13 +143,15 @@ function downloadAtomAttaches($module, $entity_id = '') {
 	for ($i = 1; $i <= $max_attach; $i++) {
 		$attach_name = 'attach' . $i;
 		if (!empty($_FILES[$attach_name]['name'])) {
+			$validated = atm_validate_upload($_FILES[$attach_name]);
+			if ($validated === false) continue;
 		
 		
 			// Извлекаем из имени файла расширение
 			$filename = getSecureFilename($_FILES[$attach_name]['name'], $files_dir);
 			$ext = strrchr($_FILES[$attach_name]['name'], ".");
 
-			$is_image = isImageFile($_FILES[$attach_name]['type'], $ext);
+			$is_image = $validated['is_image'];
 
 			// Перемещаем файл из временной директории сервера в директорию files
 			if (move_uploaded_file($_FILES[$attach_name]['tmp_name'], $files_dir . $filename)) {
@@ -204,7 +208,7 @@ function getSecureFilename($filename, $dirToCheck) {
 	$ext = (isPermittedFile($ext)) ? strtolower($ext) : '.txt';
 
 	
-	$filename = preg_replace('#[^a-z\d_\-]+#iu', 'x', mb_substr($filename, 0, -mb_strlen($ext)));
+	$filename = bin2hex(random_bytes(16));
 	while (file_exists($dirToCheck . $filename . $ext)) {
 		$filename .= rand(0, 999);
 		clearstatcache();
@@ -232,11 +236,60 @@ function isImageFile($mime, $ext = null) {
 
 
 function isPermittedFile($ext) {
-	/**
-	 * Wrong extention for download files
-	 */
-	$deny_extentions = array('.php', '.phtml', '.php3', '.html', '.htm', '.pl', '.js');
-	
-	return !(empty($ext) || in_array(strtolower($ext), $deny_extentions));
+	return in_array(strtolower((string)$ext), array('.jpg','.jpeg','.png','.gif','.webp','.pdf','.txt','.csv',
+		'.zip','.rar','.7z','.gz','.tar','.bz2','.mp3','.mp4','.ogg','.wav','.webm',
+		'.doc','.docx','.xls','.xlsx','.ppt','.pptx','.odt','.ods'), true);
+}
+
+/** Validate bytes on disk, never the MIME or size supplied by the browser. */
+function atm_validate_upload($file, $imagesOnly = false, $requireUploaded = true) {
+	if (!is_array($file) || !isset($file['name'], $file['tmp_name']) || !is_string($file['name']) || !is_string($file['tmp_name'])) return false;
+	if (isset($file['error']) && (int)$file['error'] !== UPLOAD_ERR_OK) return false;
+	$tmp = $file['tmp_name'];
+	if (!is_file($tmp) || ($requireUploaded && !is_uploaded_file($tmp))) return false;
+	$limit = (int)getenv('ATM_UPLOAD_MAX_BYTES');
+	if ($limit < 1) $limit = 20 * 1024 * 1024;
+	$size = filesize($tmp);
+	if ($size === false || $size < 1 || $size > $limit) return false;
+	$ext = '.' . strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+	if (!isPermittedFile($ext) || !class_exists('finfo')) return false;
+	$mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmp);
+	$images = array('.jpg'=>'image/jpeg','.jpeg'=>'image/jpeg','.png'=>'image/png','.gif'=>'image/gif','.webp'=>'image/webp');
+	$isImage = isset($images[$ext]);
+	if ($imagesOnly && !$isImage) return false;
+	if ($isImage) {
+		$info = @getimagesize($tmp);
+		if (!$info || $mime !== $images[$ext] || empty($info['mime']) || $info['mime'] !== $mime
+			|| $info[0] < 1 || $info[1] < 1 || $info[0] > 10000 || $info[1] > 10000 || $info[0] * $info[1] > 20000000) return false;
+		$memory = trim((string)ini_get('memory_limit'));
+		if ($memory !== '-1') {
+			$bytes = (float)$memory;
+			$suffix = strtolower(substr($memory, -1));
+			if ($suffix === 'g') $bytes *= 1024 * 1024 * 1024;
+			elseif ($suffix === 'm') $bytes *= 1024 * 1024;
+			elseif ($suffix === 'k') $bytes *= 1024;
+			if ($bytes > 0 && $info[0] * $info[1] * 6 + $size * 2 + 8388608 > $bytes - memory_get_usage(true)) return false;
+		}
+		if (!function_exists('imagecreatefromstring')) return false;
+		$image = @imagecreatefromstring(file_get_contents($tmp));
+		if ($image === false) return false;
+		unset($image);
+	} else {
+		$types = array(
+			'.pdf'=>array('application/pdf'), '.txt'=>array('text/plain'), '.csv'=>array('text/plain','text/csv','application/csv'),
+			'.zip'=>array('application/zip','application/x-zip-compressed'), '.rar'=>array('application/vnd.rar','application/x-rar'),
+			'.7z'=>array('application/x-7z-compressed'), '.gz'=>array('application/gzip','application/x-gzip'),
+			'.tar'=>array('application/x-tar'), '.bz2'=>array('application/x-bzip2'),
+			'.mp3'=>array('audio/mpeg'), '.mp4'=>array('video/mp4'), '.ogg'=>array('audio/ogg','application/ogg'),
+			'.wav'=>array('audio/x-wav','audio/wav'), '.webm'=>array('video/webm','audio/webm'),
+			'.doc'=>array('application/msword','application/x-ole-storage'), '.xls'=>array('application/vnd.ms-excel','application/x-ole-storage'),
+			'.ppt'=>array('application/vnd.ms-powerpoint','application/x-ole-storage')
+		);
+		foreach (array('.docx','.xlsx','.pptx','.odt','.ods') as $office) $types[$office] = array('application/zip',
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			'application/vnd.openxmlformats-officedocument.presentationml.presentation','application/vnd.oasis.opendocument.text','application/vnd.oasis.opendocument.spreadsheet');
+		if (!isset($types[$ext]) || !in_array($mime, $types[$ext], true)) return false;
+	}
+	return array('extension'=>$ext, 'mime'=>$mime, 'size'=>$size, 'is_image'=>$isImage);
 }
 

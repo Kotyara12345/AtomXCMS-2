@@ -621,6 +621,10 @@ function shop_admin_save_uploaded_image($tmp)
         return '';
     }
     $extension = $typeMap[$type];
+    if (atm_validate_upload(array('name'=>'image.'.$extension,'tmp_name'=>$tmp), true) === false) {
+        shop_admin_image_error('Недопустимое изображение или превышен размер файла.');
+        return '';
+    }
 
     $fullDir = ROOT . '/sys/files/shop/full';
     $previewDir = ROOT . '/sys/files/shop/preview';

@@ -34,7 +34,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo_mysql, mbstring, gd, exif
+          extensions: pdo_mysql, mbstring, gd, exif, fileinfo
           coverage: none
 
       - name: Lint all PHP files

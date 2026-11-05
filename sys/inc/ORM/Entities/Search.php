@@ -31,6 +31,7 @@ class SearchEntity extends FpsEntity
 	protected $id;
 	protected $index;
 	protected $entity_id;
+	protected $source_id;
 	protected $entity_title;
 	protected $entity_table;
 	protected $entity_view;

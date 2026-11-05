@@ -147,6 +147,7 @@ new Bootstrap;
 
 
 include_once ROOT . '/sys/fnc/geshi/geshi.php';
+if (PHP_SAPI !== 'cli' && isInstall()) register_shutdown_function(array('AtmJobs', 'maintenance'));
 
 
 

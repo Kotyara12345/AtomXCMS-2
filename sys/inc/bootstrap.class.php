@@ -92,7 +92,7 @@ class Bootstrap
         * Auto login... if user during a previos
         * visit set AUTOLOGIN option
         */
-        if (!isset($_SESSION['user']) and isset($_COOKIE['autologin']))
+        if (!isset($_SESSION['user']) && (isset($_COOKIE['atm_user_remember']) || isset($_COOKIE['autologin'])))
             $UserAuth->autoLogin();
         
         /*

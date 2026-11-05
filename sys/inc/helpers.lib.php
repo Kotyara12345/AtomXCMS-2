@@ -712,6 +712,11 @@ function atm_invalidate_search_index($table) {
 	if (!in_array($table, $tables)) return;
 	$meta_file = ROOT . '/sys/tmp/search/meta.dat';
 	if (file_exists($meta_file)) @unlink($meta_file);
+	$directory = dirname($meta_file);
+	if (!is_dir($directory)) @mkdir($directory, 0755, true);
+	@file_put_contents($directory . '/dirty.dat', bin2hex(random_bytes(8)), LOCK_EX);
+	try { AtmJobs::enqueue('search.rebuild', array(), 'search'); }
+	catch (Throwable $e) { error_log('AtomX cannot queue search rebuild'); }
 }
 
 
