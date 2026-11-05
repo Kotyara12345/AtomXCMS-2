@@ -220,6 +220,11 @@ function h($value)
 	return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function getMicroTime($start = null)
+{
+	return $start === null ? microtime(true) : microtime(true) - $start;
+}
+
 function atm_password_hash($password)
 {
 	return password_hash((string)$password, PASSWORD_DEFAULT);
@@ -326,6 +331,11 @@ atm_it_assert(count(atm_admin_login_failures(20)) === 5, 'Failed login history i
 atm_admin_login_attempt_record('tester', '127.0.0.1', true);
 atm_it_assert(atm_admin_login_block_remaining('tester', '127.0.0.1') === 0,
 	'Successful login did not reset failures.');
+for ($i = 0; $i < 5; $i++) atm_admin_login_attempt_record('victim', '192.0.2.9', false);
+atm_admin_login_attempt_record('other-user', '192.0.2.9', true);
+atm_it_assert(atm_admin_login_block_remaining('victim', '192.0.2.9') > 0,
+	'Another account on the same IP cleared failed attempts.');
+atm_admin_login_clear_failures();
 
 /* TOTP, backup codes and 2FA status. */
 $secret = atm_admin_totp_secret();
@@ -401,6 +411,32 @@ $apacheBraces = atm_server_config_validate_content('apache',
 	"<VirtualHost *:80>\n    SetEnv EXAMPLE value}\n</VirtualHost>\n");
 atm_it_assert(!empty($apacheBraces['ok']),
 	'Apache braces were treated as Nginx block delimiters.');
+
+/* Exercise the real production PDO adapter, not only the test adapter. */
+require_once $root . '/sys/inc/fpspdo.class.php';
+$production = (new ReflectionClass('FpsPDO'))->newInstanceWithoutConstructor();
+$connection = new ReflectionProperty('FpsPDO', 'dbh');
+$connection->setAccessible(true);
+$connection->setValue($production, $pdo);
+Config::$values['cache_querys'] = 1;
+$statement = new ReflectionProperty('FpsPDO', 'statement');
+$statement->setAccessible(true);
+$cacheKey = new ReflectionMethod('FpsPDO', 'sqlCacheFilename');
+$cacheKey->setAccessible(true);
+$cacheFiles = array();
+try {
+	$first = $production->select('admin_audit', DB_ALL, array('cond'=>array('id'=>1)));
+	$cacheFiles[] = ROOT . '/sys/cache/sql/' . $cacheKey->invoke($production, $statement->getValue($production)->queryString);
+	$second = $production->select('admin_audit', DB_ALL, array('cond'=>array('id'=>2)));
+	$cacheFiles[] = ROOT . '/sys/cache/sql/' . $cacheKey->invoke($production, $statement->getValue($production)->queryString);
+	atm_it_assert(!empty($first[0]) && (int)$first[0]['id'] === 1, 'Production adapter lost the first result.');
+	atm_it_assert(!empty($second[0]) && (int)$second[0]['id'] === 2, 'Production cache mixed bound IDs.');
+	$again = $production->select('admin_audit', DB_ALL, array('cond'=>array('id'=>1)));
+	atm_it_assert($again === $first, 'Production cache did not preserve the first result.');
+} finally {
+	foreach (array_unique($cacheFiles) as $file) if (is_file($file)) unlink($file);
+	Config::$values['cache_querys'] = 0;
+}
 
 /* Remove only this run's tables. */
 $tables = $db->query("SHOW TABLES LIKE '" . $db->escape($prefix) . "%'");

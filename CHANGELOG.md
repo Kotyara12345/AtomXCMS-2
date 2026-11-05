@@ -164,6 +164,13 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   `<loc>` values are now percent-encoded as the sitemap protocol requires,
   so Cyrillic HLU titles no longer produce invalid XML; existing `%XX`
   escapes are kept as they are and not encoded twice.
+- `sitemap.xml` was written without a lock and the result was ignored, so
+  a failed write left a stale map and the daily task was still marked as
+  done. The write now uses `LOCK_EX` and reports failure, and the
+  scheduler retries on the next request instead of waiting another day.
+  `robots.txt` is refreshed as soon as the "Sitemap links" setting is
+  saved, and the Sitemap settings page has a "Regenerate now" button for
+  an immediate rebuild.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated

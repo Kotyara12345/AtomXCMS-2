@@ -13,6 +13,36 @@
  * admin panel.
  */
 
+if (!function_exists('atm_request_from_trusted_proxy')) {
+	function atm_request_from_trusted_proxy()
+	{
+		$remote = isset($_SERVER['REMOTE_ADDR']) ? @inet_pton($_SERVER['REMOTE_ADDR']) : false;
+		if ($remote === false) return false;
+		foreach (explode(',', (string)getenv('ATM_TRUSTED_PROXIES')) as $proxy) {
+			$address = @inet_pton(trim($proxy));
+			if ($address !== false && $address === $remote) return true;
+		}
+		return false;
+	}
+}
+
+if (!function_exists('atm_request_client_ip')) {
+	function atm_request_client_ip()
+	{
+		$remote = isset($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : '';
+		if (atm_request_from_trusted_proxy() && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+			$chain = array_reverse(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']));
+			$trusted = array_map('trim', explode(',', (string)getenv('ATM_TRUSTED_PROXIES')));
+			foreach ($chain as $address) {
+				$address = trim($address);
+				if (!filter_var($address, FILTER_VALIDATE_IP)) return $remote;
+				if (!in_array($address, $trusted, true)) return $address;
+			}
+		}
+		return filter_var($remote, FILTER_VALIDATE_IP) ? $remote : '';
+	}
+}
+
 if (!function_exists('atm_request_is_https')) {
 	/**
 	 * Whether the current request was made over HTTPS.
@@ -29,7 +59,7 @@ if (!function_exists('atm_request_is_https')) {
 		if (!empty($_SERVER['REQUEST_SCHEME']) && strtolower((string)$_SERVER['REQUEST_SCHEME']) === 'https') {
 			return true;
 		}
-		if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+		if (atm_request_from_trusted_proxy() && !empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
 			$proto = strtok((string)$_SERVER['HTTP_X_FORWARDED_PROTO'], ',');
 			if ($proto !== false && strtolower(trim($proto)) === 'https') {
 				return true;

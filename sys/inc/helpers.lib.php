@@ -231,8 +231,14 @@ function fpsCron($func, $interval) {
 	}
 
 	if (function_exists($func)) {
+		$result = call_user_func($func);
+		// A false result means the work failed (e.g. sitemap not writable).
+		// Do not mark the task as done, so the next request tries again.
+		if ($result === false) {
+			return false;
+		}
 		file_put_contents($cron_file, (time() + intval($interval)));
-		call_user_func($func);
+		return $result;
 	}
 }
  
@@ -264,16 +270,25 @@ function atm_sitemap_scheme()
 
 /**
  * Launch auto sitemap generator
+ *
+ * @param bool|null $robotsOk set to false when robots.txt could not be updated
+ * @return bool false when sitemap.xml could not be written
  */
-function createSitemap() {
+function createSitemap(&$robotsOk = null) {
+	$robotsOk = true;
 	include_once ROOT . '/sys/inc/sitemap.class.php';
 	$obj = new FpsSitemapGen;
-	$obj->createMap();
+	if (!$obj->createMap()) {
+		return false;
+	}
 
 	// robots.txt is static, but the Sitemap URL must use the current domain.
-	if (function_exists('atm_update_robots_domain')) {
-		atm_update_robots_domain();
+	if (function_exists('atm_update_robots_domain') && !atm_update_robots_domain()) {
+		$robotsOk = false;
+		error_log('Sitemap: cannot update robots.txt');
 	}
+
+	return true;
 }
  
  

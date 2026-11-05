@@ -407,7 +407,12 @@ $atmServerLabels = array(
 				<div id="sub<?php echo $mk; ?>" class="sub">
 					<div class="shadow">
 						<ul>
-							<li><a href="<?php echo WWW_ROOT; ?>/admin?install=<?php echo $mk ?>">Install</a></li>
+							<?php if ((int)$_SESSION['user']['status'] === 4): ?>
+							<li><form method="post" action="<?php echo h(WWW_ROOT); ?>/admin/">
+								<?php echo atm_admin_csrf_input(); ?>
+								<button type="submit" name="install" value="<?php echo h($mk); ?>">Install</button>
+							</form></li>
+							<?php endif; ?>
 						</ul>
 					</div>
 				</div>

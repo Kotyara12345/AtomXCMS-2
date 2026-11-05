@@ -201,7 +201,8 @@ atm_test_assert(atm_request_origin() === 'https://www.example.com', 'HTTPS origi
 $_SERVER = array('HTTP_HOST' => 'example.com', 'SERVER_PORT' => '80');
 atm_test_assert(atm_request_origin() === 'http://example.com', 'HTTP origin is wrong: ' . atm_request_origin());
 
-$_SERVER = array('HTTP_HOST' => 'www.example.com', 'HTTP_X_FORWARDED_PROTO' => 'https, http');
+putenv('ATM_TRUSTED_PROXIES=127.0.0.1');
+$_SERVER = array('HTTP_HOST' => 'www.example.com', 'HTTP_X_FORWARDED_PROTO' => 'https, http', 'REMOTE_ADDR'=>'127.0.0.1');
 atm_test_assert(atm_request_origin() === 'https://www.example.com', 'Forwarded HTTPS origin is wrong: ' . atm_request_origin());
 
 $_SERVER = array('HTTP_HOST' => 'example.com:443', 'HTTPS' => 'on');
@@ -230,6 +231,39 @@ atm_test_assert(atm_sitemap_scheme() === 'http', 'Pinned HTTP was overridden by 
 Config::$scheme = 'https';
 $_SERVER = array('HTTP_HOST' => 'example.com', 'SERVER_PORT' => '80');
 atm_test_assert(atm_sitemap_scheme() === 'https', 'Pinned HTTPS was overridden by an HTTP request.');
+
+/* Writes must be locked and their result checked. */
+atm_test_assert(strpos($sitemap, "file_put_contents(\$file, \$this->output, LOCK_EX)") !== false, 'Sitemap is written without LOCK_EX.');
+atm_test_assert(strpos($sitemap, 'if ($written === false)') !== false, 'Sitemap does not check the write result.');
+atm_test_assert(strpos($sitemap, "return false;") !== false, 'Sitemap never reports a write failure.');
+
+$helpers = atm_test_read($root . '/sys/inc/helpers.lib.php');
+$adminSettings = atm_test_read($root . '/admin/settings.php');
+atm_test_assert(strpos($helpers, 'if ($result === false)') !== false, 'Cron marks a failed task as done.');
+atm_test_assert(
+	strpos($helpers, 'file_put_contents($cron_file') > strpos($helpers, 'call_user_func($func)'),
+	'Cron writes the next run time before the task succeeds.'
+);
+atm_test_assert(strpos($adminSettings, 'regenerate_sitemap') !== false, 'Settings page has no sitemap regeneration button.');
+atm_test_assert(strpos($adminSettings, 'atm_update_robots_domain(null, $scheme)') !== false, 'Saving the sitemap protocol does not refresh robots.txt.');
+
+/* robots.txt follows an explicitly saved protocol at once. */
+if (!defined('ROOT')) define('ROOT', $root);
+require_once $root . '/sys/fnc/robots.lib.php';
+
+$robotsFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'atm_robots_' . getmypid() . '.txt';
+file_put_contents($robotsFile, "User-agent: *\nDisallow: /admin\nSitemap: http://old.example.org/sitemap.xml\n");
+$_SERVER = array('HTTP_HOST' => 'example.com');
+
+atm_test_assert(atm_update_robots_domain($robotsFile, 'https') === true, 'robots.txt was not updated.');
+$robotsContent = (string)file_get_contents($robotsFile);
+atm_test_assert(strpos($robotsContent, 'Sitemap: https://example.com/sitemap.xml') !== false, 'Saved HTTPS scheme did not reach robots.txt.');
+atm_test_assert(strpos($robotsContent, 'http://old.example.org') === false, 'Old Sitemap directive survived.');
+atm_test_assert(substr_count($robotsContent, 'Sitemap:') === 1, 'robots.txt has more than one Sitemap directive.');
+
+atm_test_assert(atm_update_robots_domain($robotsFile, 'http') === true, 'robots.txt was not switched back.');
+atm_test_assert(strpos((string)file_get_contents($robotsFile), 'Sitemap: http://example.com/sitemap.xml') !== false, 'Saved HTTP scheme did not reach robots.txt.');
+unlink($robotsFile);
 
 if ($failures) {
 	echo "FAIL\n- " . implode("\n- ", $failures) . "\n";

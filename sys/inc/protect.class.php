@@ -110,18 +110,11 @@ class Protect
         $Register = Register::getInstance();
 
         if (file_exists(ROOT . '/sys/logs/ip_ban/baned.dat')) {
-            $data = file(ROOT . '/sys/logs/ip_ban/baned.dat');
-
-            if (!empty($_SERVER['REMOTE_ADDR'])) {
-                $ip = trim(substr($_SERVER['REMOTE_ADDR'], 0, 15));
-                if (in_array($ip, $data)) {
-                    $Register['DocParser']->showHttpError('ban');
-                }
-            }
-
-            if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-                $ip = trim(substr($_SERVER['HTTP_X_FORWARDED_FOR'], 0, 15));
-                if (in_array($ip, $data)) {
+            require_once ROOT . '/sys/inc/https.lib.php';
+            $data = file(ROOT . '/sys/logs/ip_ban/baned.dat', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $packedIp = @inet_pton(atm_request_client_ip());
+            foreach ((array)$data as $banned) {
+                if ($packedIp !== false && $packedIp === @inet_pton(trim($banned))) {
                     $Register['DocParser']->showHttpError('ban');
                 }
             }
@@ -140,16 +133,11 @@ class Protect
         $date = date("Y-m-d");
 
 
-        if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
-        } else {
-            $ip = (!empty($_SERVER['REMOTE_ADDR'])) ? $_SERVER['REMOTE_ADDR'] : '';
-        }
-
-        if (mb_strlen($ip) > 15
-            || !preg_match('#^\d+\.\d+\.\d+\.\d+$#', $ip)
-            || empty($ip))
-            return;
+        require_once ROOT . '/sys/inc/https.lib.php';
+        $ip = atm_request_client_ip();
+        if ($ip === '') return;
+        // IPv6 colons cannot appear in filenames on Windows.
+        $ip = bin2hex(inet_pton($ip));
 
 
         if (!empty($ip)) {

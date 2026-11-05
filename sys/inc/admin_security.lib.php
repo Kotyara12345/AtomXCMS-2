@@ -214,7 +214,8 @@ if (!function_exists('atm_admin_client_ip')) {
 	 */
 	function atm_admin_client_ip()
 	{
-		$ip = !empty($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : '';
+		require_once ROOT . '/sys/inc/https.lib.php';
+		$ip = atm_request_client_ip();
 		$ip = trim($ip);
 		if (strlen($ip) > 64) $ip = substr($ip, 0, 64);
 		return $ip;
@@ -1185,7 +1186,7 @@ if (!function_exists('atm_admin_session_is_revoked')) {
 		if ($hash === '') return false;
 		atm_admin_security_ensure_tables();
 		$Register = Register::getInstance();
-		if (empty($Register['DB'])) return false;
+		if (empty($Register['DB'])) return true;
 		$db = $Register['DB'];
 		$table = $db->getFullTableName('admin_sessions');
 		try {
@@ -1193,7 +1194,7 @@ if (!function_exists('atm_admin_session_is_revoked')) {
 				WHERE `session_hash` = '" . $db->escape($hash) . "' LIMIT 1");
 			return !empty($rows[0]['revoked']);
 		} catch (Exception $e) {
-			return false;
+			return true;
 		}
 	}
 }
@@ -1330,8 +1331,7 @@ if (!function_exists('atm_admin_login_attempt_record')) {
 		try {
 			if ($success) {
 				$db->query("DELETE FROM `{$table}`
-					WHERE (`login` = '" . $db->escape($login) . "'
-						OR `ip` = '" . $db->escape($ip) . "') AND `success` = 0");
+					WHERE `login` = '" . $db->escape($login) . "' AND `success` = 0");
 			}
 			$db->query("INSERT INTO `{$table}` SET
 				`login` = '" . $db->escape($login) . "',
@@ -1585,14 +1585,14 @@ if (!function_exists('atm_admin_2fa_get')) {
 		if ($userId < 1) return null;
 		atm_admin_security_ensure_tables();
 		$Register = Register::getInstance();
-		if (empty($Register['DB'])) return null;
+		if (empty($Register['DB'])) return false;
 		$db = $Register['DB'];
 		$table = $db->getFullTableName('admin_2fa');
 		try {
 			$rows = $db->query("SELECT * FROM `{$table}` WHERE `user_id` = {$userId} LIMIT 1");
 			return !empty($rows) ? $rows[0] : null;
 		} catch (Exception $e) {
-			return null;
+			return false;
 		}
 	}
 }
@@ -1606,7 +1606,8 @@ if (!function_exists('atm_admin_2fa_enabled')) {
 	function atm_admin_2fa_enabled($userId)
 	{
 		$row = atm_admin_2fa_get($userId);
-		return !empty($row['enabled']) && !empty($row['secret']);
+		// An unavailable security store must never bypass the second factor.
+		return $row === false || (!empty($row['enabled']) && !empty($row['secret']));
 	}
 }
 
@@ -1750,13 +1751,22 @@ if (!function_exists('atm_admin_2fa_verify_code')) {
 			if (atm_password_verify($normalized, $hash)) {
 				unset($hashes[$index]);
 				$hashes = array_values($hashes);
+				$Register = Register::getInstance();
+				$db = $Register['DB'];
+				$table = $db->getFullTableName('admin_2fa');
+				try {
+					// Compare-and-swap makes consumption atomic, including on MyISAM.
+					$db->query("UPDATE `{$table}` SET `backup_codes` = '"
+						. $db->escape(json_encode($hashes)) . "', `updated` = " . time()
+						. " WHERE `user_id` = " . (int)$userId . " AND `enabled` = 1"
+						. " AND BINARY `secret` = '" . $db->escape($row['secret']) . "'"
+						. " AND BINARY `backup_codes` = '" . $db->escape($row['backup_codes']) . "'");
+					$changed = $db->query('SELECT ROW_COUNT() AS consumed');
+					if (empty($changed[0]['consumed']) || (int)$changed[0]['consumed'] !== 1) return false;
+				} catch (Exception $e) {
+					return false;
+				}
 				$remainingBackupCodes = count($hashes);
-				atm_admin_2fa_save(
-					$userId,
-					$row['secret'],
-					true,
-					json_encode($hashes)
-				);
 				$usedBackup = true;
 				return true;
 			}

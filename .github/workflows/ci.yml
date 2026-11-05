@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['7.4', '8.1']
+        php: ['8.1', '8.5']
 
     services:
       mysql:
@@ -34,42 +34,20 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo_mysql
+          extensions: pdo_mysql, mbstring, gd, exif
           coverage: none
 
-      - name: Lint changed PHP files
+      - name: Lint all PHP files
         run: |
           set -e
-          for file in \
-            admin/exit.php \
-            admin/errors_log.php \
-            admin/notifications.php \
-            admin/inc/adm_boot.php \
-            admin/server_config.php \
-            admin/settings.php \
-            admin/template/header.php \
-            admin/template/footer.php \
-            admin/security.php \
-            admin/profile.php \
-            admin/audit_log.php \
-            admin/moderation.php \
-            sys/inc/admin_security.lib.php \
-            sys/inc/server_config.lib.php \
-            sys/settings/languages/rus.php \
-            install/do_queries.php \
-            tests/admin-ui-test.php \
-            tests/admin-security-integration-test.php
-          do
-            php -l "$file"
-          done
+          find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
 
-      - name: Static admin UI and translation checks
-        run: php tests/admin-ui-test.php
-
-      - name: MySQL-backed admin security integration checks
+      - name: Run all regression and MySQL integration checks
         env:
           ATM_TEST_DSN: 'mysql:host=127.0.0.1;port=3306;dbname=atomx_test;charset=utf8mb4'
           ATM_TEST_USER: root
           ATM_TEST_PASS: root
           ATM_TEST_REQUIRED: '1'
-        run: php tests/admin-security-integration-test.php
+        run: |
+          set -e
+          for test in tests/*-test.php; do php "$test"; done

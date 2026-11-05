@@ -153,7 +153,9 @@ class FpsSitemapGen {
 	/**
 	 * Create sitemap. Uses Data Base data and users groups rules.
 	 * Sitemap urls must be allowed for search bots.
-	 * 
+	 *
+	 * @return bool false when the file cannot be written, so the caller can
+	 *              retry instead of leaving a stale map in place.
 	 */
 	public function createMap($type = 'xml') {
 		$this->getLinks();
@@ -182,7 +184,14 @@ class FpsSitemapGen {
 			//TODO
 		}
 		
-		file_put_contents(ROOT . '/sitemap.xml', $this->output);
+		$file = ROOT . '/sitemap.xml';
+		$written = @file_put_contents($file, $this->output, LOCK_EX);
+		if ($written === false) {
+			error_log('Sitemap: cannot write ' . $file);
+			return false;
+		}
+
+		return true;
 	}
 	
 	

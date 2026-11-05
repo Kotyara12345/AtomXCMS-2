@@ -12,6 +12,12 @@ instead of the bundles the original shipped with.
 
 #### System Requirements
 
+Reverse proxies: set the server environment variable `ATM_TRUSTED_PROXIES`
+to a comma-separated list of exact proxy IP addresses (IPv4 or IPv6).
+Forwarded scheme and client-IP headers are ignored by default. Configure the
+proxy to overwrite `X-Forwarded-Proto` and append the real peer to
+`X-Forwarded-For`; keep the application origin inaccessible to public traffic.
+
 * Operating system: Unix, Linux, Windows, Mac OS
 * Middleware: PHP 8.5 and MySQL 5.7+ / MariaDB 10.4+ (PDO MySQL driver).
   Developed and tested with PHP 8.5 and MariaDB 11.4.

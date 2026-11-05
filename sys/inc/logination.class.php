@@ -57,7 +57,7 @@ class Logination {
 			$log_files = glob(ROOT . '/sys/logs/' . $this->logDir . '/*.dat');
 			$log_size = (!empty($log_files)) ? (count($log_files) * $this->maxFileSize) : 0;
 			/* delete files and free space */
-			while ($log_size > $max_log_size) {
+			while ($log_size > $max_log_size && !empty($log_files)) {
 				$first_file = array_shift($log_files);
 				if (@unlink($first_file)) $log_size = ($log_size - $this->maxFileSize);
 			}
@@ -154,7 +154,7 @@ class Logination {
 		$file_name = date("Y-m-d") . '_' . $file_num . '.dat';
 		if (file_exists(ROOT . '/sys/logs/' . $this->logDir . '/' . $file_name)) {
 			if (filesize(ROOT . '/sys/logs/' . $this->logDir . '/' . $file_name) > $this->maxFileSize) {
-				$file_name = $this->getFileName(2);
+				$file_name = $this->getFileName($file_num + 1);
 			}
 		}
 		return $file_name;

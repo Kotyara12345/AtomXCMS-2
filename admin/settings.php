@@ -162,6 +162,24 @@ if (in_array($module, $sysMods)) {
 
 
 
+// Rebuild the sitemap and robots.txt on demand
+
+if (isset($_POST['regenerate_sitemap']) && $module === 'sitemap') {
+	$robotsOk = true;
+	$sitemapOk = createSitemap($robotsOk);
+
+	if (!$sitemapOk) {
+		$_SESSION['message'] = __('The sitemap could not be written. Check the write permissions of the site root.');
+	} elseif (!$robotsOk) {
+		$_SESSION['message'] = __('Sitemap updated, but robots.txt could not be written. Check its write permissions.');
+	} else {
+		$_SESSION['message'] = __('Sitemap and robots.txt updated.');
+	}
+	redirect('/admin/settings.php?m=sitemap');
+}
+
+
+
 // Save settings
 
 if (isset($_POST['send'])) {
@@ -240,6 +258,15 @@ if (isset($_POST['send'])) {
 	// sync the HTTP/2 and HTTP/3 rules in the site root .htaccess
 	if (!atm_updateServerProtocolsConfig($tmpSet)) {
 		$_SESSION['message'] .= '. ' . __('Warning! The .htaccess file can not be updated (no write access), the protocol rules were not applied.');
+	}
+
+	// The Sitemap link in robots.txt must follow the protocol right away,
+	// not only after the next daily sitemap regeneration.
+	if ($module === 'sitemap' && function_exists('atm_update_robots_domain')) {
+		$scheme = isset($tmpSet['sitemap_scheme']) ? $tmpSet['sitemap_scheme'] : null;
+		if (!atm_update_robots_domain(null, $scheme)) {
+			$_SESSION['message'] .= '. ' . __('Warning! robots.txt can not be updated (no write access), the Sitemap link keeps the old protocol.');
+		}
 	}
 	
 	
@@ -424,6 +451,27 @@ include_once ROOT . '/admin/template/header.php';
 	</div>
 </div>
 </form>
+
+<?php if ($module === 'sitemap'): ?>
+<form method="POST" action="settings.php?m=sitemap">
+<div class="list">
+	<div class="level1">
+		<div class="items">
+			<div class="setting-item">
+				<div class="left">
+					<?php echo h(__('Sitemap regeneration')); ?>
+					<span class="comment"><?php echo h(__('Rebuild sitemap.xml and robots.txt now, without waiting for the daily update.')); ?></span>
+				</div>
+				<div class="right">
+					<input class="save-button" type="submit" name="regenerate_sitemap" value="<?php echo h(__('Regenerate now')); ?>" />
+				</div>
+				<div class="clear"></div>
+			</div>
+		</div>
+	</div>
+</div>
+</form>
+<?php endif; ?>
 
 
 

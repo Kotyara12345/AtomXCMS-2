@@ -42,8 +42,17 @@ atm_test_assert(atm_site_origin() === 'http://example.com/cms', 'HTTP origin is 
 atm_test_assert(atm_site_origin(false) === 'http://example.com', 'HTTP origin without base is wrong: ' . atm_site_origin(false));
 
 /* Forwarded HTTPS and the default port. */
-$_SERVER = array('HTTP_HOST' => 'example.com:443', 'HTTP_X_FORWARDED_PROTO' => 'https');
+putenv('ATM_TRUSTED_PROXIES=127.0.0.1');
+$_SERVER = array('HTTP_HOST' => 'example.com:443', 'HTTP_X_FORWARDED_PROTO' => 'https', 'REMOTE_ADDR' => '127.0.0.1');
 atm_test_assert(atm_site_origin() === 'https://example.com/cms', 'Forwarded HTTPS origin is wrong: ' . atm_site_origin());
+$_SERVER['REMOTE_ADDR'] = '192.0.2.1';
+atm_test_assert(!atm_request_is_https(), 'Untrusted proxy header accepted.');
+$_SERVER['HTTP_X_FORWARDED_FOR'] = 'invalid';
+atm_test_assert(atm_request_client_ip() === '192.0.2.1', 'Spoofed client IP accepted.');
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+$_SERVER['HTTP_X_FORWARDED_FOR'] = '2001:db8::1';
+atm_test_assert(atm_request_client_ip() === '2001:db8::1', 'Trusted IPv6 client rejected.');
+putenv('ATM_TRUSTED_PROXIES');
 
 /* CLI cron: no request host, fall back to SERVER_NAME. */
 $_SERVER = array('SERVER_NAME' => 'example.com');

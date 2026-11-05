@@ -1228,9 +1228,15 @@ class FpsPDO {
 	* @sql (string)         query
 	* @return (boolean)     false 
 	*/
+	private function sqlCacheFilename($sql) {
+		$params = $this->queryParams;
+		ksort($params);
+		return hash('sha256', serialize(array('pdo-cache-v2', $sql, $params))) . '.dat';
+	}
+
 	public function turnSqlCache($sql) {
 		/* uniq filename */
-		$cache_file_name = md5(md5($sql) . md5($sql . 'salt')) . '.dat';
+		$cache_file_name = $this->sqlCacheFilename($sql);
 		/* check file */
 		if (!file_exists(ROOT . '/sys/cache/sql/' . $cache_file_name)){
 			return false;
@@ -1250,7 +1256,7 @@ class FpsPDO {
 	*/
 	public function getSqlCache($sql) {
 		/* uniq filename */
-		$cache_file_name = md5(md5($sql) . md5($sql . 'salt')) . '.dat';
+		$cache_file_name = $this->sqlCacheFilename($sql);
 		/* get file data and unserialize */
 		$cache_data = file_get_contents(ROOT . '/sys/cache/sql/' . $cache_file_name);
 		$cache_data = unserialize($cache_data);
@@ -1270,7 +1276,7 @@ class FpsPDO {
 		if (!file_exists(ROOT . '/sys/cache/sql/')) mkdir(ROOT . '/sys/cache/sql/', 0777, true);
 		clearstatcache();
 		/* uniq filename */
-		$cache_file_name = md5(md5($sql) . md5($sql . 'salt')) . '.dat';
+		$cache_file_name = $this->sqlCacheFilename($sql);
 		/* get file data and unserialize */
 		$file = fopen(ROOT . '/sys/cache/sql/' . $cache_file_name, 'w');
 		fwrite($file, serialize($data));

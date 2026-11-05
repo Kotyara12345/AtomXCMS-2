@@ -293,6 +293,7 @@ if (!function_exists('atm_admin_complete_login')) {
 		}
 
 		atm_admin_session_touch($user);
+		atm_admin_login_attempt_record(isset($user['name']) ? $user['name'] : '', atm_admin_client_ip(), true);
 		atm_admin_audit(
 			'login_success',
 			$twofa ? 'two-factor' : 'password',
@@ -563,7 +564,6 @@ if (!isset($_SESSION['adm_panel_authorize']) || $_SESSION['adm_panel_authorize']
 					}
 
 					if (atm_admin_2fa_enabled((int)$user[0]['id'])) {
-						atm_admin_login_attempt_record($login, $ip, true);
 						atm_admin_2fa_pending_set((int)$user[0]['id'], $login, !empty($_POST['remember']));
 						atm_admin_audit(
 							'login_2fa_required',
@@ -629,8 +629,13 @@ if (!empty($_SESSION['user'])) {
  * to the Atom.
  * For more information see FpsModuleInstaller class.
  */
-if (!empty($_GET['install'])) {
-	$instMod = (string)$_GET['install'];
+if (!empty($_POST['install'])) {
+	if (empty($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST'
+		|| !atm_admin_csrf_check(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')
+		|| empty($_SESSION['user']) || (int)$_SESSION['user']['status'] !== 4) {
+		atm_admin_csrf_fail_response();
+	}
+	$instMod = is_string($_POST['install']) ? $_POST['install'] : '';
 	if (!empty($instMod) && preg_match('#^[a-z]+$#i', $instMod)) {
 		$ModulesInstaller = new FpsModuleInstaller();
 		try {

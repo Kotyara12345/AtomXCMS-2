@@ -4,12 +4,14 @@
  *
  * The file is still served as a plain static file, so this works on both
  * Apache and Nginx without extra rewrite rules. The line is refreshed when
- * the sitemap is generated and when the CMS is installed.
+ * the sitemap is generated, when the Sitemap settings are saved and when the
+ * CMS is installed.
  *
  * @param string|null $robotsFile Optional path for tests.
+ * @param string|null $scheme Optional scheme, e.g. a value just saved in the settings.
  * @return bool
  */
-function atm_update_robots_domain($robotsFile = null)
+function atm_update_robots_domain($robotsFile = null, $scheme = null)
 {
     if ($robotsFile === null) {
         $robotsFile = ROOT . '/robots.txt';
@@ -31,7 +33,10 @@ function atm_update_robots_domain($robotsFile = null)
         return false;
     }
 
-    $scheme = function_exists('atm_sitemap_scheme') ? atm_sitemap_scheme() : 'http';
+    $scheme = is_string($scheme) ? strtolower(trim($scheme)) : '';
+    if ($scheme !== 'http' && $scheme !== 'https') {
+        $scheme = function_exists('atm_sitemap_scheme') ? atm_sitemap_scheme() : 'http';
+    }
     if ($scheme !== 'http' && $scheme !== 'https') {
         $scheme = 'http';
         if (
