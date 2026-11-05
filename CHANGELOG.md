@@ -152,6 +152,18 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   setting pins the protocol to HTTP or HTTPS for sites reachable over
   both, so the map no longer depends on which request triggered the
   daily regeneration; `robots.txt` follows the same choice.
+- `sitemap.xml` marked every URL as `changefreq=daily` and had no
+  `lastmod`, so search engines saw user profiles, forum pages and stale
+  materials as changing every day. The fake frequency is gone. Materials
+  and their section pages now carry `lastmod` from the material date,
+  forum themes from the last post and `forum/user_posts` from the user's
+  latest post. Pagination pages (`?page=`) are no longer listed. The shop
+  was not in the map at all; it now adds the catalog, active categories
+  (including subcategories), active products (HLU or id URL) and landing
+  pages, dated from `updated_at`/`created_at` and their newest product.
+  `<loc>` values are now percent-encoded as the sitemap protocol requires,
+  so Cyrillic HLU titles no longer produce invalid XML; existing `%XX`
+  escapes are kept as they are and not encoded twice.
 
 ### Security
 - `sys/settings/config.php` (database credentials) and the generated

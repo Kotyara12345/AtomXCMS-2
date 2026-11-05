@@ -40,6 +40,11 @@ class FpsSitemapGen {
 	
 	private $base;
 	
+	/**
+	 * Sitemap entries: url => last modification timestamp (or null).
+	 *
+	 * @var array
+	 */
 	private $uniqUrl = array();
 	
 	private $DB;
@@ -49,8 +54,41 @@ class FpsSitemapGen {
 	public function __construct($params = array()) {
         $Register = Register::getInstance();
 		$this->base = $this->detectBase();
-		$this->uniqUrl[] = $this->base . $this->installPath();
+		$this->addUrl($this->base . $this->installPath());
 		$this->DB = $Register['DB'];
+	}
+	
+	
+	/**
+	 * Add a sitemap entry, keeping the newest known modification date.
+	 *
+	 * @param string $url
+	 * @param mixed $lastmod date string, timestamp or null
+	 */
+	private function addUrl($url, $lastmod = null) {
+		$lastmod = $this->normalizeDate($lastmod);
+		if (!isset($this->uniqUrl[$url])
+		|| ($lastmod !== null && ($this->uniqUrl[$url] === null || $lastmod > $this->uniqUrl[$url]))) {
+			$this->uniqUrl[$url] = $lastmod;
+		}
+	}
+	
+	
+	/**
+	 * Convert a database date to a timestamp. Empty dates such as
+	 * "0000-00-00 00:00:00" have no lastmod and return null.
+	 *
+	 * @param mixed $date
+	 * @return int|null
+	 */
+	private function normalizeDate($date) {
+		if (empty($date)) return null;
+		if (is_numeric($date)) {
+			$timestamp = (int)$date;
+		} else {
+			$timestamp = strtotime((string)$date);
+		}
+		return ($timestamp === false || $timestamp <= 0) ? null : $timestamp;
 	}
 	
 	
@@ -129,12 +167,14 @@ class FpsSitemapGen {
 				. 'xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9' . "\n"
 				. 'http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">' . "\n";
 				
-				foreach ($this->uniqUrl as $page) {
+				foreach ($this->uniqUrl as $page => $lastmod) {
 					if (!$this->isAbsoluteUrl($page)) $page = $this->base . $page;
 					$this->output .= '<url>' . "\n"
-						. '<loc>' . $page . '</loc>' . "\n"
-						. '<changefreq>daily</changefreq>' . "\n"
-						. '</url>' . "\n";
+						. '<loc>' . $page . '</loc>' . "\n";
+					if ($lastmod !== null) {
+						$this->output .= '<lastmod>' . gmdate('c', $lastmod) . '</lastmod>' . "\n";
+					}
+					$this->output .= '</url>' . "\n";
 				}
 				
 				$this->output .= '</urlset>';
@@ -145,6 +185,28 @@ class FpsSitemapGen {
 		file_put_contents(ROOT . '/sitemap.xml', $this->output);
 	}
 	
+	
+	
+	/**
+	 * Percent-encode a URL for the sitemap protocol.
+	 *
+	 * Path and query may contain UTF-8 (HLU titles). Characters that are
+	 * already valid escapes such as "%D0%9C" are kept as they are, so the
+	 * URL is never encoded twice. Raw non-ASCII bytes, spaces and other
+	 * unsafe characters become "%XX".
+	 *
+	 * @param string $url
+	 * @return string
+	 */
+	private function encodeUrl($url) {
+		return preg_replace_callback(
+			'/%(?![0-9A-Fa-f]{2})|[^A-Za-z0-9\-._~!$&\'()*+,;=:@%\/?#\[\]]/',
+			function ($match) {
+				return rawurlencode($match[0]);
+			},
+			$url
+		);
+	}
 	
 	
 	/**
@@ -159,14 +221,20 @@ class FpsSitemapGen {
 			'>' => '&gt;',
 		);
 	
-		$this->uniqUrl = array_unique($this->uniqUrl);
-		foreach ($this->uniqUrl as $key => $link) {
-			//$link = trim($link, '/');
-			$link = str_replace(array_keys($entities), $entities, $link);
-			$this->uniqUrl[$key] = $this->isAbsoluteUrl($link)
+		$links = array();
+		foreach ($this->uniqUrl as $link => $lastmod) {
+			$link = $this->isAbsoluteUrl($link)
 				? $link
 				: $this->base . get_url($link);
+			$link = $this->encodeUrl($link);
+			$link = str_replace(array_keys($entities), $entities, $link);
+
+			if (!isset($links[$link])
+			|| ($lastmod !== null && ($links[$link] === null || $lastmod > $links[$link]))) {
+				$links[$link] = $lastmod;
+			}
 		}
+		$this->uniqUrl = $links;
 	}
 	
 	
@@ -181,7 +249,7 @@ class FpsSitemapGen {
 			$htmlpages = $pagesModel->getCollection(array('`id` != 1', 'publish' => '1'));
 			if (count($htmlpages) > 0) {
 				foreach ($htmlpages as $htmlpage) {
-					$this->uniqUrl[] = $pagesModel->buildUrl($htmlpage->getId());
+					$this->addUrl($pagesModel->buildUrl($htmlpage->getId()));
 				}
 			}
 		}
@@ -192,7 +260,7 @@ class FpsSitemapGen {
 		$hluactive = Config::read('hlu');
 		foreach (array('news', 'stat', 'loads', 'foto') as $mkey) {
 			if (Config::read('active', $mkey)) {
-				$this->uniqUrl[] = $mkey;
+				$this->addUrl($mkey);
 			
 				$entities = $this->DB->select($mkey, DB_ALL, array());
 				$entitiesc = $this->DB->select($mkey . '_categories', DB_ALL, array());
@@ -200,39 +268,33 @@ class FpsSitemapGen {
 				if (count($entitiesc) > 0) {
 					foreach ($entitiesc as $entityc) {
 						$action = '/category/';
-						$this->uniqUrl[] = $mkey . $action . $entityc['id'];
+						$categoryUrl = $mkey . $action . $entityc['id'];
+						$categoryLastmod = null;
 						
-						
-						$cntmat = 0;
-						if (count($entities) > 0) {
-							foreach ($entities as $val) {
-								if ($val['category_id'] == $entityc['id']) {
-									$cntmat++;
-									continue;
+						foreach ($entities as $val) {
+							if ($val['category_id'] == $entityc['id']) {
+								$timestamp = $this->normalizeDate(isset($val['date']) ? $val['date'] : null);
+								if ($timestamp !== null
+								&& ($categoryLastmod === null || $timestamp > $categoryLastmod)) {
+									$categoryLastmod = $timestamp;
 								}
 							}
-							
-							$per_page = Config::read('per_page', $mkey);
-							$per_page = intval($per_page); 
-							if ($per_page < 1) $per_page = 1;
-							$pages = ceil($cntmat / $per_page);
-							
-							for ($i = 2; $i <= $pages; $i++) {
-								$this->uniqUrl[] = $mkey . $action . $entityc['id'] . '?page=' . $i;
-							}
 						}
+						$this->addUrl($categoryUrl, $categoryLastmod);
 					}
 				}
 				
 				if (count($entities) > 0) {
+					$urlBuilder = new AtmUrl;
 					foreach ($entities as $entity) {
+						$lastmod = isset($entity['date']) ? $entity['date'] : null;
 							
-						$hlufile = ROOT . '/sys/tmp/hlu_' . $mkey . '/' . $entity['id'] . '.dat';
+						$hlufile = $urlBuilder->getTmpFilePath($entity['id'], $mkey);
 						if ($mkey != 'foto' && $hluactive == 1 && file_exists($hlufile)) {
 							$hludata = file_get_contents($hlufile);
-							if ($hludata) $this->uniqUrl[] = $mkey . '/' . $hludata . $hluex;
+							if ($hludata) $this->addUrl($mkey . '/' . $hludata . $hluex, $lastmod);
 						} else {
-							$this->uniqUrl[] = $mkey . '/view/' . $entity['id'];
+							$this->addUrl($mkey . '/view/' . $entity['id'], $lastmod);
 						}
 					}
 				}
@@ -242,7 +304,7 @@ class FpsSitemapGen {
 		
 		// forum
 		if (Config::read('active', 'forum')) {
-			$this->uniqUrl[] = '/forum/';
+			$this->addUrl('/forum/');
 			
 			$cats = $this->DB->select('forum_cat', DB_ALL);
 			$forums = $this->DB->select('forums', DB_ALL);
@@ -250,51 +312,29 @@ class FpsSitemapGen {
 
 			if (count($cats) > 0) {
 				foreach ($cats as $cat) {
-					$this->uniqUrl[] = '/forum/index/' . $cat['id'];
+					$this->addUrl('/forum/index/' . $cat['id']);
 				}
 			}
 			
 			if (count($forums) > 0) {
 				foreach ($forums as $forum) {
-					$this->uniqUrl[] = '/forum/view_forum/' . $forum['id'];
-					if ($forum['themes'] > 1) {
-						$per_page = Config::read('themes_per_page', 'forum');
-						$per_page = intval($per_page); 
-						if ($per_page < 1) $per_page = 1;
-						$pages = ceil($forum['themes'] / $per_page);
-						
-						for ($i = 2; $i <= $pages; $i++) {
-							$this->uniqUrl[] = '/forum/view_forum/' . $forum['id'] . '?page=' . $i;
-						}
-					}
+					$this->addUrl('/forum/view_forum/' . $forum['id']);
 				}
 			}
 			
 			if (count($themes) > 0) {
+				$lastPostsLastmod = null;
 				foreach ($themes as $theme) {
-					$this->uniqUrl[] = '/forum/view_theme/' . $theme['id'];
-					if ($theme['posts'] > 1) {
-						$per_page = Config::read('posts_per_page', 'forum');
-						$per_page = intval($per_page); 
-						if ($per_page < 1) $per_page = 1;
-						$pages = ceil($theme['posts'] / $per_page);
-						
-						for ($i = 2; $i <= $pages; $i++) {
-							$this->uniqUrl[] = '/forum/view_theme/' . $theme['id'] . '/?page=' . $i;
-						}
+					$lastmod = $this->normalizeDate(!empty($theme['last_post']) ? $theme['last_post'] : $theme['time']);
+					if ($lastmod !== null
+					&& ($lastPostsLastmod === null || $lastmod > $lastPostsLastmod)) {
+						$lastPostsLastmod = $lastmod;
 					}
+
+					$this->addUrl('/forum/view_theme/' . $theme['id'], $lastmod);
 				}
 				
-				$cnt = count($themes);
-				$per_page = Config::read('themes_per_page', 'forum');
-				$per_page = intval($per_page); 
-				if ($per_page < 1) $per_page = 1;
-				$pages = ceil($cnt / $per_page);
-				
-				$this->uniqUrl[] = '/forum/last_posts/';
-				for ($i = 2; $i <= $pages; $i++) {
-					$this->uniqUrl[] = '/forum/last_posts/?page=' . $i;
-				}
+				$this->addUrl('/forum/last_posts/', $lastPostsLastmod);
 			}
 			
 			// forum user_posts
@@ -316,23 +356,15 @@ class FpsSitemapGen {
 				'alias' => 'a',
 				'fields' => array(
 					'`a`.`id` as id',
-					'COUNT(DISTINCT(c.`id`)) as cnt',
+					'MAX(b.`time`) as last_post',
 				),
 				'group' => '`a`.`id`',
 			));
 
 			if (count($users) > 0) {
 				foreach ($users as $user) {
-					$this->uniqUrl[] = '/forum/user_posts/' . $user['id'];
-
-					$per_page = Config::read('themes_per_page', 'forum');
-					$per_page = intval($per_page); 
-					if ($per_page < 1) $per_page = 1;
-					$pages = ceil($user['cnt'] / $per_page);
-					
-					for ($i = 2; $i <= $pages; $i++) {
-						$this->uniqUrl[] = '/forum/user_posts/' . $user['id'] . '/?page=' . $i;
-					}
+					$lastmod = isset($user['last_post']) ? $user['last_post'] : null;
+					$this->addUrl('/forum/user_posts/' . $user['id'], $lastmod);
 				}
 			}
 		}
@@ -340,24 +372,150 @@ class FpsSitemapGen {
 		
 		// Users
 		if (Config::read('active', 'users')) {
-			$this->uniqUrl[] = '/users/';
+			$this->addUrl('/users/');
 			
 			$users = $this->DB->select('users', DB_ALL);
 
 			if (count($users) > 0) {
 				foreach ($users as $user) {
-					$this->uniqUrl[] = '/users/info/' . $user['id'];
-				}
-				
-				$per_page = Config::read('users_per_page', 'users');
-				$per_page = intval($per_page); 
-				if ($per_page < 1) $per_page = 1;
-				$pages = ceil(count($users) / $per_page);
-				
-				for ($i = 2; $i <= $pages; $i++) {
-					$this->uniqUrl[] = '/users/index/?page=' . $i;
+					$this->addUrl('/users/info/' . $user['id']);
 				}
 			}
+		}
+		
+		
+		// shop
+		if (Config::read('active', 'shop')) {
+			try {
+				$this->addShopLinks();
+			} catch (Exception $e) {
+				// Shop tables are missing on an installation without the module schema.
+			}
+		}
+	}
+	
+	
+	/**
+	 * Catalog, category, product and landing-page links with real dates.
+	 * Product visibility follows the storefront: only active products and
+	 * active categories are listed.
+	 */
+	private function addShopLinks() {
+		$products = $this->DB->select('shop_products', DB_ALL);
+		$categories = $this->DB->select('shop_categories', DB_ALL);
+		$landings = $this->DB->select('shop_landing_pages', DB_ALL);
+		$landingLinks = $this->DB->select('shop_landing_page_categories', DB_ALL);
+
+		$children = array();
+		$activeCategories = array();
+		foreach ($categories as $category) {
+			$id = (int)$category['id'];
+			$children[(int)$category['parent_id']][] = $id;
+			if (!empty($category['active'])) $activeCategories[$id] = true;
+		}
+		$descendants = function ($categoryId) use (&$descendants, $children) {
+			$ids = array((int)$categoryId);
+			$queue = array((int)$categoryId);
+			while ($queue) {
+				$current = array_shift($queue);
+				if (empty($children[$current])) continue;
+				foreach ($children[$current] as $childId) {
+					if (!in_array($childId, $ids, true)) {
+						$ids[] = $childId;
+						$queue[] = $childId;
+					}
+				}
+			}
+			return $ids;
+		};
+
+		// Active products grouped by their own category for counters and dates.
+		$productsByCategory = array();
+		$activeProducts = array();
+		$catalogLastmod = null;
+		foreach ($products as $product) {
+			if (empty($product['active'])) continue;
+			$lastmod = $this->normalizeDate(!empty($product['updated_at'])
+				? $product['updated_at']
+				: (isset($product['created_at']) ? $product['created_at'] : null));
+			$categoryId = (int)$product['category_id'];
+			$productsByCategory[$categoryId][] = $lastmod;
+			$activeProducts[] = array($product, $lastmod);
+			if ($lastmod !== null && ($catalogLastmod === null || $lastmod > $catalogLastmod)) {
+				$catalogLastmod = $lastmod;
+			}
+		}
+
+		$this->addUrl('/shop/', $catalogLastmod);
+
+		// A category page lists products from the category and all of its
+		// subcategories.
+		foreach ($categories as $category) {
+			$id = (int)$category['id'];
+			if (empty($activeCategories[$id])) continue;
+
+			$lastmod = $this->normalizeDate(!empty($category['updated_at'])
+				? $category['updated_at']
+				: (isset($category['created_at']) ? $category['created_at'] : null));
+			foreach ($descendants($id) as $childId) {
+				if (empty($productsByCategory[$childId])) continue;
+				foreach ($productsByCategory[$childId] as $productLastmod) {
+					if ($productLastmod !== null && ($lastmod === null || $productLastmod > $lastmod)) {
+						$lastmod = $productLastmod;
+					}
+				}
+			}
+
+			$this->addUrl('/shop/category/' . $id . '/', $lastmod);
+		}
+
+		$hlu = Config::read('hlu');
+		$hluExtension = (string)Config::read('hlu_extention');
+		foreach ($activeProducts as $entry) {
+			list($product, $lastmod) = $entry;
+			$slug = (string)$product['clean_url_title'];
+			if ($hlu == 1 && $slug !== '') {
+				$url = '/shop/' . $slug . $hluExtension;
+			} else {
+				$url = '/shop/view/' . (int)$product['id'] . '/';
+			}
+			$this->addUrl($url, $lastmod);
+		}
+
+		// Landing pages only exist when at least one active category is linked.
+		$landingCategories = array();
+		foreach ($landingLinks as $link) {
+			$landingCategories[(int)$link['landing_page_id']][] = (int)$link['category_id'];
+		}
+		foreach ($landings as $landing) {
+			$id = (int)$landing['id'];
+			if (empty($landing['active']) || empty($landingCategories[$id])) continue;
+
+			$categoryIds = array();
+			$hasActiveCategory = false;
+			foreach ($landingCategories[$id] as $categoryId) {
+				if (empty($activeCategories[$categoryId])) continue;
+				$hasActiveCategory = true;
+				foreach ($descendants($categoryId) as $childId) {
+					$categoryIds[$childId] = true;
+				}
+			}
+			if (!$hasActiveCategory) continue;
+
+			$lastmod = $this->normalizeDate(!empty($landing['updated_at'])
+				? $landing['updated_at']
+				: (isset($landing['created_at']) ? $landing['created_at'] : null));
+			foreach (array_keys($categoryIds) as $categoryId) {
+				if (empty($productsByCategory[$categoryId])) continue;
+				foreach ($productsByCategory[$categoryId] as $productLastmod) {
+					if ($productLastmod !== null && ($lastmod === null || $productLastmod > $lastmod)) {
+						$lastmod = $productLastmod;
+					}
+				}
+			}
+
+			$slug = trim((string)$landing['clean_url_title']);
+			$this->addUrl('/shop/landing/' . ($slug !== '' ? $slug : $id) . '/', $lastmod);
 		}
 	}
 
