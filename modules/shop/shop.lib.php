@@ -631,14 +631,13 @@ class ShopHelper
         $limit = (int)(isset($filters['limit']) ? $filters['limit'] : self::cfg('per_page', 12));
         if ($limit < 1) $limit = 12;
         if ($limit > 100) $limit = 100;
-        $offset = ($page - 1) * $limit;
 
         $sort = isset($filters['sort']) ? (string)$filters['sort'] : 'default';
         $orderSql = 'p.`position` ASC, p.`id` DESC';
         if ($sort === 'price_asc') $orderSql = 'min_price IS NULL ASC, min_price ASC, p.`id` DESC';
         if ($sort === 'price_desc') $orderSql = 'min_price IS NULL ASC, min_price DESC, p.`id` DESC';
         if ($sort === 'new') $orderSql = 'p.`created_at` DESC, p.`id` DESC';
-        if ($sort === 'title') $orderSql = 'p.`title` ASC';
+        if ($sort === 'title') $orderSql = 'p.`title` ASC, p.`id` DESC';
 
         $minSql = "(SELECT MIN(vp.`price`) FROM `" . self::table('variants') . "` v
             INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
@@ -650,13 +649,24 @@ class ShopHelper
         $countRows = self::db()->query("SELECT COUNT(*) AS cnt FROM `{$products}` p" . $whereSql);
         $total = !empty($countRows[0]['cnt']) ? (int)$countRows[0]['cnt'] : 0;
 
-        $rows = self::db()->query("SELECT p.*, c.`title` AS category_title, c.`clean_url_title` AS category_slug,
-                {$minSql} AS min_price, {$gallerySql} AS gallery_image
-            FROM `{$products}` p
-            LEFT JOIN `{$categories}` c ON c.`id` = p.`category_id`
-            {$whereSql}
-            ORDER BY {$orderSql}
-            LIMIT {$limit} OFFSET {$offset}");
+        $pages = (int)ceil($total / $limit);
+        $rows = array();
+        if ($page <= $pages) {
+            $offset = ($page - 1) * $limit;
+            $sortByPrice = $sort === 'price_asc' || $sort === 'price_desc';
+            $innerPrice = $sortByPrice ? ", {$minSql} AS min_price" : '';
+            $outerPrice = $sortByPrice ? '' : ", {$minSql} AS min_price";
+            $rows = self::db()->query("SELECT p.*, c.`title` AS category_title, c.`clean_url_title` AS category_slug
+                    {$outerPrice}, {$gallerySql} AS gallery_image
+                FROM (
+                    SELECT p.*{$innerPrice} FROM `{$products}` p
+                    {$whereSql}
+                    ORDER BY {$orderSql}
+                    LIMIT {$limit} OFFSET {$offset}
+                ) p
+                LEFT JOIN `{$categories}` c ON c.`id` = p.`category_id`
+                ORDER BY {$orderSql}");
+        }
 
         $items = array();
         foreach ($rows as $row) {
@@ -679,7 +689,7 @@ class ShopHelper
             'items' => $items,
             'total' => $total,
             'page' => $page,
-            'pages' => $limit > 0 ? (int)ceil($total / $limit) : 0,
+            'pages' => $pages,
             'limit' => $limit,
             'sort' => $sort,
         );
@@ -1380,6 +1390,55 @@ class ShopHelper
      * Orders
      * ------------------------------------------------------------------ */
 
+    public static function ensureOrderRequestsTable()
+    {
+        static $ready = false;
+        if ($ready) return;
+
+        $table = self::table('order_requests');
+        try {
+            self::db()->query("SELECT `order_id` FROM `{$table}` LIMIT 0");
+        } catch (Throwable $e) {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+            `attempt` CHAR(48) DEFAULT NULL,
+            `order_id` INT UNSIGNED DEFAULT NULL,
+            `customer_mail` VARCHAR(12) NOT NULL DEFAULT 'unknown',
+            `admin_mail` VARCHAR(12) NOT NULL DEFAULT 'unknown',
+            UNIQUE KEY `attempt` (`attempt`),
+            UNIQUE KEY `order_id` (`order_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
+        $ready = true;
+    }
+
+    public static function orderForAttempt($attempt)
+    {
+        $table = self::table('order_requests');
+        $orders = self::table('orders');
+        $attempt = self::esc($attempt);
+        $rows = self::db()->query("SELECT o.`id`, o.`access_token` FROM `{$table}` r
+            JOIN `{$orders}` o ON o.`id` = r.`order_id` WHERE r.`attempt` = '{$attempt}'");
+        return $rows[0] ?? null;
+    }
+
+    public static function orderTokenValid($order, $token)
+    {
+        $created = strtotime((string)$order['created_at']);
+        $now = time();
+        return $created !== false && $created <= $now && $created > $now - 30 * 86400
+            && preg_match('/^[a-f0-9]{40}$/D', $token)
+            && hash_equals((string)$order['access_token'], $token);
+    }
+
+    public static function orderMailStatuses($orderId)
+    {
+        self::ensureOrderRequestsTable();
+        $table = self::table('order_requests');
+        $id = (int)$orderId;
+        $rows = self::db()->query("SELECT `customer_mail`, `admin_mail` FROM `{$table}` WHERE `order_id` = {$id}");
+        return $rows[0] ?? array('customer_mail' => 'unknown', 'admin_mail' => 'unknown');
+    }
+
     public static function getOrder($orderId)
     {
         $orders = self::table('orders');
@@ -1467,7 +1526,7 @@ class ShopHelper
         }
     }
 
-    public static function sendOrderEmails($order, $items)
+    public static function sendOrderEmails($order, $items, $recipient = null)
     {
         $body = '<h2>Заказ №' . h(self::orderNumber($order['id'])) . '</h2>'
             . '<p>Дата: ' . h(self::formatDate($order['created_at'])) . '</p>'
@@ -1499,27 +1558,49 @@ class ShopHelper
         $subject = 'Заказ №' . self::orderNumber($order['id']);
         $templatePath = ROOT . '/sys/settings/email_templates/';
 
-        try {
-            if (!empty($order['email'])) {
-                $mailer = new AtmMail($templatePath);
-                $mailer->prepare($body);
-                @$mailer->sendMail($order['email'], $subject, array());
-            }
-        } catch (Throwable $e) {
-            // A mail failure must not break checkout.
-        }
-
         $notify = trim((string)self::cfg('notify_email', ''));
         if ($notify === '') $notify = trim((string)Config::read('admin_email'));
-        if ($notify !== '' && strcasecmp($notify, $order['email']) !== 0) {
-            try {
-                $mailer = new AtmMail($templatePath);
-                $mailer->prepare($body);
-                @$mailer->sendMail($notify, $subject . ' (администратор)', array());
-            } catch (Throwable $e) {
-                // Ignore mail problems.
-            }
+        if (strcasecmp($notify, $order['email']) === 0) $notify = '';
+        $recipients = array('customer' => $order['email'], 'admin' => $notify);
+        if ($recipient !== null) {
+            if (!isset($recipients[$recipient])) return false;
+            $recipients = array($recipient => $recipients[$recipient]);
         }
+
+        self::ensureOrderRequestsTable();
+        $table = self::table('order_requests');
+        $id = (int)$order['id'];
+        $lock = 'atm_shop_mail_' . sha1($table . ':' . $id);
+        $locked = self::db()->query("SELECT GET_LOCK('{$lock}', 0) AS acquired");
+        if (empty($locked[0]['acquired'])) return false;
+
+        $ok = true;
+        try {
+            $statuses = self::orderMailStatuses($id);
+            foreach ($recipients as $type => $address) {
+                $column = $type . '_mail';
+                if ($statuses[$column] === 'sent') continue;
+                $state = 'skipped';
+                if ($address !== '') {
+                    $state = 'failed';
+                    try {
+                        $mailer = new AtmMail($templatePath);
+                        $mailer->prepare($body);
+                        $mailSubject = $subject . ($type === 'admin' ? ' (администратор)' : '');
+                        if (@$mailer->sendMail($address, $mailSubject, array())) $state = 'sent';
+                    } catch (Throwable $e) {
+                        // Record the failed attempt below without logging the address.
+                    }
+                }
+                self::db()->query("INSERT INTO `{$table}` (`order_id`, `{$column}`) VALUES ({$id}, '{$state}')
+                    ON DUPLICATE KEY UPDATE `{$column}` = '{$state}'");
+                if ($state !== 'sent') $ok = false;
+                if ($state === 'failed') error_log("Shop order {$id}: {$type} notification failed");
+            }
+        } finally {
+            self::db()->query("SELECT RELEASE_LOCK('{$lock}')");
+        }
+        return $ok;
     }
 
     /* ---------------------------------------------------------------------

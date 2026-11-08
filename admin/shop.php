@@ -45,7 +45,7 @@ if (in_array($tab, $orderTabs, true) && !$canOrders) $tab = 'dashboard';
 if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST'
     && !empty($_POST['action'])) {
     $action = (string)$_POST['action'];
-    $isOrderAction = $action === 'order_status';
+    $isOrderAction = in_array($action, array('order_status', 'order_mail'), true);
     if (($isOrderAction && !$canOrders) || (!$isOrderAction && !$canProducts)) {
         $_SESSION['errors'] = 'Недостаточно прав для этого действия.';
         redirect('/admin/shop.php?tab=dashboard');
@@ -445,6 +445,29 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         $DB->delete(ShopHelper::table('landing_pages'), array('id' => $id));
         $_SESSION['message'] = 'Посадочная страница удалена.';
         shop_admin_go(array('tab' => 'landings'));
+    }
+
+    if ($action === 'order_mail') {
+        $id = (int)($_POST['id'] ?? 0);
+        $recipient = $_POST['recipient'] ?? '';
+        $order = $id > 0 ? ShopHelper::getOrder($id) : false;
+        if (!$order || !in_array($recipient, array('customer', 'admin'), true)) {
+            $_SESSION['errors'] = 'Заказ или получатель не найден.';
+            shop_admin_go(array('tab' => 'orders'));
+        }
+        try {
+            $items = ShopHelper::getOrderItems($id, $order['currency_code']);
+            $sent = ShopHelper::sendOrderEmails($order, $items, $recipient);
+        } catch (Throwable $e) {
+            error_log("Shop order {$id}: could not process notification");
+            $sent = false;
+        }
+        if ($sent) {
+            $_SESSION['message'] = 'Уведомление передано почтовой службе.';
+        } else {
+            $_SESSION['errors'] = 'Уведомление не отправлено. Проверьте адрес, настройки почты и статус отправки.';
+        }
+        shop_admin_go(array('tab' => 'order', 'id' => $id));
     }
 
     if ($action === 'order_status') {
@@ -1974,6 +1997,16 @@ function shop_admin_order()
     if (!$order) return '<div class="shop-admin-empty">Заказ не найден.</div>';
     $items = ShopHelper::getOrderItems($id, $order['currency_code']);
 
+    try {
+        $mail = ShopHelper::orderMailStatuses($id);
+    } catch (Throwable $e) {
+        $mail = array();
+    }
+    $mailLabels = array(
+        'unknown' => 'Нет данных', 'pending' => 'Ожидает отправки', 'sent' => 'Принято почтовой службой',
+        'failed' => 'Ошибка отправки', 'skipped' => 'Нет отдельного адреса получателя',
+    );
+
     ob_start(); ?>
     <div class="shop-admin-page-head">
         <h1>Заказ №<?php echo h($order['number']); ?></h1>
@@ -2033,7 +2066,28 @@ function shop_admin_order()
             <div class="shop-admin-panel-head"><h2>Покупатель</h2></div>
             <p><strong><?php echo h($order['customer_name']); ?></strong></p>
             <p><?php echo h($order['email']); ?><br /><?php echo h($order['phone']); ?></p>
-            <p><a href="<?php echo h(get_url('/shop/order/' . $id . '/' . $order['access_token'] . '/')); ?>" target="_blank">Открыть на сайте</a></p>
+            <p><a href="<?php echo h(get_url('/shop/order/' . $id . '/')); ?>" target="_blank">Открыть на сайте</a></p>
+        </div>
+
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>Уведомления</h2></div>
+            <?php if (!$mail): ?>
+                <p>Не удалось получить статусы уведомлений.</p>
+            <?php endif; ?>
+            <?php foreach (array('customer' => 'Покупатель', 'admin' => 'Администратор') as $recipient => $label): ?>
+                <?php if (!isset($mail[$recipient . '_mail'])) continue; ?>
+                <?php $state = $mail[$recipient . '_mail']; ?>
+                <p><?php echo h($label . ' — ' . $mailLabels[$state]); ?></p>
+                <?php if ($state !== 'sent'): ?>
+                <form method="post" action="">
+                    <?php echo shop_admin_csrf(); ?>
+                    <input type="hidden" name="action" value="order_mail" />
+                    <input type="hidden" name="id" value="<?php echo $id; ?>" />
+                    <input type="hidden" name="recipient" value="<?php echo h($recipient); ?>" />
+                    <button type="submit" class="shop-admin-btn">Отправить письмо — <?php echo h($label); ?></button>
+                </form>
+                <?php endif; ?>
+            <?php endforeach; ?>
         </div>
 
         <div class="shop-admin-panel">

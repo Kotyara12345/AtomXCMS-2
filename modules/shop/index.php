@@ -89,7 +89,7 @@ class ShopModule extends Module
         if (!in_array($sort, $allowedSorts, true)) $sort = 'default';
 
         $page = max(1, (int)(isset($_GET['page']) ? $_GET['page'] : 1));
-        $perPage = max(1, (int)ShopHelper::cfg('per_page', 12));
+        $perPage = min(100, max(1, (int)ShopHelper::cfg('per_page', 12)));
 
         $categoryIds = array();
         if ($landing) {
@@ -432,12 +432,6 @@ class ShopModule extends Module
     public function checkout()
     {
         $this->ACL->turn(array('shop', 'place_orders'));
-        $items = ShopHelper::cartItems();
-        if (empty($items)) {
-            ShopHelper::flash('error', 'Корзина пуста.');
-            redirect('/shop/cart/');
-        }
-
         $user = ShopHelper::currentUser();
         return $this->renderCheckout(array(
             'customer_name' => $user['name'],
@@ -456,15 +450,13 @@ class ShopModule extends Module
         if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
             redirect('/shop/checkout/');
         }
-        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
-            ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
+        $attempt = $_POST['csrf_token'] ?? '';
+        $quote = is_string($attempt) && preg_match('/^[a-f0-9]{48}$/D', $attempt)
+            ? ($_SESSION['shop_checkout'][$attempt] ?? null) : null;
+        $user = ShopHelper::currentUser();
+        if (!$quote || $quote['user_id'] !== (int)$user['id']) {
+            ShopHelper::flash('error', 'Форма оформления устарела. Проверьте заказ и повторите попытку.');
             redirect('/shop/checkout/');
-        }
-
-        $items = ShopHelper::cartItems();
-        if (empty($items)) {
-            ShopHelper::flash('error', 'Корзина пуста.');
-            redirect('/shop/cart/');
         }
 
         $old = array(
@@ -483,6 +475,15 @@ class ShopModule extends Module
             $errors[] = 'Укажите корректный e-mail.';
         }
         if ($old['phone'] === '') $errors[] = 'Укажите телефон.';
+
+        try {
+            ShopHelper::ensureOrderRequestsTable();
+            $existing = ShopHelper::orderForAttempt($attempt);
+        } catch (Throwable $e) {
+            error_log('Shop checkout storage unavailable: ' . $e->getMessage());
+            return $this->renderCheckout($old, array('Не удалось оформить заказ. Попробуйте позже.'), $attempt);
+        }
+        if ($existing) $this->finishCheckout($existing, $attempt, false);
 
         $currency = ShopHelper::activeCurrency();
         $deliveryMethods = ShopHelper::deliveryMethods($currency['code']);
@@ -509,30 +510,61 @@ class ShopModule extends Module
             return $this->renderCheckout($old, $errors);
         }
 
-        $subtotal = 0.0;
-        foreach ($items as $item) $subtotal += (float)$item['total'];
-        $deliveryPrice = ShopHelper::deliveryPrice($old['delivery_method'], $currency['code']);
-        $total = $subtotal + $deliveryPrice;
-        $user = ShopHelper::currentUser();
-        $now = date('Y-m-d H:i:s');
-        try {
-            $token = bin2hex(random_bytes(20));
-        } catch (Throwable $e) {
-            $token = md5(uniqid('shop-order', true));
+        $items = ShopHelper::cartItems($currency['code'], false);
+        $deliveryPrice = $deliveryMethods[$old['delivery_method']]['price'];
+        $changes = array();
+        foreach ($quote['items'] as $id => $previous) {
+            if (!isset($items[$id])) {
+                $changes[] = 'Позиция больше недоступна: ' . $previous['title'] . '.';
+            } elseif ($previous['quantity'] !== $items[$id]['quantity'] || $previous['price'] !== $items[$id]['price']) {
+                $changes[] = 'Цена или количество изменились: ' . $previous['title'] . '.';
+            }
+        }
+        foreach (array_diff_key($items, $quote['items']) as $item) {
+            $changes[] = 'В корзину добавлена позиция: ' . $item['product_title'] . '.';
+        }
+        if ($quote['currency'] !== $currency['code']) $changes[] = 'Изменилась валюта заказа.';
+        if (($quote['delivery'][$old['delivery_method']] ?? null) !== $deliveryPrice) {
+            $changes[] = 'Изменилась стоимость или доступность выбранной доставки.';
+        }
+        if (array_column($items, 'quantity', 'variant_id') != ShopHelper::getCart()) {
+            $changes[] = 'Остатки изменились. Корзина обновлена.';
+        }
+        if ($changes) {
+            $changes[] = 'Проверьте обновлённый заказ и подтвердите его ещё раз.';
+            return $this->renderCheckout($old, $changes);
         }
 
+        $subtotal = array_sum(array_column($items, 'total'));
+        $total = $subtotal + $deliveryPrice;
+        $now = date('Y-m-d H:i:s');
         $DB = ShopHelper::db();
         $variants = ShopHelper::table('variants');
-        $orderId = 0;
+        $products = ShopHelper::table('products');
+        $prices = ShopHelper::table('variant_prices');
+        $requests = ShopHelper::table('order_requests');
+        $code = ShopHelper::esc($currency['code']);
+        $change = null;
+        ksort($items);
         try {
+            $token = bin2hex(random_bytes(20));
             $DB->query('START TRANSACTION');
+            // Claim the attempt before taking stock locks. The claim rolls back with the order.
+            $DB->query("INSERT INTO `{$requests}` (`attempt`) VALUES ('{$attempt}')");
             foreach ($items as $item) {
                 $variantId = (int)$item['variant_id'];
                 $qty = (int)$item['quantity'];
-                $rows = $DB->query("SELECT `stock`, `active` FROM `{$variants}`
-                    WHERE `id` = {$variantId} FOR UPDATE");
-                if (empty($rows[0]) || empty($rows[0]['active']) || (int)$rows[0]['stock'] < $qty) {
-                    throw new Exception('Недостаточно товара «' . $item['product_title'] . '».');
+                $productId = (int)$item['product_id'];
+                $rows = $DB->query("SELECT v.`stock`, v.`active` AS variant_active, p.`active` AS product_active, vp.`price`
+                    FROM `{$variants}` v
+                    JOIN `{$products}` p ON p.`id` = v.`product_id`
+                    JOIN `{$prices}` vp ON vp.`variant_id` = v.`id` AND vp.`currency_code` = '{$code}'
+                    WHERE v.`id` = {$variantId} AND p.`id` = {$productId} FOR UPDATE");
+                $row = $rows[0] ?? null;
+                if (!$row || !$row['variant_active'] || !$row['product_active']
+                    || (int)$row['stock'] < $qty || (float)$row['price'] !== $item['price']) {
+                    $change = 'Изменилась цена или доступность позиции: ' . $item['product_title'] . '. Проверьте заказ и подтвердите его ещё раз.';
+                    throw new RuntimeException($change);
                 }
                 $DB->query("UPDATE `{$variants}` SET `stock` = `stock` - {$qty}
                     WHERE `id` = {$variantId}");
@@ -560,6 +592,8 @@ class ShopModule extends Module
                 'updated_at' => $now,
             ));
 
+            if ($orderId < 1) throw new RuntimeException('Order ID was not generated');
+
             foreach ($items as $item) {
                 $DB->save('shop_order_items', array(
                     'order_id' => $orderId,
@@ -573,27 +607,55 @@ class ShopModule extends Module
                     'total' => (float)$item['total'],
                 ));
             }
+            $DB->query("UPDATE `{$requests}` SET `order_id` = {$orderId}, `customer_mail` = 'pending', `admin_mail` = 'pending' WHERE `attempt` = '{$attempt}'");
             $DB->query('COMMIT');
         } catch (Throwable $e) {
-            try { $DB->query('ROLLBACK'); } catch (Throwable $ignored) {}
-            return $this->renderCheckout($old, array($e->getMessage()));
+            try {
+                $DB->query('ROLLBACK');
+                $existing = ShopHelper::orderForAttempt($attempt);
+            } catch (Throwable $lookupError) {
+                error_log('Shop checkout recovery failed: ' . $lookupError->getMessage());
+            }
+            if ($existing) $this->finishCheckout($existing, $attempt, false);
+            if ($change === null) error_log('Shop checkout failed: ' . $e->getMessage());
+            return $this->renderCheckout($old, array($change ?? 'Не удалось оформить заказ. Попробуйте ещё раз.'),
+                $change === null ? $attempt : null);
         }
 
-        $order = ShopHelper::getOrder($orderId);
-        $orderItems = ShopHelper::getOrderItems($orderId, $currency['code']);
-        if ($order) ShopHelper::sendOrderEmails($order, $orderItems);
+        $this->finishCheckout(array('id' => $orderId, 'access_token' => $token), $attempt, true);
+    }
 
-        ShopHelper::saveCart(array());
-        $_SESSION['shop_last_order'] = array('id' => $orderId, 'token' => $token);
+    private function finishCheckout($order, $attempt, $created)
+    {
+        $quote = $_SESSION['shop_checkout'][$attempt];
+        if (empty($quote['completed']) && array_map(function ($item) {
+            return $item['quantity'];
+        }, $quote['items']) == ShopHelper::getCart()) {
+            ShopHelper::saveCart(array());
+        }
+        $_SESSION['shop_checkout'][$attempt]['completed'] = true;
+        $_SESSION['shop_last_order'] = array('id' => (int)$order['id'], 'token' => $order['access_token']);
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+
+        if ($created) {
+            try {
+                $order = ShopHelper::getOrder($order['id']);
+                if ($order) ShopHelper::sendOrderEmails($order, ShopHelper::getOrderItems($order['id'], $order['currency_code']));
+            } catch (Throwable $e) {
+                error_log('Shop order notification failed: ' . $e->getMessage());
+            }
+        }
         redirect('/shop/success/');
     }
 
-    private function renderCheckout($old, $errors)
+    private function renderCheckout($old, $errors, $attempt = null)
     {
         $currency = ShopHelper::activeCurrency();
+        header('Cache-Control: private, no-store');
+        $cart = ShopHelper::getCart();
         $items = ShopHelper::cartItems($currency['code']);
         if (empty($items)) {
-            ShopHelper::flash('error', 'Корзина пуста.');
+            ShopHelper::flash('error', $cart || $errors ? 'Товары в корзине больше недоступны. Проверьте наличие в каталоге.' : 'Корзина пуста.');
             redirect('/shop/cart/');
         }
 
@@ -607,6 +669,29 @@ class ShopModule extends Module
         foreach ($items as $item) $subtotal += (float)$item['total'];
         $deliveryPrice = ShopHelper::deliveryPrice($deliveryMethod, $currency['code']);
         $total = $subtotal + $deliveryPrice;
+
+        if (ShopHelper::getCart() != $cart) {
+            $errors[] = 'Остатки изменились. Проверьте количество и состав обновлённой корзины.';
+        }
+        $quoteItems = array();
+        foreach ($items as $id => $item) {
+            $quoteItems[$id] = array(
+                'title' => $item['product_title'],
+                'price' => $item['price'],
+                'quantity' => $item['quantity'],
+            );
+        }
+        $quote = array(
+            'user_id' => (int)ShopHelper::currentUser()['id'],
+            'currency' => $currency['code'],
+            'items' => $quoteItems,
+            'delivery' => array_column($deliveryMethods, 'price', 'code'),
+        );
+        if ($attempt === null || ($_SESSION['shop_checkout'][$attempt] ?? null) !== $quote) {
+            $attempt = bin2hex(random_bytes(24));
+            $_SESSION['shop_checkout'][$attempt] = $quote;
+            $_SESSION['shop_checkout'] = array_slice($_SESSION['shop_checkout'], -20, null, true);
+        }
 
         $flash = ShopHelper::getFlash();
         $errorsHtml = '';
@@ -633,7 +718,7 @@ class ShopModule extends Module
             'old' => $old,
             'errors_html' => $errorsHtml,
             'form_action' => get_url('/shop/place_order/'),
-            'csrf_token' => ShopHelper::csrfToken(),
+            'csrf_token' => $attempt,
             'cart_url' => get_url('/shop/cart/'),
             'shop_url' => get_url('/shop/'),
             'breadcrumbs' => $this->buildSimpleBreadcrumbs('Оформление заказа'),
@@ -645,10 +730,12 @@ class ShopModule extends Module
     public function success()
     {
         $this->ACL->turn(array('shop', 'view_catalog'));
+        header('Cache-Control: private, no-store');
+        header('Referrer-Policy: no-referrer');
         if (empty($_SESSION['shop_last_order']['id'])) redirect('/shop/');
         $orderId = (int)$_SESSION['shop_last_order']['id'];
         $order = ShopHelper::getOrder($orderId);
-        if (!$order) redirect('/shop/');
+        if (!$order || !hash_equals($order['access_token'], (string)($_SESSION['shop_last_order']['token'] ?? ''))) redirect('/shop/');
         $items = ShopHelper::getOrderItems($orderId, $order['currency_code']);
 
         $this->page_title = 'Заказ оформлен — ' . h(Config::read('title', 'shop'));
@@ -685,14 +772,15 @@ class ShopModule extends Module
     {
         $this->ACL->turn(array('shop', 'view_catalog'));
         $id = (int)$id;
+        header('Cache-Control: private, no-store');
+        header('Referrer-Policy: no-referrer');
         $order = $id > 0 ? ShopHelper::getOrder($id) : false;
         if (!$order) $this->Parser->showHttpError();
 
         $user = ShopHelper::currentUser();
         $isOwner = !empty($user['id']) && (int)$order['user_id'] === (int)$user['id'];
         $token = (string)$token;
-        $isToken = $token !== '' && !empty($order['access_token'])
-            && hash_equals((string)$order['access_token'], $token);
+        $isToken = ShopHelper::orderTokenValid($order, $token);
         $isAdmin = $this->ACL->turn(array('shop', 'manage_orders'), false);
         if (!$isOwner && !$isToken && !$isAdmin) $this->Parser->showHttpError();
 
