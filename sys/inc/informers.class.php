@@ -71,7 +71,7 @@ class Informers {
 		if (count($informer) < 1) return false;
 		
 		$this->template = $informer[0]['template'];
-		$params = unserialize($informer[0]['options']);
+		$params = unserialize($informer[0]['options'], array('allowed_classes' => false));
 		$this->buildContent($params);
 		return $this->output;
 	}

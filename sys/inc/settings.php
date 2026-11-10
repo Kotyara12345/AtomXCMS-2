@@ -22,7 +22,7 @@
 ##################################################
 if ($fset=@file_get_contents(ROOT . '/sys/settings/settings.dat'))
 {
-$set=unserialize($fset);
+$set=unserialize($fset, array('allowed_classes' => false));
 
 }
 

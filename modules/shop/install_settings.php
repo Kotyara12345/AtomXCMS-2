@@ -22,4 +22,5 @@ $FpsInstallSettings = array(
 
     'payment_methods' => "cash|Наличными при получении\ntransfer|Банковский перевод",
     'notify_email' => '',
+    'order_ttl_hours' => 72,
 );

@@ -125,7 +125,7 @@ function getBornTodayUsers() {
 		file_put_contents($file, serialize($today_born));
 	} else {
 		$today_born = file_get_contents($file);
-		if (!empty($today_born)) $today_born = unserialize($today_born);
+		if (!empty($today_born)) $today_born = unserialize($today_born, array('allowed_classes' => false));
 	}
 	
 	if (count($today_born) < 1) return array();
@@ -582,7 +582,7 @@ function getWhoOnline() {
 	$all = 0;
 	
 	if (file_exists($path) && is_readable($path)) {
-		$data = unserialize(file_get_contents($path));
+		$data = unserialize(file_get_contents($path), array('allowed_classes' => false));
 		$users = count($data['users']);
 		$quests = count($data['guests']);
 		$all = ($quests + $users);
@@ -599,7 +599,7 @@ function getOnlineUsers() {
 	$path = ROOT . '/sys/logs/counter_online/online.dat';
 	
 	if (file_exists($path) && is_readable($path)) {
-		$data = unserialize(file_get_contents($path));
+		$data = unserialize(file_get_contents($path), array('allowed_classes' => false));
 		$users = $data['users'];
 	}
 	
@@ -614,7 +614,7 @@ function getOveralStat($key = false) {
 	$path = ROOT . '/sys/logs/overal_stats.dat';
 	
 	if (file_exists($path) && is_readable($path)) {
-		$data = unserialize(file_get_contents($path));
+		$data = unserialize(file_get_contents($path), array('allowed_classes' => false));
 		if (!empty($key)) {
 			return (isset($data[$key])) ? $data[$key] : false;
 		}

@@ -120,7 +120,7 @@ Class StatisticsModule
 		touchDir(ROOT . '/sys/logs/counter/', 0777);
 		$tmp_datafile = ROOT . '/sys/logs/counter/' . date("Y-m-d") . '.dat';
 		if (file_exists($tmp_datafile) && is_readable($tmp_datafile)) {
-			$stats = unserialize(file_get_contents($tmp_datafile));
+			$stats = unserialize(file_get_contents($tmp_datafile), array('allowed_classes' => false));
 			
 			$stats['views'] 			= $stats['views'] + $view;
 			$stats['cookie']			= $stats['cookie'] + $cookie;
@@ -151,7 +151,7 @@ Class StatisticsModule
 		if (!file_exists(ROOT . '/sys/logs/overal_stats.dat')) {
 			StatisticsModule::_updateOveralHits();
 		}
-		$overal = unserialize(file_get_contents(ROOT . '/sys/logs/overal_stats.dat'));
+		$overal = unserialize(file_get_contents(ROOT . '/sys/logs/overal_stats.dat'), array('allowed_classes' => false));
 		if (!isset($overal['hits'])) {
 			$overal['hits'] = StatisticsModule::_updateOveralHits();
 		}
@@ -184,7 +184,7 @@ Class StatisticsModule
 		$guests = array();
 		$online_users = array();
 		if (file_exists($path) && is_readable($path)) {
-			$data = unserialize(file_get_contents($path));
+			$data = unserialize(file_get_contents($path), array('allowed_classes' => false));
 			$users = (!empty($data['users'])) ? $data['users'] : array();
 			$guests = (!empty($data['guests'])) ? $data['guests'] : array();
 		}
@@ -282,7 +282,7 @@ Class StatisticsModule
 	* clean overal stats key
 	*/
 	static private function _deleteOveralKey($key) {
-		$data = unserialize(file_get_contents(ROOT . '/sys/logs/overal_stats.dat'));
+		$data = unserialize(file_get_contents(ROOT . '/sys/logs/overal_stats.dat'), array('allowed_classes' => false));
 		if (array_key_exists($key, $data)) unset($data[$key]);
 		file_put_contents(ROOT . '/sys/logs/overal_stats.dat', serialize($data));
 	}
@@ -306,7 +306,7 @@ Class StatisticsModule
 		
 		
 		if (file_exists($overal_file)) {
-			$data = unserialize(file_get_contents($overal_file));
+			$data = unserialize(file_get_contents($overal_file), array('allowed_classes' => false));
 		} else {
 			$data = array();
 		}
@@ -344,7 +344,7 @@ Class StatisticsModule
 		if (is_array($res) && count($res)) { 
 			return;
 		} else {
-			$stats = unserialize(file_get_contents($file));
+			$stats = unserialize(file_get_contents($file), array('allowed_classes' => false));
 			$data = array(
 				'ips' => (int)$stats['ips'],
 				'cookie' => (int)$stats['cookie'],
@@ -402,7 +402,7 @@ Class StatisticsModule
 		$users = 0;
 		$quests = 0;
 		if (file_exists($path) && is_readable($path)) {
-			$data = unserialize(file_get_contents($path));
+			$data = unserialize(file_get_contents($path), array('allowed_classes' => false));
 			$users = (isset($data['users'])) ? count($data['users']) : 0;
 			$guests = (isset($data['guests'])) ? count($data['guests']) : 0;
 		}

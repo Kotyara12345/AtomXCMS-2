@@ -208,8 +208,21 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_requ
     `order_id` INT UNSIGNED DEFAULT NULL,
     `customer_mail` VARCHAR(12) NOT NULL DEFAULT 'unknown',
     `admin_mail` VARCHAR(12) NOT NULL DEFAULT 'unknown',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY `attempt` (`attempt`),
     UNIQUE KEY `order_id` (`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_status_history` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `status` VARCHAR(32) NOT NULL DEFAULT '',
+    `comment` VARCHAR(255) NOT NULL DEFAULT '',
+    `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `user_name` VARCHAR(255) NOT NULL DEFAULT '',
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `order_id` (`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_items` (

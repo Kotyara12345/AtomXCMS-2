@@ -32,7 +32,7 @@ function getUserRating($rating, $settings) {
 	
 	if (empty($settings) || !is_string($settings)) return 'star0.gif';
 	
-	$params = unserialize($settings);
+	$params = unserialize($settings, array('allowed_classes' => false));
 	if (!is_array($params)) return 'star0.gif';
 	
 	if ( $rating < $params['cond1'] ) {

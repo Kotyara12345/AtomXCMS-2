@@ -284,7 +284,7 @@ Class ForumModule extends Module {
 		$forumFile = $dir . $id_forum . '.dat';
 		if (!file_exists($dir)) mkdir($dir, 0777, true);
 		if (file_exists($forumFile)) {
-			$who = unserialize(file_get_contents($forumFile));
+			$who = unserialize(file_get_contents($forumFile), array('allowed_classes' => false));
 		}
 		
 		

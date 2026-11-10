@@ -102,7 +102,7 @@ class FpsAdditionalFields {
 
                     $field = 'add_field_' . $addField->getId();
                     $f_params = $addField->getParams();
-                    if (!empty($f_params)) $f_params = unserialize($f_params);
+                    if (!empty($f_params)) $f_params = unserialize($f_params, array('allowed_classes' => false));
 
 
                     if ($inputs === true) {
@@ -248,7 +248,7 @@ class FpsAdditionalFields {
 		if (!empty($addFields)) {
 			foreach($addFields as $key => $field) {
 				$params = $field->getParams();
-				$params = (!empty($params)) ? unserialize($params) : array();
+				$params = (!empty($params)) ? unserialize($params, array('allowed_classes' => false)) : array();
 				$field_name = 'add_field_' . $field->getId();
 				$array = array('field_id' => $field->getId());
 				

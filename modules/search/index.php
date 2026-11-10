@@ -233,7 +233,7 @@ class SearchModule extends Module {
 		$shopIndexed = $this->__isShopSearchAvailable() ? 1 : 0;
 		$meta = array();
 		if (file_exists($meta_file) && is_readable($meta_file)) {
-			$meta = @unserialize(file_get_contents($meta_file));
+			$meta = @unserialize(file_get_contents($meta_file), array('allowed_classes' => false));
 			if (!is_array($meta)) {
 				$meta = array();
 			}

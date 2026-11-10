@@ -56,6 +56,20 @@ class ShopHelper
     }
 
     /**
+     * Schema.org JSON-LD block.
+     *
+     * JSON_HEX_TAG keeps a product title or description containing
+     * "</script>" from closing the script element.
+     */
+    public static function jsonLdScript($data)
+    {
+        $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        if ($json === false) return '';
+        return '<script type="application/ld+json">' . $json . '</script>';
+    }
+
+    /**
      * Render an administrator-entered description.
      *
      * The shop uses the same WysiBB editor as news articles, so new values are
@@ -215,6 +229,27 @@ class ShopHelper
     public static function orderNumber($id)
     {
         return 100000 + (int)$id;
+    }
+
+    public static function phoneValid($phone)
+    {
+        $digits = preg_replace('/\D+/', '', (string)$phone);
+        return strlen($digits) >= 7 && strlen($digits) <= 15;
+    }
+
+    /**
+     * Absolute URL for e-mail links. get_url() returns a site-relative path.
+     */
+    public static function absoluteUrl($path)
+    {
+        $path = trim((string)$path);
+        if ($path === '') return '';
+        if (preg_match('#^https?://#i', $path)) return $path;
+
+        if (function_exists('atm_site_origin')) {
+            return rtrim(atm_site_origin(false), '/') . '/' . ltrim($path, '/');
+        }
+        return $path;
     }
 
     /* ---------------------------------------------------------------------
@@ -1404,9 +1439,19 @@ class ShopHelper
             `order_id` INT UNSIGNED DEFAULT NULL,
             `customer_mail` VARCHAR(12) NOT NULL DEFAULT 'unknown',
             `admin_mail` VARCHAR(12) NOT NULL DEFAULT 'unknown',
+            `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY `attempt` (`attempt`),
             UNIQUE KEY `order_id` (`order_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
+        // Older installations have no created_at; it only drives housekeeping.
+        try {
+            self::db()->query("SELECT `created_at` FROM `{$table}` LIMIT 0");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$table}` ADD COLUMN `created_at`
+                    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+            } catch (Throwable $ignored) {}
         }
         $ready = true;
     }
@@ -1490,13 +1535,14 @@ class ShopHelper
         return self::setOrderStatus($orderId, 'cancelled');
     }
 
-    public static function setOrderStatus($orderId, $status)
+    public static function setOrderStatus($orderId, $status, $note = '', $changedBy = 0, $changedByName = '')
     {
         $statuses = self::statuses();
         if (!isset($statuses[$status])) return false;
         $orders = self::table('orders');
         $variants = self::table('variants');
         $orderId = (int)$orderId;
+        self::ensureOrderStatusHistoryTable();
         try {
             self::db()->query('START TRANSACTION');
             $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
@@ -1518,6 +1564,7 @@ class ShopHelper
             }
             self::db()->query("UPDATE `{$orders}` SET `status` = '" . self::esc($status) . "', `stock_released` = {$released},
                 `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "' WHERE `id` = {$orderId}");
+            self::logOrderStatus($orderId, $status, $note, $changedBy, $changedByName);
             self::db()->query('COMMIT');
             return true;
         } catch (Throwable $e) {
@@ -1526,12 +1573,140 @@ class ShopHelper
         }
     }
 
-    public static function sendOrderEmails($order, $items, $recipient = null)
+    /** @var bool */
+    private static $orderStatusHistoryReady = false;
+
+    /**
+     * Older installations have no status history table. Create it on first use.
+     */
+    public static function ensureOrderStatusHistoryTable()
+    {
+        if (self::$orderStatusHistoryReady) return true;
+
+        $table = self::table('order_status_history');
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `status` VARCHAR(32) NOT NULL DEFAULT '',
+                `comment` VARCHAR(255) NOT NULL DEFAULT '',
+                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `user_name` VARCHAR(255) NOT NULL DEFAULT '',
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `order_id` (`order_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$orderStatusHistoryReady = true;
+        return true;
+    }
+
+    public static function logOrderStatus($orderId, $status, $comment = '', $userId = 0, $userName = '', $createdAt = null)
+    {
+        if (!self::ensureOrderStatusHistoryTable()) return false;
+        try {
+            self::db()->save('shop_order_status_history', array(
+                'order_id' => (int)$orderId,
+                'status' => (string)$status,
+                'comment' => mb_substr((string)$comment, 0, 255),
+                'user_id' => (int)$userId,
+                'user_name' => mb_substr((string)$userName, 0, 255),
+                'created_at' => $createdAt ? $createdAt : date('Y-m-d H:i:s'),
+            ));
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop order status history write failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function getOrderStatusHistory($orderId)
+    {
+        if (!self::ensureOrderStatusHistoryTable()) return array();
+
+        $table = self::table('order_status_history');
+        try {
+            $rows = self::db()->query("SELECT * FROM `{$table}` WHERE `order_id` = " . (int)$orderId . " ORDER BY `id` ASC");
+        } catch (Throwable $e) {
+            return array();
+        }
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['order_id'] = (int)$row['order_id'];
+            $row['status_label'] = self::statusLabel($row['status']);
+            $row['created_at_formatted'] = self::formatDate($row['created_at']);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    /**
+     * Cancel orders that were never paid for and return their stock.
+     * "order_ttl_hours" = 0 keeps orders open forever.
+     *
+     * @return bool false when the run failed so fpsCron retries next request
+     */
+    public static function expireUnpaidOrders()
+    {
+        $hours = (int)self::cfg('order_ttl_hours', 72);
+        if ($hours < 1) return true;
+
+        try {
+            $orders = self::table('orders');
+            $cutoff = date('Y-m-d H:i:s', time() - $hours * 3600);
+            $rows = self::db()->query("SELECT `id` FROM `{$orders}`
+                WHERE `status` = 'new' AND `created_at` IS NOT NULL
+                    AND `created_at` < '" . self::esc($cutoff) . "'
+                ORDER BY `id` ASC LIMIT 50");
+            foreach ($rows as $row) {
+                $id = (int)$row['id'];
+                $note = 'Автоматическая отмена: заказ не оплачен за ' . $hours . ' ч.';
+                if (!self::setOrderStatus($id, 'cancelled', $note, 0, '')) continue;
+                try {
+                    $order = self::getOrder($id);
+                    if ($order) {
+                        self::sendOrderEmails($order,
+                            self::getOrderItems($id, $order['currency_code']), 'customer', true);
+                    }
+                } catch (Throwable $e) {
+                    error_log("Shop order {$id}: cancellation notification failed");
+                }
+            }
+            self::cleanupOrderRequests();
+        } catch (Throwable $e) {
+            error_log('Shop order expiry failed: ' . $e->getMessage());
+            return false;
+        }
+        return true;
+    }
+
+    private static function cleanupOrderRequests()
+    {
+        self::ensureOrderRequestsTable();
+        $table = self::table('order_requests');
+        try {
+            self::db()->query("DELETE FROM `{$table}` WHERE `created_at` IS NOT NULL
+                AND `created_at` < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+        } catch (Throwable $e) {
+            error_log('Shop order request cleanup failed: ' . $e->getMessage());
+        }
+    }
+
+    public static function sendOrderEmails($order, $items, $recipient = null, $force = false)
     {
         $body = '<h2>Заказ №' . h(self::orderNumber($order['id'])) . '</h2>'
             . '<p>Дата: ' . h(self::formatDate($order['created_at'])) . '</p>'
-            . '<p>Статус: ' . h(self::statusLabel($order['status'])) . '</p>'
-            . '<p>Покупатель: ' . h($order['customer_name']) . '<br />'
+            . '<p>Статус: ' . h(self::statusLabel($order['status'])) . '</p>';
+        $orderLink = !empty($order['access_token'])
+            ? self::absoluteUrl(get_url('/shop/order/' . (int)$order['id'] . '/' . $order['access_token'] . '/'))
+            : '';
+        if ($orderLink !== '') {
+            $body .= '<p><a href="' . h($orderLink) . '">Открыть заказ на сайте</a></p>';
+        }
+        $body .= '<p>Покупатель: ' . h($order['customer_name']) . '<br />'
             . 'E-mail: ' . h($order['email']) . '<br />'
             . 'Телефон: ' . h($order['phone']) . '</p>'
             . '<p>Доставка: ' . h($order['delivery_title']) . '<br />'
@@ -1579,7 +1754,7 @@ class ShopHelper
             $statuses = self::orderMailStatuses($id);
             foreach ($recipients as $type => $address) {
                 $column = $type . '_mail';
-                if ($statuses[$column] === 'sent') continue;
+                if ($statuses[$column] === 'sent' && !$force) continue;
                 $state = 'skipped';
                 if ($address !== '') {
                     $state = 'failed';
@@ -1745,5 +1920,16 @@ class ShopHelper
             return array('items' => array(), 'total' => 0, 'page' => 1, 'pages' => 0, 'limit' => 0, 'sort' => 'default');
         }
         return self::getProducts(array('ids' => $ids, 'limit' => $limit));
+    }
+}
+
+/**
+ * Request-driven cron hook. Returns false so fpsCron retries on the next hit.
+ */
+if (!function_exists('shopExpireOrders')) {
+    function shopExpireOrders()
+    {
+        if (!class_exists('ShopHelper', false)) return false;
+        return ShopHelper::expireUnpaidOrders();
     }
 }

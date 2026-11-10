@@ -340,7 +340,7 @@ Class Cache {
         if (!$result) {
             return false;
         }
-        $tmp = @unserialize($result);
+        $tmp = @unserialize($result, array('allowed_classes' => false));
         return $tmp;
     }
 	

@@ -347,7 +347,7 @@ class Document_Parser {
     {
 		$menu_conf_file = ROOT . '/sys/settings/menu.dat';	
 		if (!file_exists($menu_conf_file)) return false;
-		$menudata = unserialize(file_get_contents($menu_conf_file));
+		$menudata = unserialize(file_get_contents($menu_conf_file), array('allowed_classes' => false));
 	
 		
 		if (!empty($menudata) && count($menudata) > 0) {

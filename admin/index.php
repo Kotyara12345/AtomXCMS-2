@@ -77,7 +77,7 @@ $all_hosts = $FpsDB->query("
 $tmp_datafile = ROOT . '/sys/logs/counter/' . date("Y-m-d") . '.dat';
 
 if (file_exists($tmp_datafile) && is_readable($tmp_datafile)) {
-	$stats = unserialize(file_get_contents($tmp_datafile));
+	$stats = unserialize(file_get_contents($tmp_datafile), array('allowed_classes' => false));
 	$today_hits = $stats['views'];
 	$today_hosts = $stats['cookie'];
 } else {

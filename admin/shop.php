@@ -473,6 +473,8 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
     if ($action === 'order_status') {
         $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
         $status = isset($_POST['status']) ? (string)$_POST['status'] : '';
+        $note = isset($_POST['note']) && is_string($_POST['note']) ? trim($_POST['note']) : '';
+        $notify = !empty($_POST['notify']);
         $order = $id > 0 ? ShopHelper::getOrder($id) : false;
         if (!$order) {
             $_SESSION['errors'] = 'Заказ не найден.';
@@ -491,10 +493,23 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
             $_SESSION['message'] = 'Статус заказа не изменился.';
             shop_admin_go(array('tab' => 'order', 'id' => $id));
         }
-        if (!ShopHelper::setOrderStatus($id, $status)) {
+        $adminUserId = !empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : 0;
+        $adminUserName = !empty($_SESSION['user']['name']) ? (string)$_SESSION['user']['name'] : '';
+        if (!ShopHelper::setOrderStatus($id, $status, $note, $adminUserId, $adminUserName)) {
             $_SESSION['errors'] = 'Не удалось изменить статус заказа.';
         } else {
             $_SESSION['message'] = 'Статус заказа обновлён.';
+            if ($notify) {
+                try {
+                    $updated = ShopHelper::getOrder($id);
+                    $sent = $updated && ShopHelper::sendOrderEmails($updated,
+                        ShopHelper::getOrderItems($id, $updated['currency_code']), 'customer', true);
+                    if (!$sent) $_SESSION['message'] .= ' Письмо покупателю отправить не удалось.';
+                } catch (Throwable $e) {
+                    error_log("Shop order {$id}: status notification failed");
+                    $_SESSION['message'] .= ' Письмо покупателю отправить не удалось.';
+                }
+            }
         }
         shop_admin_go(array('tab' => 'order', 'id' => $id));
     }
@@ -2052,6 +2067,13 @@ function shop_admin_order()
                         <?php endforeach; ?>
                     </select>
                 </label>
+                <label>Комментарий к статусу
+                    <input type="text" name="note" maxlength="255" placeholder="Например: согласовано по телефону" />
+                </label>
+                <label class="shop-admin-inline-check">
+                    <input type="checkbox" name="notify" value="1" checked="checked" />
+                    Отправить письмо покупателю об изменении статуса
+                </label>
                 <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Обновить статус</button>
             </form>
             <?php if (!empty($order['stock_released'])): ?>
@@ -2059,6 +2081,24 @@ function shop_admin_order()
             <?php endif; ?>
             <?php if ($order['status'] === 'cancelled'): ?>
             <p class="shop-admin-muted">Отменённый заказ нельзя вернуть в работу.</p>
+            <?php endif; ?>
+            <?php $history = ShopHelper::getOrderStatusHistory($id); ?>
+            <?php if ($history): ?>
+            <h3>История статусов</h3>
+            <ul class="shop-admin-history">
+                <?php foreach ($history as $entry): ?>
+                <li>
+                    <strong><?php echo h($entry['status_label']); ?></strong>
+                    <span class="shop-admin-muted"><?php echo h($entry['created_at_formatted']); ?></span>
+                    <?php if (!empty($entry['user_name'])): ?>
+                    <span class="shop-admin-muted">— <?php echo h($entry['user_name']); ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($entry['comment'])): ?>
+                    <div><?php echo h($entry['comment']); ?></div>
+                    <?php endif; ?>
+                </li>
+                <?php endforeach; ?>
+            </ul>
             <?php endif; ?>
         </div>
 

@@ -902,3 +902,19 @@
 .shop-admin-category-landings .shop-admin-table {
     margin-top: 10px;
 }
+
+.shop-admin-history {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.shop-admin-history li {
+    padding: 7px 0;
+    border-top: 1px solid #e7ecf1;
+    font-size: 13px;
+}
+
+.shop-admin-history li:first-child {
+    border-top: 0;
+}

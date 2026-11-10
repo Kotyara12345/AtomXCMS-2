@@ -89,7 +89,7 @@ $query = $FpsDB->select('users_settings', DB_FIRST, array('cond' => array('type'
 if (count($query) < 1) {
 	$result = array();
 } else {
-	$result = unserialize($query[0]['values']);
+	$result = unserialize($query[0]['values'], array('allowed_classes' => false));
 }
 
 

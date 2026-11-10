@@ -29,7 +29,7 @@ $date = (!empty($_GET['date'])) ? $_GET['date'] : time();
 $_date = date("Y-m-d", $date);
 if ($_date == date("Y-m-d")) {
 	if (file_exists(ROOT . '/sys/logs/counter/' . $_date . '.dat')) {
-		$stats[0] = unserialize(file_get_contents(ROOT . '/sys/logs/counter/' . $_date . '.dat'));
+		$stats[0] = unserialize(file_get_contents(ROOT . '/sys/logs/counter/' . $_date . '.dat'), array('allowed_classes' => false));
 	}
 } else {
 	$stats = $FpsDB->query("SELECT * FROM `" . $FpsDB->getFullTableName('statistics') . "` WHERE `date` = '" . $_date . "'");

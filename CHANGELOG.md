@@ -14,6 +14,21 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 - PHP 8.5 compatibility for the core, modules, admin panel and installer.
 - Bilingual README (English / Russian) with fork notes, requirements and
   installation instructions.
+- Shop pages expose Open Graph tags, schema.org `Product`/`AggregateOffer`
+  JSON-LD on product pages and `BreadcrumbList` JSON-LD on catalogue pages.
+  Paginated catalogue pages print `rel="prev"`/`rel="next"`. Product pages use
+  the product image for `og:image` and `product` as `og:type`; internal
+  catalogue search is marked `noindex, follow`.
+- Shop order lifecycle: unpaid orders are cancelled automatically after the
+  configurable `order_ttl_hours` (default 72, `0` disables) and their stock is
+  returned to the catalogue. The maintenance runs on requests, like the
+  sitemap job, so no system cron is required.
+- Shop order status history (`shop_order_status_history`): every status change
+  is stored with the comment, the admin name and the time, and shown in the
+  order card in the admin panel.
+- Admin status changes can add a comment and optionally e-mail the customer
+  about the new status. Order e-mails now contain a direct link to the order.
+- Checkout rejects phone numbers without 7–15 digits.
 - Password hashing helpers: `atm_password_hash()`, `atm_password_verify()`,
   `atm_password_needs_rehash()` in `sys/inc/helpers.lib.php`.
 - "Server protocols" section in the admin panel (System settings) with
@@ -216,6 +231,11 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   protection, previously only the admin panel did this).
 - Password reset generates the temporary password with `random_int()`
   instead of `rand()`.
+- Serialized data read from cache, logs, menus, module settings and
+  statistics now passes `allowed_classes => false` to `unserialize()`, so
+  a tampered file or database value cannot instantiate arbitrary objects
+  and trigger their magic methods. A regression test scans the source for
+  unprotected calls.
 
 ## [2.8 Beta]
 

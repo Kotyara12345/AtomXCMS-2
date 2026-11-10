@@ -12,6 +12,20 @@ class CmsFixtureDB {
     public function getFullTableName($name){return $this->prefix.$name;}
     public function escape($value){return substr($this->pdo->quote((string)$value),1,-1);}
     public function query($sql){$s=$this->pdo->query($sql);return $s->columnCount()?$s->fetchAll(PDO::FETCH_ASSOC):array();}
+    public function save($table,$values,$params=array()){
+        $table=$this->getFullTableName($table);$values=(array)$values;
+        if(!empty($values['id'])){
+            $id=(int)$values['id'];unset($values['id']);$sets=array();
+            foreach($values as$key=>$value)$sets[]="`{$key}`=".$this->pdo->quote((string)$value);
+            $this->pdo->exec("UPDATE `{$table}` SET ".implode(',',$sets)." WHERE `id`={$id}");
+            return $id;
+        }
+        $columns=array_keys($values);
+        $marks=implode(',',array_fill(0,count($columns),'?'));
+        $stmt=$this->pdo->prepare("INSERT INTO `{$table}` (`".implode('`,`',$columns)."`) VALUES ({$marks})");
+        $stmt->execute(array_values($values));
+        return (int)$this->pdo->lastInsertId();
+    }
 }
 function cms_check($ok,$message){if(!$ok)throw new RuntimeException($message);}
 $root=dirname(__DIR__);require $root.'/sys/inc/acl.class.php';require $root.'/sys/fnc/search.lib.php';require $root.'/modules/shop/shop.lib.php';
@@ -28,9 +42,11 @@ try{
         'themes'=>'id int PRIMARY KEY, id_forum int, group_access varchar(255)',
         'posts'=>'id int PRIMARY KEY, id_theme int',
         'forums'=>'id int PRIMARY KEY, parent_forum_id int, lock_posts int, lock_passwd varchar(64)',
-        'shop_orders'=>'id int PRIMARY KEY, status varchar(32), stock_released int, updated_at datetime',
+        'shop_orders'=>'id int PRIMARY KEY, status varchar(32), stock_released int, updated_at datetime, created_at datetime',
         'shop_variants'=>'id int PRIMARY KEY, stock int',
-        'shop_order_items'=>'id int PRIMARY KEY, order_id int, variant_id int, quantity int, price decimal(12,2), total decimal(12,2)'
+        'shop_order_items'=>'id int PRIMARY KEY, order_id int, variant_id int, quantity int, price decimal(12,2), total decimal(12,2)',
+        'shop_order_status_history'=>'id int AUTO_INCREMENT PRIMARY KEY, order_id int, status varchar(32), comment varchar(255), user_id int, user_name varchar(255), created_at datetime',
+        'shop_order_requests'=>'attempt char(48) DEFAULT NULL, order_id int DEFAULT NULL, customer_mail varchar(12) NOT NULL DEFAULT \'unknown\', admin_mail varchar(12) NOT NULL DEFAULT \'unknown\', created_at datetime DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY attempt (attempt), UNIQUE KEY order_id (order_id)'
     );
     foreach($schemas as$name=>$schema){$table=$db->getFullTableName($name);$db->query("CREATE TABLE `$table` ($schema) ENGINE=InnoDB");$tables[]=$table;}
     $db->query("INSERT INTO `{$prefix}news_categories` VALUES(1,'')");
@@ -50,7 +66,7 @@ try{
     $db->query("UPDATE `{$prefix}themes` SET group_access='1'");cms_check(!atm_search_result_visible($result),'Restricted topic leaked');
     $db->query("UPDATE `{$prefix}themes` SET group_access=''");$db->query("DELETE FROM `{$prefix}posts` WHERE id=1");cms_check(!atm_search_result_visible($result),'Deleted post remained visible');
 
-    $db->query("INSERT INTO `{$prefix}shop_orders` VALUES(1,'new',0,NOW())");
+    $db->query("INSERT INTO `{$prefix}shop_orders` VALUES(1,'new',0,NOW(),NOW())");
     $db->query("INSERT INTO `{$prefix}shop_variants` VALUES(1,10)");
     $db->query("INSERT INTO `{$prefix}shop_order_items` VALUES(1,1,1,2,5,10)");
     $pdo->beginTransaction();$pdo->query("SELECT * FROM `{$prefix}shop_orders` WHERE id=1 FOR UPDATE");
@@ -65,6 +81,15 @@ try{
     $children=array();
     cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=1")->fetchColumn()===12,'Stock was released more than once');
     cms_check(!ShopHelper::setOrderStatus(1,'new'),'Cancelled order reopened without a reservation');
+    $history=$pdo->query("SELECT status FROM `{$prefix}shop_order_status_history` WHERE order_id=1")->fetchAll(PDO::FETCH_COLUMN);
+    cms_check(in_array('cancelled',$history,true),'Cancellation was not recorded in the status history');
+
+    $db->query("INSERT INTO `{$prefix}shop_orders` VALUES(2,'new',0,NOW(),DATE_SUB(NOW(),INTERVAL 4 DAY))");
+    $db->query("INSERT INTO `{$prefix}shop_variants` VALUES(2,5)");
+    $db->query("INSERT INTO `{$prefix}shop_order_items` VALUES(2,2,2,2,5,10)");
+    cms_check(ShopHelper::expireUnpaidOrders()===true,'Unpaid order expiry run failed');
+    cms_check($pdo->query("SELECT status FROM `{$prefix}shop_orders` WHERE id=2")->fetchColumn()==='cancelled','Unpaid order was not cancelled after its term');
+    cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=2")->fetchColumn()===7,'Expired order stock was not released');
     echo "CMS visibility and concurrent order checks passed.\n";
 }finally{
     if($pdo->inTransaction())$pdo->rollBack();

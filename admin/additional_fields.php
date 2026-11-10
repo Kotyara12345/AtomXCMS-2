@@ -165,7 +165,7 @@ if ($_GET['ac'] == 'index'):
 <?php if (!empty($fields)): ?>
 <?php foreach($fields as $field): ?>
 	<?php
-		$params = (!empty($field['params'])) ? unserialize($field['params']) : array();
+		$params = (!empty($field['params'])) ? unserialize($field['params'], array('allowed_classes' => false)) : array();
 		$values = (!empty($params['values'])) ? $params['values'] : '-';
 		$field_marker = 'add_field_' . $field['id'];
 		
@@ -274,7 +274,7 @@ if ($_GET['ac'] == 'index'):
 
 	<?php foreach($fields as $field): ?>
 		<?php
-			$params = (!empty($field['params'])) ? unserialize($field['params']) : array();
+			$params = (!empty($field['params'])) ? unserialize($field['params'], array('allowed_classes' => false)) : array();
 			$values = (!empty($params['values'])) ? $params['values'] : '-';
 			$field_marker = 'add_field_' . $field['id'];
 			

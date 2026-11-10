@@ -46,7 +46,7 @@ if (!empty($_GET['ac']) && $_GET['ac'] === 'add') {
 	
 	if (!empty($data['title']) && !empty($data['url'])) {
 		if (file_exists($menu_conf_file)) {
-			$menu = unserialize(file_get_contents($menu_conf_file));
+			$menu = unserialize(file_get_contents($menu_conf_file), array('allowed_classes' => false));
 		} else {
 			$menu = array();
 		}
@@ -68,7 +68,7 @@ if (!empty($_GET['ac']) && $_GET['ac'] === 'add') {
 	$data['newwin'] = (!empty($_POST['newwin'])) ? trim($_POST['newwin']) : '';
 	
 	if (!empty($data['title']) && !empty($data['url']) && !empty($data['id'])) {
-		$menu = unserialize(file_get_contents($menu_conf_file));
+		$menu = unserialize(file_get_contents($menu_conf_file), array('allowed_classes' => false));
 		$menu = saveMenu($id, $data, $menu);
 		file_put_contents($menu_conf_file, serialize($menu));
 		redirect('/admin/menu_editor.php');
@@ -281,7 +281,7 @@ if (isset($_POST['data']) && is_array($_POST['data'])) {
 
 $menu = array();
 if (file_exists($menu_conf_file)) {
-	$menu = unserialize(file_get_contents($menu_conf_file));
+	$menu = unserialize(file_get_contents($menu_conf_file), array('allowed_classes' => false));
 }	
 
 include_once ROOT . '/admin/template/header.php';

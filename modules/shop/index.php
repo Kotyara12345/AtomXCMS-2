@@ -12,6 +12,24 @@ class ShopModule extends Module
     public $template = 'shop';
     public $module = 'shop';
 
+    /** @var bool */
+    private $isProductPage = false;
+
+    /** @var string */
+    private $ogImageUrl = '';
+
+    /** @var array */
+    private $breadcrumbData = array();
+
+    /** @var string */
+    private $productStructuredData = '';
+
+    /** @var string */
+    private $prevPageUrl = '';
+
+    /** @var string */
+    private $nextPageUrl = '';
+
     public function __construct($params)
     {
         parent::__construct($params);
@@ -33,6 +51,59 @@ class ShopModule extends Module
         $markers['shop_cart_count'] = ShopHelper::cartCount();
         $markers['shop_cart_url'] = get_url('/shop/cart/');
         return $markers;
+    }
+
+    /**
+     * The shipped layouts print the "open_graph" marker inside <head>.
+     * It carries the shop's Open Graph tags, JSON-LD and pagination links.
+     */
+    protected function getOpenGraphMarkup()
+    {
+        $markup = parent::getOpenGraphMarkup();
+
+        if ($markup !== '' && $this->ogImageUrl !== '') {
+            $markup = '<meta property="og:image" content="' . h($this->ogImageUrl) . '" />'
+                . "\n" . $markup;
+        }
+
+        $links = '';
+        if ($this->prevPageUrl !== '') {
+            $links .= '<link rel="prev" href="' . h($this->prevPageUrl) . '" />' . "\n";
+        }
+        if ($this->nextPageUrl !== '') {
+            $links .= '<link rel="next" href="' . h($this->nextPageUrl) . '" />' . "\n";
+        }
+
+        return $markup . $links . $this->productStructuredData
+            . $this->buildBreadcrumbStructuredData();
+    }
+
+    protected function getOpenGraphType()
+    {
+        return $this->isProductPage ? 'product' : parent::getOpenGraphType();
+    }
+
+    /**
+     * Internal catalogue search must not compete with category pages.
+     */
+    protected function getRobotsMeta()
+    {
+        if (isset($_GET['q']) && trim((string)$_GET['q']) !== '') {
+            return 'noindex, follow';
+        }
+        return parent::getRobotsMeta();
+    }
+
+    /**
+     * Unpaid orders return their stock after the configured time.
+     * Request-driven like the sitemap cron; no system scheduler needed.
+     */
+    protected function _afterRender()
+    {
+        if (function_exists('fpsCron') && (int)ShopHelper::cfg('active', 1) === 1) {
+            fpsCron('shopExpireOrders', 900);
+        }
+        parent::_afterRender();
     }
 
     /* ---------------------------------------------------------------------
@@ -133,6 +204,10 @@ class ShopModule extends Module
         $this->Register['page'] = $currentPage;
         $this->Register['pagescnt'] = $result['pages'];
         $this->Register['totalitems'] = $result['total'];
+        $this->prevPageUrl = $currentPage > 1
+            ? $this->pageUrl($baseUrl, $currentPage - 1) : '';
+        $this->nextPageUrl = $currentPage < $result['pages']
+            ? $this->pageUrl($baseUrl, $currentPage + 1) : '';
         $this->addToPageMetaContext('page', $currentPage);
 
         $this->categories = $this->buildCategoriesHtml($categoryId);
@@ -151,6 +226,9 @@ class ShopModule extends Module
                 ? $category['meta_description'] : $category['description']));
             if ($description !== '') $this->page_meta_description = h($description);
             if (!empty($category['meta_keywords'])) $this->page_meta_keywords = h($category['meta_keywords']);
+        }
+        if ($category && !empty($category['image'])) {
+            $this->ogImageUrl = $this->absoluteUrl(ShopHelper::imageUrl($category['image'], false));
         }
 
         $sortOptions = $this->buildSortOptions($categoryId, $q, $sort, $landing);
@@ -221,6 +299,11 @@ class ShopModule extends Module
             $stockTotal += (int)$variant['stock'];
             if (!empty($variant['available'])) $inStock = true;
         }
+
+        $this->isProductPage = true;
+        $this->ogImageUrl = !empty($product['image_url'])
+            ? $this->absoluteUrl($product['image_url']) : '';
+        $this->productStructuredData = $this->buildProductStructuredData($product, $variants, $currency, $gallery);
 
         $this->DB->query("UPDATE `" . ShopHelper::table('products') . "`
             SET `views` = `views` + 1 WHERE `id` = " . (int)$product['id']);
@@ -474,10 +557,15 @@ class ShopModule extends Module
         if ($old['email'] === '' || !filter_var($old['email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Укажите корректный e-mail.';
         }
-        if ($old['phone'] === '') $errors[] = 'Укажите телефон.';
+        if ($old['phone'] === '') {
+            $errors[] = 'Укажите телефон.';
+        } elseif (!ShopHelper::phoneValid($old['phone'])) {
+            $errors[] = 'Телефон должен содержать от 7 до 15 цифр.';
+        }
 
         try {
             ShopHelper::ensureOrderRequestsTable();
+            ShopHelper::ensureOrderStatusHistoryTable();
             $existing = ShopHelper::orderForAttempt($attempt);
         } catch (Throwable $e) {
             error_log('Shop checkout storage unavailable: ' . $e->getMessage());
@@ -608,6 +696,7 @@ class ShopModule extends Module
                 ));
             }
             $DB->query("UPDATE `{$requests}` SET `order_id` = {$orderId}, `customer_mail` = 'pending', `admin_mail` = 'pending' WHERE `attempt` = '{$attempt}'");
+            ShopHelper::logOrderStatus($orderId, 'new', 'Заказ оформлен на сайте.', (int)$user['id'], (string)$user['name'], $now);
             $DB->query('COMMIT');
         } catch (Throwable $e) {
             try {
@@ -866,29 +955,29 @@ class ShopModule extends Module
 
     private function buildCatalogBreadcrumbs($category)
     {
-        $html = '<div class="shop-breadcrumbs"><a href="' . h(get_url('/')) . '">Главная</a> / '
-            . '<a href="' . h(get_url('/shop/')) . '">Магазин</a>';
+        $trail = array(
+            array('title' => 'Главная', 'url' => get_url('/')),
+            array('title' => 'Магазин', 'url' => get_url('/shop/')),
+        );
         if ($category) {
-            $crumbs = ShopHelper::categoryBreadcrumbs($category['id']);
-            foreach ($crumbs as $crumb) {
-                $html .= ' / <a href="' . h($crumb['url']) . '">' . h($crumb['title']) . '</a>';
+            foreach (ShopHelper::categoryBreadcrumbs($category['id']) as $crumb) {
+                $trail[] = array('title' => $crumb['title'], 'url' => $crumb['url']);
             }
         }
-        $html .= '</div>';
-        return $html;
+        return $this->renderBreadcrumbs($trail);
     }
 
     private function buildLandingBreadcrumbs($landing)
     {
-        $html = '<div class="shop-breadcrumbs"><a href="' . h(get_url('/')) . '">Главная</a> / '
-            . '<a href="' . h(get_url('/shop/')) . '">Магазин</a>';
-        $categoryLinks = array();
+        $trail = array(
+            array('title' => 'Главная', 'url' => get_url('/')),
+            array('title' => 'Магазин', 'url' => get_url('/shop/')),
+        );
         foreach ($landing['categories'] as $category) {
-            $categoryLinks[] = '<a href="' . h($category['url']) . '">' . h($category['title']) . '</a>';
+            $trail[] = array('title' => $category['title'], 'url' => $category['url']);
         }
-        if ($categoryLinks) $html .= ' / ' . implode(', ', $categoryLinks);
-        $html .= ' / <span>' . h($landing['title']) . '</span></div>';
-        return $html;
+        $trail[] = array('title' => $landing['title'], 'url' => '');
+        return $this->renderBreadcrumbs($trail);
     }
 
     private function buildLandingFilterGroups($landing)
@@ -910,22 +999,140 @@ class ShopModule extends Module
 
     private function buildProductBreadcrumbs($product)
     {
-        $html = '<div class="shop-breadcrumbs"><a href="' . h(get_url('/')) . '">Главная</a> / '
-            . '<a href="' . h(get_url('/shop/')) . '">Магазин</a>';
+        $trail = array(
+            array('title' => 'Главная', 'url' => get_url('/')),
+            array('title' => 'Магазин', 'url' => get_url('/shop/')),
+        );
         if (!empty($product['category_id'])) {
-            $crumbs = ShopHelper::categoryBreadcrumbs($product['category_id']);
-            foreach ($crumbs as $crumb) {
-                $html .= ' / <a href="' . h($crumb['url']) . '">' . h($crumb['title']) . '</a>';
+            foreach (ShopHelper::categoryBreadcrumbs($product['category_id']) as $crumb) {
+                $trail[] = array('title' => $crumb['title'], 'url' => $crumb['url']);
             }
         }
-        $html .= ' / <span>' . h($product['title']) . '</span></div>';
-        return $html;
+        $trail[] = array('title' => $product['title'], 'url' => '');
+        return $this->renderBreadcrumbs($trail);
     }
 
     private function buildSimpleBreadcrumbs($title)
     {
-        return '<div class="shop-breadcrumbs"><a href="' . h(get_url('/')) . '">Главная</a> / '
-            . '<a href="' . h(get_url('/shop/')) . '">Магазин</a> / <span>' . h($title) . '</span></div>';
+        return $this->renderBreadcrumbs(array(
+            array('title' => 'Главная', 'url' => get_url('/')),
+            array('title' => 'Магазин', 'url' => get_url('/shop/')),
+            array('title' => $title, 'url' => ''),
+        ));
+    }
+
+    /* ---------------------------------------------------------------------
+     * SEO helpers
+     * ------------------------------------------------------------------ */
+
+    private function renderBreadcrumbs(array $trail)
+    {
+        $this->breadcrumbData = $trail;
+        $parts = array();
+        foreach ($trail as $crumb) {
+            $title = h($crumb['title']);
+            $parts[] = empty($crumb['url'])
+                ? '<span>' . $title . '</span>'
+                : '<a href="' . h($crumb['url']) . '">' . $title . '</a>';
+        }
+        return '<div class="shop-breadcrumbs">' . implode(' / ', $parts) . '</div>';
+    }
+
+    private function pageUrl($baseUrl, $page)
+    {
+        $baseUrl = (string)$baseUrl;
+        $delimiter = strpos($baseUrl, '?') === false ? '?' : '&';
+        return $this->absoluteUrl(get_url($baseUrl . $delimiter . 'page=' . (int)$page));
+    }
+
+    private function absoluteUrl($url)
+    {
+        $url = trim((string)$url);
+        if ($url === '') return '';
+        if (preg_match('#^https?://#i', $url)) return $url;
+
+        $origin = $this->getCanonicalOrigin();
+        if ($origin === '') return '';
+
+        if ($url[0] !== '/') $url = '/' . $url;
+        return $origin . $url;
+    }
+
+    private function buildProductStructuredData($product, $variants, $currency, $gallery)
+    {
+        $url = $this->absoluteUrl($product['url']);
+        if ($url === '') return '';
+
+        $images = array();
+        if ($this->ogImageUrl !== '') $images[] = $this->ogImageUrl;
+        foreach ($gallery as $image) {
+            $full = $this->absoluteUrl($image['full_url']);
+            if ($full !== '') $images[] = $full;
+        }
+        $images = array_values(array_unique($images));
+
+        $description = trim(ShopHelper::descriptionText(
+            !empty($product['meta_description'])
+                ? $product['meta_description']
+                : (!empty($product['short_description']) ? $product['short_description'] : $product['description'])
+        ));
+
+        $sku = '';
+        $prices = array();
+        $available = false;
+        foreach ($variants as $variant) {
+            if ($sku === '' && !empty($variant['sku'])) $sku = (string)$variant['sku'];
+            if (!empty($variant['available'])) $available = true;
+            if ((float)$variant['price'] > 0) $prices[] = (float)$variant['price'];
+        }
+
+        $data = array(
+            '@context' => 'https://schema.org',
+            '@type' => 'Product',
+            'name' => (string)$product['title'],
+            'url' => $url,
+        );
+        if ($description !== '') $data['description'] = $description;
+        if ($sku !== '') $data['sku'] = $sku;
+        if ($images) $data['image'] = $images;
+
+        if ($prices) {
+            $data['offers'] = array(
+                '@type' => 'AggregateOffer',
+                'url' => $url,
+                'priceCurrency' => (string)$currency['code'],
+                'lowPrice' => number_format(min($prices), 2, '.', ''),
+                'highPrice' => number_format(max($prices), 2, '.', ''),
+                'offerCount' => count($prices),
+                'availability' => $available
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+            );
+        }
+
+        return ShopHelper::jsonLdScript($data);
+    }
+
+    private function buildBreadcrumbStructuredData()
+    {
+        $items = array();
+        foreach ($this->breadcrumbData as $position => $crumb) {
+            $item = array(
+                '@type' => 'ListItem',
+                'position' => $position + 1,
+                'name' => (string)$crumb['title'],
+            );
+            $url = $this->absoluteUrl(isset($crumb['url']) ? $crumb['url'] : '');
+            if ($url !== '') $item['item'] = $url;
+            $items[] = $item;
+        }
+        if (count($items) < 2) return '';
+
+        return ShopHelper::jsonLdScript(array(
+            '@context' => 'https://schema.org',
+            '@type' => 'BreadcrumbList',
+            'itemListElement' => $items,
+        ));
     }
 }
 

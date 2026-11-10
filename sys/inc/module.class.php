@@ -331,7 +331,7 @@ class Module {
 			if ($this->cached) {
 				if ($this->Cache->check($this->cacheKey . '_global_markers')) {
 					$gdata = $this->Cache->read($this->cacheKey . '_global_markers');
-					$this->globalMarkers = array_merge($this->globalMarkers, unserialize($gdata));
+					$this->globalMarkers = array_merge($this->globalMarkers, unserialize($gdata, array('allowed_classes' => false)));
 				} else {
 					$gdata = serialize($this->globalMarkers);
 					$this->Cache->write($gdata, $this->cacheKey . '_global_markers', $this->cacheTags);

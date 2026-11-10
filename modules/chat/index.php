@@ -68,7 +68,7 @@ class ChatModule extends Module {
 		
 		
 		if (file_exists($chatDataPath)) {
-			$data = unserialize(file_get_contents($chatDataPath));
+			$data = unserialize(file_get_contents($chatDataPath), array('allowed_classes' => false));
 			if (!empty($data)) {
 				$data = array_reverse($data);
 				
@@ -159,7 +159,7 @@ class ChatModule extends Module {
 		if (!file_exists(ROOT . '/sys/tmp/chat/')) mkdir(ROOT . '/sys/tmp/chat/', 0777, true);
 		/* get data */
 		if (file_exists(ROOT . '/sys/tmp/chat/messages.dat')) {
-			$data = unserialize(file_get_contents(ROOT . '/sys/tmp/chat/messages.dat'));
+			$data = unserialize(file_get_contents(ROOT . '/sys/tmp/chat/messages.dat'), array('allowed_classes' => false));
 		} else {
 			$data = array();
 		}
