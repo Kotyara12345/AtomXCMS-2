@@ -15,16 +15,25 @@ class CmsFixtureDB {
     public function save($table,$values,$params=array()){
         $table=$this->getFullTableName($table);$values=(array)$values;
         if(!empty($values['id'])){
-            $id=(int)$values['id'];unset($values['id']);$sets=array();
-            foreach($values as$key=>$value)$sets[]="`{$key}`=".$this->pdo->quote((string)$value);
-            $this->pdo->exec("UPDATE `{$table}` SET ".implode(',',$sets)." WHERE `id`={$id}");
-            return $id;
+            $params=array('id'=>(int)$values['id']);unset($values['id']);
+        }
+        if(!empty($params)){
+            $sets=array();foreach($values as$key=>$value)$sets[]="`{$key}`=".$this->pdo->quote((string)$value);
+            $where=array();foreach($params as$key=>$value)$where[]="`{$key}`=".$this->pdo->quote((string)$value);
+            $this->pdo->exec("UPDATE `{$table}` SET ".implode(',',$sets)." WHERE ".implode(' AND ',$where));
+            return !empty($params['id']) ? (int)$params['id'] : 0;
         }
         $columns=array_keys($values);
         $marks=implode(',',array_fill(0,count($columns),'?'));
         $stmt=$this->pdo->prepare("INSERT INTO `{$table}` (`".implode('`,`',$columns)."`) VALUES ({$marks})");
         $stmt->execute(array_values($values));
         return (int)$this->pdo->lastInsertId();
+    }
+    public function delete($table,$params=array()){
+        $table=$this->getFullTableName($table);
+        $where=array();foreach($params as$key=>$value)$where[]="`{$key}`=".$this->pdo->quote((string)$value);
+        $this->pdo->exec("DELETE FROM `{$table}`".($where?' WHERE '.implode(' AND ',$where):''));
+        return true;
     }
 }
 function cms_check($ok,$message){if(!$ok)throw new RuntimeException($message);}
@@ -46,7 +55,10 @@ try{
         'shop_variants'=>'id int PRIMARY KEY, stock int',
         'shop_order_items'=>'id int PRIMARY KEY, order_id int, variant_id int, quantity int, price decimal(12,2), total decimal(12,2)',
         'shop_order_status_history'=>'id int AUTO_INCREMENT PRIMARY KEY, order_id int, status varchar(32), comment varchar(255), user_id int, user_name varchar(255), created_at datetime',
-        'shop_order_requests'=>'attempt char(48) DEFAULT NULL, order_id int DEFAULT NULL, customer_mail varchar(12) NOT NULL DEFAULT \'unknown\', admin_mail varchar(12) NOT NULL DEFAULT \'unknown\', created_at datetime DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY attempt (attempt), UNIQUE KEY order_id (order_id)'
+        'shop_order_requests'=>'attempt char(48) DEFAULT NULL, order_id int DEFAULT NULL, customer_mail varchar(12) NOT NULL DEFAULT \'unknown\', admin_mail varchar(12) NOT NULL DEFAULT \'unknown\', created_at datetime DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY attempt (attempt), UNIQUE KEY order_id (order_id)',
+        'shop_reviews'=>'id int AUTO_INCREMENT PRIMARY KEY, product_id int, user_id int, name varchar(255), email varchar(255), rating int, text text, active int, created_at datetime',
+        'shop_stock_subscriptions'=>'id int AUTO_INCREMENT PRIMARY KEY, product_id int, email varchar(255), notified int, created_at datetime, UNIQUE KEY product_email (product_id, email)',
+        'shop_carts'=>'user_id int PRIMARY KEY, data mediumtext, updated_at datetime'
     );
     foreach($schemas as$name=>$schema){$table=$db->getFullTableName($name);$db->query("CREATE TABLE `$table` ($schema) ENGINE=InnoDB");$tables[]=$table;}
     $db->query("INSERT INTO `{$prefix}news_categories` VALUES(1,'')");
@@ -90,6 +102,30 @@ try{
     cms_check(ShopHelper::expireUnpaidOrders()===true,'Unpaid order expiry run failed');
     cms_check($pdo->query("SELECT status FROM `{$prefix}shop_orders` WHERE id=2")->fetchColumn()==='cancelled','Unpaid order was not cancelled after its term');
     cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=2")->fetchColumn()===7,'Expired order stock was not released');
+
+    cms_check(ShopHelper::addReview(array('product_id'=>1,'name'=>'Иван','email'=>'ivan@example.com','rating'=>4,'text'=>'Хороший товар'))===true,'Review was not saved');
+    $reviewId=(int)$pdo->query("SELECT id FROM `{$prefix}shop_reviews` ORDER BY id DESC LIMIT 1")->fetchColumn();
+    cms_check($reviewId>0,'Review id was not generated');
+    cms_check(ShopHelper::productRating(1)['count']===0,'Unapproved review was counted');
+    cms_check(ShopHelper::setReviewActive($reviewId,true)===true,'Review was not approved');
+    $rating=ShopHelper::productRating(1);
+    cms_check($rating['count']===1 && abs($rating['avg']-4.0)<0.01,'Approved review rating is wrong');
+    cms_check(ShopHelper::addStockSubscription(1,'wait@example.com')===true,'Stock subscription was not saved');
+    cms_check(ShopHelper::addStockSubscription(1,'wait@example.com')===true,'Duplicate stock subscription failed');
+    cms_check((int)$pdo->query("SELECT COUNT(*) FROM `{$prefix}shop_stock_subscriptions`")->fetchColumn()===1,'Duplicate stock subscription was stored');
+
+    cms_check(ShopHelper::setOrderTracking(1,'TRACK-1','https://track.example.com/1')===true,'Tracking data was not saved');
+    $tracked=ShopHelper::getOrder(1);
+    cms_check($tracked['tracking_number']==='TRACK-1' && $tracked['tracking_url']==='https://track.example.com/1','Tracking data was not stored');
+    cms_check(ShopHelper::setOrderTracking(1,'X','javascript:alert(1)')===false,'Unsafe tracking URL accepted');
+
+    $_SESSION['user']=array('id'=>77);
+    ShopHelper::saveCart(array(5=>2,6=>1));
+    cms_check((int)$pdo->query("SELECT COUNT(*) FROM `{$prefix}shop_carts` WHERE user_id=77")->fetchColumn()===1,'Cart was not saved to the database');
+    $_SESSION['shop_cart']=array();
+    cms_check(ShopHelper::getCart()===array(5=>2,6=>1),'Cart was not restored from the database');
+    ShopHelper::saveCart(array());
+    cms_check((int)$pdo->query("SELECT COUNT(*) FROM `{$prefix}shop_carts` WHERE user_id=77")->fetchColumn()===0,'Cleared cart remained in the database');
     echo "CMS visibility and concurrent order checks passed.\n";
 }finally{
     if($pdo->inTransaction())$pdo->rollBack();

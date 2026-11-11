@@ -256,10 +256,35 @@ class ShopHelper
      * Cart
      * ------------------------------------------------------------------ */
 
-    public static function getCart()
+    /** @var bool */
+    private static $cartsTableReady = false;
+
+    /** @var bool */
+    private static $cartDbChecked = false;
+
+    public static function ensureCartsTable()
     {
-        $cart = isset($_SESSION[self::CART_KEY]) && is_array($_SESSION[self::CART_KEY])
-            ? $_SESSION[self::CART_KEY] : array();
+        if (self::$cartsTableReady) return true;
+
+        $table = self::table('carts');
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+                `user_id` INT UNSIGNED NOT NULL,
+                `data` MEDIUMTEXT,
+                `updated_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$cartsTableReady = true;
+        return true;
+    }
+
+    private static function cleanCart($cart)
+    {
+        if (!is_array($cart)) return array();
         $clean = array();
         foreach ($cart as $variantId => $qty) {
             $variantId = (int)$variantId;
@@ -269,9 +294,51 @@ class ShopHelper
         return $clean;
     }
 
+    public static function getCart()
+    {
+        $cart = isset($_SESSION[self::CART_KEY]) && is_array($_SESSION[self::CART_KEY])
+            ? $_SESSION[self::CART_KEY] : array();
+        $clean = self::cleanCart($cart);
+        if ($clean || self::$cartDbChecked) return $clean;
+
+        self::$cartDbChecked = true;
+        $userId = (int)self::currentUser()['id'];
+        if ($userId < 1 || !self::ensureCartsTable()) return array();
+
+        try {
+            $rows = self::db()->query("SELECT `data` FROM `" . self::table('carts') . "`
+                WHERE `user_id` = {$userId} LIMIT 1");
+        } catch (Throwable $e) {
+            return array();
+        }
+        if (empty($rows[0]['data'])) return array();
+
+        $decoded = json_decode((string)$rows[0]['data'], true);
+        $clean = self::cleanCart(is_array($decoded) ? $decoded : array());
+        if ($clean) $_SESSION[self::CART_KEY] = $clean;
+        return $clean;
+    }
+
     public static function saveCart($cart)
     {
-        $_SESSION[self::CART_KEY] = $cart;
+        $clean = self::cleanCart($cart);
+        $_SESSION[self::CART_KEY] = $clean;
+
+        $userId = (int)self::currentUser()['id'];
+        if ($userId < 1 || !self::ensureCartsTable()) return;
+
+        try {
+            self::db()->delete('shop_carts', array('user_id' => $userId));
+            if ($clean) {
+                self::db()->save('shop_carts', array(
+                    'user_id' => $userId,
+                    'data' => json_encode($clean),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ));
+            }
+        } catch (Throwable $e) {
+            error_log('Shop cart persistence failed: ' . $e->getMessage());
+        }
     }
 
     public static function cartCount()
@@ -1497,6 +1564,8 @@ class ShopHelper
         $order['delivery_price_formatted'] = self::formatPrice($order['delivery_price'], $order['currency_code']);
         $order['total_formatted'] = self::formatPrice($order['total'], $order['currency_code']);
         $order['created_at_formatted'] = self::formatDate($order['created_at']);
+        $order['tracking_number'] = isset($order['tracking_number']) ? (string)$order['tracking_number'] : '';
+        $order['tracking_url'] = isset($order['tracking_url']) ? (string)$order['tracking_url'] : '';
         return $order;
     }
 
@@ -1542,7 +1611,7 @@ class ShopHelper
         $orders = self::table('orders');
         $variants = self::table('variants');
         $orderId = (int)$orderId;
-        self::ensureOrderStatusHistoryTable();
+        if (!self::ensureOrderStatusHistoryTable()) return false;
         try {
             self::db()->query('START TRANSACTION');
             $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
@@ -1564,7 +1633,9 @@ class ShopHelper
             }
             self::db()->query("UPDATE `{$orders}` SET `status` = '" . self::esc($status) . "', `stock_released` = {$released},
                 `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "' WHERE `id` = {$orderId}");
-            self::logOrderStatus($orderId, $status, $note, $changedBy, $changedByName);
+            if (!self::logOrderStatus($orderId, $status, $note, $changedBy, $changedByName)) {
+                throw new RuntimeException('Order status history write failed');
+            }
             self::db()->query('COMMIT');
             return true;
         } catch (Throwable $e) {
@@ -1584,24 +1655,28 @@ class ShopHelper
         if (self::$orderStatusHistoryReady) return true;
 
         $table = self::table('order_status_history');
-        try {
-            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
-                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `status` VARCHAR(32) NOT NULL DEFAULT '',
-                `comment` VARCHAR(255) NOT NULL DEFAULT '',
-                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `user_name` VARCHAR(255) NOT NULL DEFAULT '',
-                `created_at` DATETIME DEFAULT NULL,
-                PRIMARY KEY (`id`),
-                KEY `order_id` (`order_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } catch (Throwable $e) {
-            return false;
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            try {
+                self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `status` VARCHAR(32) NOT NULL DEFAULT '',
+                    `comment` VARCHAR(255) NOT NULL DEFAULT '',
+                    `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `user_name` VARCHAR(255) NOT NULL DEFAULT '',
+                    `created_at` DATETIME DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `order_id` (`order_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                self::$orderStatusHistoryReady = true;
+                return true;
+            } catch (Throwable $e) {
+                // Another request may be creating the same table: retry briefly.
+                usleep(20000);
+            }
         }
 
-        self::$orderStatusHistoryReady = true;
-        return true;
+        return false;
     }
 
     public static function logOrderStatus($orderId, $status, $comment = '', $userId = 0, $userName = '', $createdAt = null)
@@ -1706,6 +1781,13 @@ class ShopHelper
         if ($orderLink !== '') {
             $body .= '<p><a href="' . h($orderLink) . '">Открыть заказ на сайте</a></p>';
         }
+        if (!empty($order['tracking_number'])) {
+            $body .= '<p>Отслеживание: ' . h($order['tracking_number']);
+            if (!empty($order['tracking_url'])) {
+                $body .= ' — <a href="' . h($order['tracking_url']) . '">открыть трек</a>';
+            }
+            $body .= '</p>';
+        }
         $body .= '<p>Покупатель: ' . h($order['customer_name']) . '<br />'
             . 'E-mail: ' . h($order['email']) . '<br />'
             . 'Телефон: ' . h($order['phone']) . '</p>'
@@ -1776,6 +1858,485 @@ class ShopHelper
             self::db()->query("SELECT RELEASE_LOCK('{$lock}')");
         }
         return $ok;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Tracking, low stock
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $orderTrackingReady = false;
+
+    /**
+     * Older installations have no tracking columns: add them once.
+     */
+    public static function ensureOrderTrackingColumns()
+    {
+        if (self::$orderTrackingReady) return true;
+
+        $table = self::table('orders');
+        try {
+            self::db()->query("SELECT `tracking_number` FROM `{$table}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$table}`
+                    ADD COLUMN `tracking_number` VARCHAR(128) NOT NULL DEFAULT '',
+                    ADD COLUMN `tracking_url` VARCHAR(255) NOT NULL DEFAULT ''");
+            } catch (Throwable $alterError) {
+                return false;
+            }
+        }
+
+        self::$orderTrackingReady = true;
+        return true;
+    }
+
+    public static function cleanTrackingNumber($value)
+    {
+        $value = preg_replace('/[\x00-\x1F\x7F]+/', ' ', (string)$value);
+        return mb_substr(trim((string)$value), 0, 128);
+    }
+
+    public static function trackingUrlValid($url)
+    {
+        $url = trim((string)$url);
+        if ($url === '') return true;
+        if (!preg_match('#^https?://#i', $url)) return false;
+        return filter_var($url, FILTER_VALIDATE_URL) !== false;
+    }
+
+    public static function setOrderTracking($orderId, $number, $url)
+    {
+        $orderId = (int)$orderId;
+        if ($orderId < 1) return false;
+
+        $number = self::cleanTrackingNumber($number);
+        $url = trim((string)$url);
+        if (!self::trackingUrlValid($url)) return false;
+        if (!self::ensureOrderTrackingColumns()) return false;
+
+        try {
+            self::db()->save('shop_orders', array(
+                'tracking_number' => $number,
+                'tracking_url' => $url,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ), array('id' => $orderId));
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop tracking save failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** @var bool */
+    private static $variantNotifyReady = false;
+
+    public static function ensureVariantNotifyColumn()
+    {
+        if (self::$variantNotifyReady) return true;
+
+        $table = self::table('variants');
+        try {
+            self::db()->query("SELECT `low_stock_notified` FROM `{$table}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$table}`
+                    ADD COLUMN `low_stock_notified` TINYINT(1) NOT NULL DEFAULT 0");
+            } catch (Throwable $alterError) {
+                return false;
+            }
+        }
+
+        self::$variantNotifyReady = true;
+        return true;
+    }
+
+    /**
+     * One e-mail per low-stock episode. "low_stock_threshold" = 0 disables.
+     *
+     * @return bool false when the run failed so fpsCron retries next request
+     */
+    public static function lowStockAlert()
+    {
+        $threshold = (int)self::cfg('low_stock_threshold', 3);
+        if ($threshold < 1) return true;
+        if (!self::ensureVariantNotifyColumn()) return false;
+
+        $variants = self::table('variants');
+        $products = self::table('products');
+        try {
+            self::db()->query("UPDATE `{$variants}` SET `low_stock_notified` = 0
+                WHERE `active` = 1 AND `stock` > {$threshold} AND `low_stock_notified` = 1");
+
+            $rows = self::db()->query("SELECT v.`id`, v.`title`, v.`sku`, v.`stock`,
+                    p.`title` AS product_title
+                FROM `{$variants}` v
+                INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
+                WHERE v.`active` = 1 AND p.`active` = 1
+                    AND v.`stock` <= {$threshold} AND v.`low_stock_notified` = 0
+                ORDER BY v.`stock` ASC, v.`id` ASC LIMIT 100");
+            if (!$rows) return true;
+
+            $notify = trim((string)self::cfg('notify_email', ''));
+            if ($notify === '') $notify = trim((string)Config::read('admin_email'));
+            if ($notify === '') return true;
+
+            $body = '<h2>Товары заканчиваются</h2>'
+                . '<p>Порог остатка: ' . $threshold . ' шт.</p><ul>';
+            foreach ($rows as $row) {
+                $body .= '<li>' . h($row['product_title']) . ' — ' . h($row['title'])
+                    . ($row['sku'] !== '' ? ' (' . h($row['sku']) . ')' : '')
+                    . ': <strong>' . (int)$row['stock'] . '</strong></li>';
+            }
+            $body .= '</ul>';
+
+            $mailer = new AtmMail(ROOT . '/sys/settings/email_templates/');
+            $mailer->prepare($body);
+            if (!@$mailer->sendMail($notify, 'Товары заканчиваются', array())) return false;
+
+            $ids = array_map('intval', array_column($rows, 'id'));
+            self::db()->query("UPDATE `{$variants}` SET `low_stock_notified` = 1
+                WHERE `id` IN (" . implode(',', $ids) . ")");
+        } catch (Throwable $e) {
+            error_log('Shop low stock alert failed: ' . $e->getMessage());
+            return false;
+        }
+        return true;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Reviews
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $reviewsTableReady = false;
+
+    public static function ensureReviewsTable()
+    {
+        if (self::$reviewsTableReady) return true;
+
+        $table = self::table('reviews');
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `product_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `name` VARCHAR(255) NOT NULL DEFAULT '',
+                `email` VARCHAR(255) NOT NULL DEFAULT '',
+                `rating` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                `text` TEXT,
+                `active` TINYINT(1) NOT NULL DEFAULT 0,
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `product_active` (`product_id`, `active`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$reviewsTableReady = true;
+        return true;
+    }
+
+    public static function ratingValid($rating)
+    {
+        $rating = (int)$rating;
+        return $rating >= 1 && $rating <= 5;
+    }
+
+    public static function addReview($data)
+    {
+        if (!self::ensureReviewsTable()) return false;
+
+        $data = (array)$data;
+        $productId = (int)(isset($data['product_id']) ? $data['product_id'] : 0);
+        $rating = (int)(isset($data['rating']) ? $data['rating'] : 0);
+        $name = trim((string)(isset($data['name']) ? $data['name'] : ''));
+        $email = trim((string)(isset($data['email']) ? $data['email'] : ''));
+        $text = trim((string)(isset($data['text']) ? $data['text'] : ''));
+
+        if ($productId < 1 || !self::ratingValid($rating) || $name === ''
+            || $text === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        try {
+            self::db()->save('shop_reviews', array(
+                'product_id' => $productId,
+                'user_id' => (int)(isset($data['user_id']) ? $data['user_id'] : 0),
+                'name' => mb_substr($name, 0, 255),
+                'email' => mb_substr($email, 0, 255),
+                'rating' => $rating,
+                'text' => mb_substr($text, 0, 5000),
+                'active' => (int)self::cfg('reviews_moderate', 1) === 1 ? 0 : 1,
+                'created_at' => date('Y-m-d H:i:s'),
+            ));
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop review save failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function getProductReviews($productId, $onlyActive = true)
+    {
+        if (!self::ensureReviewsTable()) return array();
+
+        $table = self::table('reviews');
+        $where = '`product_id` = ' . (int)$productId;
+        if ($onlyActive) $where .= ' AND `active` = 1';
+        $rows = self::db()->query("SELECT * FROM `{$table}` WHERE {$where} ORDER BY `id` DESC LIMIT 100");
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['rating'] = (int)$row['rating'];
+            $row['created_at_formatted'] = self::formatDate($row['created_at']);
+            $row['rating_stars'] = str_repeat('★', $row['rating']);
+            $row['text_html'] = nl2br(h((string)$row['text']));
+        }
+        unset($row);
+        return $rows;
+    }
+
+    /**
+     * Average rating and count for many products in one query.
+     *
+     * @param array $productIds
+     * @return array product id => array('avg' => float, 'count' => int)
+     */
+    public static function productRatings($productIds)
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$productIds))));
+        if (!$ids || !self::ensureReviewsTable()) return array();
+
+        $table = self::table('reviews');
+        $rows = self::db()->query("SELECT `product_id`, AVG(`rating`) AS avg_rating, COUNT(*) AS cnt
+            FROM `{$table}` WHERE `active` = 1 AND `product_id` IN (" . implode(',', $ids) . ")
+            GROUP BY `product_id`");
+        $result = array();
+        foreach ($rows as $row) {
+            $result[(int)$row['product_id']] = array(
+                'avg' => round((float)$row['avg_rating'], 1),
+                'count' => (int)$row['cnt'],
+            );
+        }
+        return $result;
+    }
+
+    public static function productRating($productId)
+    {
+        $ratings = self::productRatings(array((int)$productId));
+        $id = (int)$productId;
+        return isset($ratings[$id]) ? $ratings[$id] : array('avg' => 0.0, 'count' => 0);
+    }
+
+    public static function getReviews($active = null, $limit = 200)
+    {
+        if (!self::ensureReviewsTable()) return array();
+
+        $limit = max(1, min(500, (int)$limit));
+        $where = $active === null ? '' : ' WHERE `active` = ' . (int)!empty($active);
+        $table = self::table('reviews');
+        $products = self::table('products');
+        $rows = self::db()->query("SELECT r.*, p.`title` AS product_title, p.`clean_url_title` AS product_slug
+            FROM `{$table}` r
+            LEFT JOIN `{$products}` p ON p.`id` = r.`product_id`
+            {$where}
+            ORDER BY r.`id` DESC LIMIT {$limit}");
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['product_id'] = (int)$row['product_id'];
+            $row['rating'] = (int)$row['rating'];
+            $row['rating_stars'] = str_repeat('★', $row['rating']);
+            $row['created_at_formatted'] = self::formatDate($row['created_at']);
+            if ($row['product_id'] > 0) {
+                $row['product_url'] = self::productUrl(array(
+                    'id' => $row['product_id'],
+                    'clean_url_title' => (string)$row['product_slug'],
+                ));
+            }
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function setReviewActive($reviewId, $active)
+    {
+        if (!self::ensureReviewsTable()) return false;
+        try {
+            self::db()->save('shop_reviews', array('active' => (int)!empty($active)),
+                array('id' => (int)$reviewId));
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    public static function deleteReview($reviewId)
+    {
+        if (!self::ensureReviewsTable()) return false;
+        try {
+            self::db()->delete('shop_reviews', array('id' => (int)$reviewId));
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /* ---------------------------------------------------------------------
+     * Stock subscriptions
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $stockSubscriptionsReady = false;
+
+    public static function ensureStockSubscriptionsTable()
+    {
+        if (self::$stockSubscriptionsReady) return true;
+
+        $table = self::table('stock_subscriptions');
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `product_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `email` VARCHAR(255) NOT NULL DEFAULT '',
+                `notified` TINYINT(1) NOT NULL DEFAULT 0,
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `product_email` (`product_id`, `email`),
+                KEY `notified` (`notified`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$stockSubscriptionsReady = true;
+        return true;
+    }
+
+    public static function addStockSubscription($productId, $email)
+    {
+        $productId = (int)$productId;
+        $email = trim((string)$email);
+        if ($productId < 1 || !filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+        if (!self::ensureStockSubscriptionsTable()) return false;
+
+        $table = self::table('stock_subscriptions');
+        try {
+            self::db()->query("INSERT INTO `{$table}` (`product_id`, `email`, `notified`, `created_at`)
+                VALUES ({$productId}, '" . self::esc(mb_substr($email, 0, 255)) . "', 0, NOW())
+                ON DUPLICATE KEY UPDATE `notified` = 0");
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop stock subscription failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * E-mail waiting customers about products that are back in stock.
+     * Request-driven, same as the order expiry.
+     */
+    public static function notifyStockSubscribers()
+    {
+        if (!self::ensureStockSubscriptionsTable()) return false;
+
+        $subscriptions = self::table('stock_subscriptions');
+        $products = self::table('products');
+        $variants = self::table('variants');
+        try {
+            $rows = self::db()->query("SELECT s.`id`, s.`email`, s.`product_id`, p.`title`
+                FROM `{$subscriptions}` s
+                INNER JOIN `{$products}` p ON p.`id` = s.`product_id`
+                WHERE s.`notified` = 0 AND p.`active` = 1
+                    AND EXISTS (
+                        SELECT 1 FROM `{$variants}` v
+                        WHERE v.`product_id` = s.`product_id` AND v.`active` = 1 AND v.`stock` > 0
+                    )
+                ORDER BY s.`id` ASC LIMIT 100");
+            if (!$rows) return true;
+
+            $templatePath = ROOT . '/sys/settings/email_templates/';
+            foreach ($rows as $row) {
+                $productId = (int)$row['product_id'];
+                $productUrl = self::absoluteUrl(self::productUrl(array('id' => $productId, 'clean_url_title' => '')));
+                try {
+                    $mailer = new AtmMail($templatePath);
+                    $mailer->prepare('<h2>Товар снова в наличии</h2>'
+                        . '<p>«' . h($row['title']) . '» снова доступен для заказа.</p>'
+                        . '<p><a href="' . h($productUrl) . '">Открыть товар на сайте</a></p>');
+                    if (@$mailer->sendMail($row['email'], 'Товар снова в наличии', array())) {
+                        self::db()->query("UPDATE `{$subscriptions}` SET `notified` = 1
+                            WHERE `id` = " . (int)$row['id']);
+                    }
+                } catch (Throwable $e) {
+                    error_log('Shop stock notification failed for subscription ' . (int)$row['id']);
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('Shop stock notifications failed: ' . $e->getMessage());
+            return false;
+        }
+        return true;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Product recommendations
+     * ------------------------------------------------------------------ */
+
+    public static function similarProducts($product, $limit = 4)
+    {
+        $limit = max(1, min(12, (int)$limit));
+        $productId = (int)(is_object($product) ? $product->getId() : (isset($product['id']) ? $product['id'] : 0));
+        $categoryId = (int)(is_object($product) ? $product->getCategory_id() : (isset($product['category_id']) ? $product['category_id'] : 0));
+        if ($productId < 1 || $categoryId < 1) return array();
+
+        $result = self::getProducts(array(
+            'category_ids' => array($categoryId),
+            'limit' => $limit + 1,
+        ));
+        $items = array();
+        foreach ($result['items'] as $item) {
+            if ((int)$item['id'] === $productId) continue;
+            $items[] = $item;
+            if (count($items) >= $limit) break;
+        }
+        return $items;
+    }
+
+    const RECENT_KEY = 'shop_recently_viewed';
+
+    public static function recordProductView($productId)
+    {
+        $productId = (int)$productId;
+        if ($productId < 1) return;
+
+        $list = isset($_SESSION[self::RECENT_KEY]) && is_array($_SESSION[self::RECENT_KEY])
+            ? $_SESSION[self::RECENT_KEY] : array();
+        $list = array_values(array_filter(array_map('intval', $list)));
+        $list = array_values(array_diff($list, array($productId)));
+        array_unshift($list, $productId);
+        $_SESSION[self::RECENT_KEY] = array_slice($list, 0, 20);
+    }
+
+    public static function getRecentlyViewed($excludeId = 0, $limit = 4)
+    {
+        $limit = max(1, min(20, (int)$limit));
+        $ids = isset($_SESSION[self::RECENT_KEY]) && is_array($_SESSION[self::RECENT_KEY])
+            ? array_values(array_filter(array_map('intval', $_SESSION[self::RECENT_KEY]))) : array();
+        $ids = array_values(array_diff($ids, array((int)$excludeId)));
+        if (!$ids) return array();
+
+        $result = self::getProducts(array('ids' => $ids, 'limit' => count($ids)));
+        $byId = array();
+        foreach ($result['items'] as $item) $byId[(int)$item['id']] = $item;
+
+        $items = array();
+        foreach ($ids as $id) {
+            if (!isset($byId[$id])) continue;
+            $items[] = $byId[$id];
+            if (count($items) >= $limit) break;
+        }
+        return $items;
     }
 
     /* ---------------------------------------------------------------------
@@ -1924,12 +2485,28 @@ class ShopHelper
 }
 
 /**
- * Request-driven cron hook. Returns false so fpsCron retries on the next hit.
+ * Request-driven cron hooks. Return false so fpsCron retries on the next hit.
  */
 if (!function_exists('shopExpireOrders')) {
     function shopExpireOrders()
     {
         if (!class_exists('ShopHelper', false)) return false;
         return ShopHelper::expireUnpaidOrders();
+    }
+}
+
+if (!function_exists('shopNotifyStock')) {
+    function shopNotifyStock()
+    {
+        if (!class_exists('ShopHelper', false)) return false;
+        return ShopHelper::notifyStockSubscribers();
+    }
+}
+
+if (!function_exists('shopLowStockAlert')) {
+    function shopLowStockAlert()
+    {
+        if (!class_exists('ShopHelper', false)) return false;
+        return ShopHelper::lowStockAlert();
     }
 }

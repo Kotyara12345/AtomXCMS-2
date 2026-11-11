@@ -87,6 +87,16 @@
                 {% if order.address %}<div class="shop-pre">{{ order.address|escape }}</div>{% endif %}
                 <p><strong>{{ order.payment_title|escape }}</strong></p>
             </div>
+
+            {% if order.tracking_number %}
+            <div class="shop-panel">
+                <h2>Отслеживание</h2>
+                <p>{{ order.tracking_number|escape }}</p>
+                {% if order.tracking_url %}
+                <p><a href="{{ order.tracking_url|escape }}" target="_blank" rel="nofollow noopener">Открыть трек</a></p>
+                {% endif %}
+            </div>
+            {% endif %}
         </aside>
     </div>
 </div>

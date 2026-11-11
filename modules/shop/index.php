@@ -30,6 +30,9 @@ class ShopModule extends Module
     /** @var string */
     private $nextPageUrl = '';
 
+    /** @var array */
+    private $productRating = array('avg' => 0.0, 'count' => 0);
+
     public function __construct($params)
     {
         parent::__construct($params);
@@ -102,6 +105,8 @@ class ShopModule extends Module
     {
         if (function_exists('fpsCron') && (int)ShopHelper::cfg('active', 1) === 1) {
             fpsCron('shopExpireOrders', 900);
+            fpsCron('shopNotifyStock', 900);
+            fpsCron('shopLowStockAlert', 86400);
         }
         parent::_afterRender();
     }
@@ -186,6 +191,17 @@ class ShopModule extends Module
             $filters['attribute_value_ids'] = $landing['attribute_value_ids'];
         }
         $result = ShopHelper::getProducts($filters);
+        $this->attachRatings($result['items']);
+        $featuredProducts = array();
+        if (!$landing && $categoryId === 0 && $q === '' && $page === 1) {
+            $featuredResult = ShopHelper::getProducts(array(
+                'featured' => 1,
+                'limit' => 4,
+                'currency' => $currency['code'],
+            ));
+            $this->attachRatings($featuredResult['items']);
+            $featuredProducts = $featuredResult['items'];
+        }
 
         if ($landing) {
             $baseUrl = ShopHelper::landingPath($landing);
@@ -245,6 +261,7 @@ class ShopModule extends Module
 
         $source = $this->render('list.html', array(
             'products' => $result['items'],
+            'featured_products' => $featuredProducts,
             'total' => $result['total'],
             'shop_pagination' => $pagination,
             'sort_options' => $sortOptions,
@@ -303,7 +320,15 @@ class ShopModule extends Module
         $this->isProductPage = true;
         $this->ogImageUrl = !empty($product['image_url'])
             ? $this->absoluteUrl($product['image_url']) : '';
+        $reviews = ShopHelper::getProductReviews($product['id'], true);
+        $this->productRating = ShopHelper::productRating($product['id']);
         $this->productStructuredData = $this->buildProductStructuredData($product, $variants, $currency, $gallery);
+        ShopHelper::recordProductView($product['id']);
+
+        $similarProducts = ShopHelper::similarProducts($product, 4);
+        $this->attachRatings($similarProducts);
+        $recentlyViewed = ShopHelper::getRecentlyViewed($product['id'], 4);
+        $this->attachRatings($recentlyViewed);
 
         $this->DB->query("UPDATE `" . ShopHelper::table('products') . "`
             SET `views` = `views` + 1 WHERE `id` = " . (int)$product['id']);
@@ -322,7 +347,8 @@ class ShopModule extends Module
         $this->categories = $this->buildCategoriesHtml($product['category_id']);
         $breadcrumbs = $this->buildProductBreadcrumbs($product);
 
-        $userId = (int)ShopHelper::currentUser()['id'];
+        $user = ShopHelper::currentUser();
+        $userId = (int)$user['id'];
         $isFavorite = $userId > 0 && ShopHelper::isFavorite($userId, $product['id']);
 
         $source = $this->render('product.html', array(
@@ -347,6 +373,20 @@ class ShopModule extends Module
             'favorite_action' => get_url($isFavorite
                 ? '/shop/remove_from_favorites/' : '/shop/add_to_favorites/'),
             'login_url' => get_url('/users/login_form/'),
+            'reviews' => $reviews,
+            'rating' => $this->productRating,
+            'rating_stars' => $this->productRating['count'] > 0
+                ? str_repeat('★', max(1, (int)round($this->productRating['avg']))) : '',
+            'rating_avg_formatted' => $this->productRating['count'] > 0
+                ? number_format($this->productRating['avg'], 1, ',', '') : '',
+            'reviews_enabled' => (int)ShopHelper::cfg('reviews_enabled', 1) === 1,
+            'review_action' => get_url('/shop/add_review/'),
+            'stock_notify_action' => get_url('/shop/notify_stock/'),
+            'can_notify_stock' => !$inStock,
+            'user_name' => $user['name'],
+            'user_email' => $user['email'],
+            'similar_products' => $similarProducts,
+            'recently_viewed' => $recentlyViewed,
         ));
 
         return $this->_view($source);
@@ -466,6 +506,82 @@ class ShopModule extends Module
     {
         $this->ACL->turn(array('shop', 'view_catalog'));
         $this->handleFavoriteAction(false);
+    }
+
+    public function add_review()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+            redirect('/shop/');
+        }
+
+        $productId = isset($_POST['product_id']) ? (int)$_POST['product_id'] : 0;
+        $product = $productId > 0 ? ShopHelper::getProduct($productId, true) : false;
+        if (!$product) {
+            ShopHelper::flash('error', 'Товар не найден.');
+            redirect('/shop/');
+        }
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
+            $this->redirectBack($product['url']);
+        }
+        if ((int)ShopHelper::cfg('reviews_enabled', 1) !== 1) {
+            ShopHelper::flash('error', 'Отзывы отключены.');
+            $this->redirectBack($product['url']);
+        }
+
+        $user = ShopHelper::currentUser();
+        $name = trim((string)(isset($_POST['name']) ? $_POST['name'] : ''));
+        $email = trim((string)(isset($_POST['email']) ? $_POST['email'] : ''));
+        if ($name === '' && $user['name'] !== '') $name = $user['name'];
+        if ($email === '' && $user['email'] !== '') $email = $user['email'];
+
+        $saved = ShopHelper::addReview(array(
+            'product_id' => $productId,
+            'user_id' => (int)$user['id'],
+            'name' => $name,
+            'email' => $email,
+            'rating' => isset($_POST['rating']) ? (int)$_POST['rating'] : 0,
+            'text' => isset($_POST['text']) ? (string)$_POST['text'] : '',
+        ));
+
+        if (!$saved) {
+            ShopHelper::flash('error', 'Заполните имя, e-mail, оценку и текст отзыва.');
+        } elseif ((int)ShopHelper::cfg('reviews_moderate', 1) === 1) {
+            ShopHelper::flash('success', 'Спасибо! Отзыв появится после проверки.');
+        } else {
+            ShopHelper::flash('success', 'Спасибо за отзыв!');
+        }
+        $this->redirectBack($product['url']);
+    }
+
+    public function notify_stock()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+            redirect('/shop/');
+        }
+
+        $productId = isset($_POST['product_id']) ? (int)$_POST['product_id'] : 0;
+        $product = $productId > 0 ? ShopHelper::getProduct($productId, true) : false;
+        if (!$product) {
+            ShopHelper::flash('error', 'Товар не найден.');
+            redirect('/shop/');
+        }
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
+            $this->redirectBack($product['url']);
+        }
+
+        $email = trim((string)(isset($_POST['email']) ? $_POST['email'] : ''));
+        if ($email === '') $email = ShopHelper::currentUser()['email'];
+
+        if (ShopHelper::addStockSubscription($productId, $email)) {
+            ShopHelper::flash('success', 'Сообщим, когда товар снова появится в наличии.');
+        } else {
+            ShopHelper::flash('error', 'Укажите корректный e-mail.');
+        }
+        $this->redirectBack($product['url']);
     }
 
     private function handleFavoriteAction($add)
@@ -1110,7 +1226,38 @@ class ShopModule extends Module
             );
         }
 
+        if (!empty($this->productRating['count'])) {
+            $data['aggregateRating'] = array(
+                '@type' => 'AggregateRating',
+                'ratingValue' => number_format((float)$this->productRating['avg'], 1, '.', ''),
+                'reviewCount' => (int)$this->productRating['count'],
+                'bestRating' => 5,
+                'worstRating' => 1,
+            );
+        }
+
         return ShopHelper::jsonLdScript($data);
+    }
+
+    /**
+     * Attach review stars to catalogue cards in one extra query.
+     */
+    private function attachRatings(array &$items)
+    {
+        if (!$items) return;
+
+        $ratings = ShopHelper::productRatings(array_column($items, 'id'));
+        foreach ($items as &$item) {
+            $id = (int)$item['id'];
+            $rating = isset($ratings[$id]) ? $ratings[$id] : array('avg' => 0.0, 'count' => 0);
+            $item['rating_avg'] = $rating['avg'];
+            $item['rating_avg_formatted'] = $rating['count'] > 0
+                ? number_format($rating['avg'], 1, ',', '') : '';
+            $item['rating_count'] = $rating['count'];
+            $item['rating_stars'] = $rating['count'] > 0
+                ? str_repeat('★', max(1, (int)round($rating['avg']))) : '';
+        }
+        unset($item);
     }
 
     private function buildBreadcrumbStructuredData()

@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="{{ template_path }}/css/shop.css?v=20261028" />
+<link rel="stylesheet" href="{{ template_path }}/css/shop.css?v=20261110" />
 <div class="shop-page">
     <div class="shop-topbar">
         <a href="{{ shop_url }}">Каталог</a>
@@ -39,6 +39,12 @@
 
                 <div class="shop-product-info">
                     <h1>{{ product.title|escape }}</h1>
+                    {% if rating.count %}
+                    <div class="shop-product-rating">
+                        <span class="shop-stars">{{ rating_stars }}</span>
+                        {{ rating_avg_formatted }} из 5 · отзывов: {{ rating.count }}
+                    </div>
+                    {% endif %}
                     {% if product.category_title %}
                     <div class="shop-card-category">
                         <a href="{{ product.category_url }}">{{ product.category_title|escape }}</a>
@@ -101,6 +107,20 @@
                     <div class="shop-empty">Для этого товара пока не настроены варианты.</div>
                     {% endif %}
 
+                    {% if can_notify_stock %}
+                    <div class="shop-stock-notify">
+                        <h3>Нет в наличии</h3>
+                        <p>Оставьте e-mail — сообщим, когда товар снова появится.</p>
+                        <form method="post" action="{{ stock_notify_action }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                            <input type="hidden" name="product_id" value="{{ product.id }}" />
+                            <input type="hidden" name="return" value="{{ return_url }}" />
+                            <input type="email" name="email" value="{{ user_email|escape }}" placeholder="Ваш e-mail" required="required" />
+                            <button type="submit" class="shop-btn shop-btn-small">Сообщить о поступлении</button>
+                        </form>
+                    </div>
+                    {% endif %}
+
                     {% if attributes %}
                     <div class="shop-attributes">
                         <h2>Характеристики</h2>
@@ -125,6 +145,103 @@
             <div class="shop-product-description">
                 <h2>Описание</h2>
                 {{ product.description_html }}
+            </div>
+            {% endif %}
+
+            {% if similar_products %}
+            <div class="shop-related">
+                <h2 class="shop-section-title">Похожие товары</h2>
+                <div class="shop-grid">
+                    {% for item in similar_products %}
+                    <article class="shop-card">
+                        <a class="shop-card-image" href="{{ item.url }}">
+                            {% if item.image_url %}
+                            <img src="{{ item.image_url }}" alt="{{ item.title|escape }}" loading="lazy" />
+                            {% else %}
+                            <span class="shop-noimage">Нет фото</span>
+                            {% endif %}
+                        </a>
+                        <div class="shop-card-body">
+                            <h2 class="shop-card-title"><a href="{{ item.url }}">{{ item.title|escape }}</a></h2>
+                            {% if item.rating_count %}
+                            <div class="shop-card-rating"><span class="shop-stars">{{ item.rating_stars }}</span> {{ item.rating_avg_formatted }} ({{ item.rating_count }})</div>
+                            {% endif %}
+                            <div class="shop-card-price">{% if item.price_from_formatted %}<span class="shop-price">{{ item.price_from_formatted }}</span>{% else %}<span class="shop-muted">Цена по запросу</span>{% endif %}</div>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if recently_viewed %}
+            <div class="shop-related">
+                <h2 class="shop-section-title">Вы недавно смотрели</h2>
+                <div class="shop-grid">
+                    {% for item in recently_viewed %}
+                    <article class="shop-card">
+                        <a class="shop-card-image" href="{{ item.url }}">
+                            {% if item.image_url %}
+                            <img src="{{ item.image_url }}" alt="{{ item.title|escape }}" loading="lazy" />
+                            {% else %}
+                            <span class="shop-noimage">Нет фото</span>
+                            {% endif %}
+                        </a>
+                        <div class="shop-card-body">
+                            <h2 class="shop-card-title"><a href="{{ item.url }}">{{ item.title|escape }}</a></h2>
+                            <div class="shop-card-price">{% if item.price_from_formatted %}<span class="shop-price">{{ item.price_from_formatted }}</span>{% else %}<span class="shop-muted">Цена по запросу</span>{% endif %}</div>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if reviews_enabled %}
+            <div class="shop-reviews" id="reviews">
+                <h2 class="shop-section-title">Отзывы{% if rating.count %} — {{ rating_avg_formatted }} из 5 ({{ rating.count }}){% endif %}</h2>
+                {% if reviews %}
+                <div class="shop-review-list">
+                    {% for review in reviews %}
+                    <article class="shop-review">
+                        <div class="shop-review-head">
+                            <strong>{{ review.name|escape }}</strong>
+                            <span class="shop-stars">{{ review.rating_stars }}</span>
+                            <span class="shop-muted">{{ review.created_at_formatted }}</span>
+                        </div>
+                        <div class="shop-review-text">{{ review.text_html }}</div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="shop-muted">Отзывов пока нет. Будьте первым.</p>
+                {% endif %}
+
+                <form class="shop-review-form" method="post" action="{{ review_action }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                    <input type="hidden" name="product_id" value="{{ product.id }}" />
+                    <input type="hidden" name="return" value="{{ return_url }}" />
+                    <h3>Оставить отзыв</h3>
+                    <label>Имя
+                        <input type="text" name="name" value="{{ user_name|escape }}" maxlength="255" required="required" />
+                    </label>
+                    <label>E-mail
+                        <input type="email" name="email" value="{{ user_email|escape }}" maxlength="255" required="required" />
+                    </label>
+                    <label>Оценка
+                        <select name="rating" required="required">
+                            <option value="5">5 — отлично</option>
+                            <option value="4">4 — хорошо</option>
+                            <option value="3">3 — нормально</option>
+                            <option value="2">2 — плохо</option>
+                            <option value="1">1 — ужасно</option>
+                        </select>
+                    </label>
+                    <label>Отзыв
+                        <textarea name="text" rows="4" maxlength="5000" required="required"></textarea>
+                    </label>
+                    <button type="submit" class="shop-btn">Отправить отзыв</button>
+                </form>
             </div>
             {% endif %}
         </section>

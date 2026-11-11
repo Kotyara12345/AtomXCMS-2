@@ -918,3 +918,12 @@
 .shop-admin-history li:first-child {
     border-top: 0;
 }
+
+.shop-admin-btn-danger {
+    border-color: #e3b4b4;
+    color: #a12b2b;
+}
+
+.shop-admin-btn-danger:hover {
+    background: #fdf1f1;
+}

@@ -32,7 +32,7 @@ if (!$canProducts && !$canOrders) {
 }
 
 $tab = isset($_GET['tab']) ? preg_replace('/[^a-z_]/', '', (string)$_GET['tab']) : 'dashboard';
-$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing');
+$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing', 'reviews');
 $orderTabs = array('orders', 'order');
 if (!in_array($tab, array_merge($productTabs, $orderTabs), true)) $tab = 'dashboard';
 if (in_array($tab, $productTabs, true) && !$canProducts) $tab = 'orders';
@@ -45,7 +45,7 @@ if (in_array($tab, $orderTabs, true) && !$canOrders) $tab = 'dashboard';
 if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST'
     && !empty($_POST['action'])) {
     $action = (string)$_POST['action'];
-    $isOrderAction = in_array($action, array('order_status', 'order_mail'), true);
+    $isOrderAction = in_array($action, array('order_status', 'order_mail', 'order_tracking'), true);
     if (($isOrderAction && !$canOrders) || (!$isOrderAction && !$canProducts)) {
         $_SESSION['errors'] = 'Недостаточно прав для этого действия.';
         redirect('/admin/shop.php?tab=dashboard');
@@ -447,6 +447,26 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         shop_admin_go(array('tab' => 'landings'));
     }
 
+    if ($action === 'review_approve' || $action === 'review_unpublish' || $action === 'review_delete') {
+        $reviewId = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        if ($reviewId < 1) {
+            $_SESSION['errors'] = 'Отзыв не найден.';
+            shop_admin_go(array('tab' => 'reviews'));
+        }
+        if ($action === 'review_delete') {
+            $ok = ShopHelper::deleteReview($reviewId);
+        } else {
+            $ok = ShopHelper::setReviewActive($reviewId, $action === 'review_approve');
+        }
+        if ($ok) {
+            $_SESSION['message'] = $action === 'review_delete' ? 'Отзыв удалён.'
+                : ($action === 'review_approve' ? 'Отзыв опубликован.' : 'Отзыв снят с публикации.');
+        } else {
+            $_SESSION['errors'] = 'Не удалось изменить отзыв.';
+        }
+        shop_admin_go(array('tab' => 'reviews'));
+    }
+
     if ($action === 'order_mail') {
         $id = (int)($_POST['id'] ?? 0);
         $recipient = $_POST['recipient'] ?? '';
@@ -513,6 +533,90 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         }
         shop_admin_go(array('tab' => 'order', 'id' => $id));
     }
+
+    if ($action === 'order_tracking') {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $order = $id > 0 ? ShopHelper::getOrder($id) : false;
+        if (!$order) {
+            $_SESSION['errors'] = 'Заказ не найден.';
+            shop_admin_go(array('tab' => 'orders'));
+        }
+
+        $number = isset($_POST['tracking_number']) ? (string)$_POST['tracking_number'] : '';
+        $url = isset($_POST['tracking_url']) ? (string)$_POST['tracking_url'] : '';
+        if (!ShopHelper::trackingUrlValid($url)) {
+            $_SESSION['errors'] = 'Ссылка на трек должна начинаться с http:// или https://.';
+            shop_admin_go(array('tab' => 'order', 'id' => $id));
+        }
+        if (!ShopHelper::setOrderTracking($id, $number, $url)) {
+            $_SESSION['errors'] = 'Не удалось сохранить данные отслеживания.';
+        } else {
+            $_SESSION['message'] = 'Данные отслеживания сохранены.';
+            if (!empty($_POST['notify'])) {
+                try {
+                    $updated = ShopHelper::getOrder($id);
+                    $sent = $updated && ShopHelper::sendOrderEmails($updated,
+                        ShopHelper::getOrderItems($id, $updated['currency_code']), 'customer', true);
+                    if (!$sent) $_SESSION['message'] .= ' Письмо покупателю отправить не удалось.';
+                } catch (Throwable $e) {
+                    error_log("Shop order {$id}: tracking notification failed");
+                    $_SESSION['message'] .= ' Письмо покупателю отправить не удалось.';
+                }
+            }
+        }
+        shop_admin_go(array('tab' => 'order', 'id' => $id));
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Exports
+ * ---------------------------------------------------------------------- */
+
+if ($tab === 'orders' && isset($_GET['export']) && $_GET['export'] === 'csv') {
+    list($whereSql) = shop_admin_orders_where();
+    $rows = ShopHelper::db()->query("SELECT * FROM `" . ShopHelper::table('orders') . "`{$whereSql}
+        ORDER BY `id` DESC");
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="shop-orders-' . date('Ymd-His') . '.csv"');
+    header('X-Content-Type-Options: nosniff');
+    echo "\xEF\xBB\xBF";
+
+    $out = fopen('php://output', 'w');
+    fputcsv($out, array(
+        'Номер', 'Дата', 'Статус', 'Покупатель', 'E-mail', 'Телефон', 'Доставка',
+        'Адрес', 'Оплата', 'Товары', 'Доставка, сумма', 'Итого', 'Валюта',
+        'Отслеживание', 'Ссылка', 'Комментарий',
+    ), ';');
+    foreach ($rows as $order) {
+        fputcsv($out, array_map('shop_admin_csv_cell', array(
+            ShopHelper::orderNumber($order['id']),
+            ShopHelper::formatDate($order['created_at']),
+            ShopHelper::statusLabel($order['status']),
+            $order['customer_name'],
+            $order['email'],
+            $order['phone'],
+            $order['delivery_title'],
+            $order['address'],
+            $order['payment_title'],
+            $order['subtotal'],
+            $order['delivery_price'],
+            $order['total'],
+            $order['currency_code'],
+            isset($order['tracking_number']) ? $order['tracking_number'] : '',
+            isset($order['tracking_url']) ? $order['tracking_url'] : '',
+            $order['comment'],
+        )), ';');
+    }
+    fclose($out);
+    exit;
+}
+
+if ($tab === 'order' && !empty($_GET['print'])) {
+    header('Content-Type: text/html; charset=utf-8');
+    header('X-Robots-Tag: noindex');
+    echo shop_admin_order_print();
+    exit;
 }
 
 /* -------------------------------------------------------------------------
@@ -544,6 +648,8 @@ if ($tab === 'dashboard') {
     $output .= shop_admin_landings();
 } elseif ($tab === 'landing') {
     $output .= shop_admin_landing_form();
+} elseif ($tab === 'reviews') {
+    $output .= shop_admin_reviews();
 } elseif ($tab === 'orders') {
     $output .= shop_admin_orders();
 } elseif ($tab === 'order') {
@@ -563,6 +669,137 @@ include_once ROOT . '/admin/template/footer.php';
 /* -------------------------------------------------------------------------
  * Shared helpers
  * ---------------------------------------------------------------------- */
+
+function shop_admin_orders_where()
+{
+    $status = isset($_GET['status']) ? preg_replace('/[^a-z_]/', '', (string)$_GET['status']) : '';
+    $statuses = ShopHelper::statuses();
+    if ($status !== '' && !isset($statuses[$status])) $status = '';
+    $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+
+    $where = array();
+    if ($status !== '') $where[] = "`status` = '" . ShopHelper::esc($status) . "'";
+    if ($q !== '') {
+        $escaped = ShopHelper::esc($q);
+        $where[] = "(`customer_name` LIKE '%{$escaped}%' OR `email` LIKE '%{$escaped}%'
+            OR `phone` LIKE '%{$escaped}%' OR CAST(`id` AS CHAR) LIKE '%{$escaped}%')";
+    }
+    return array($where ? ' WHERE ' . implode(' AND ', $where) : '', $status, $q);
+}
+
+function shop_admin_csv_cell($value)
+{
+    $value = (string)$value;
+    if ($value !== '' && strpos('=+-@', $value[0]) !== false) return "'" . $value;
+    return $value;
+}
+
+function shop_admin_order_print()
+{
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    $order = $id > 0 ? ShopHelper::getOrder($id) : false;
+    if (!$order) return '<!doctype html><html lang="ru"><head><meta charset="utf-8" /><title>Заказ не найден</title></head><body><p>Заказ не найден.</p></body></html>';
+
+    $items = ShopHelper::getOrderItems($id, $order['currency_code']);
+    $site = (string)Config::read('title');
+    $email = (string)Config::read('admin_email');
+
+    ob_start(); ?>
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="robots" content="noindex" />
+<title>Счёт №<?php echo h($order['number']); ?></title>
+<style>
+    body { margin: 0; padding: 24px; font: 14px/1.45 Arial, sans-serif; color: #222; background: #fff; }
+    .invoice { max-width: 800px; margin: 0 auto; }
+    .invoice-head { display: flex; justify-content: space-between; gap: 20px; border-bottom: 2px solid #222; padding-bottom: 12px; }
+    .invoice-head h1 { margin: 0 0 4px; font-size: 22px; }
+    .invoice-muted { color: #666; }
+    .invoice-grid { display: flex; flex-wrap: wrap; gap: 24px; margin: 18px 0; }
+    .invoice-grid > div { flex: 1 1 240px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #bbb; padding: 7px 9px; text-align: left; vertical-align: top; }
+    th { background: #f2f2f2; }
+    td.num, th.num { text-align: right; }
+    .invoice-totals { width: 320px; margin-left: auto; }
+    .invoice-totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+    .invoice-totals .total { border-top: 1px solid #222; margin-top: 4px; padding-top: 8px; font-weight: bold; }
+    .invoice-actions { margin: 0 0 18px; }
+    .invoice-actions button { padding: 8px 16px; cursor: pointer; }
+    @media print {
+        body { padding: 0; }
+        .invoice-actions { display: none; }
+    }
+</style>
+</head>
+<body>
+<div class="invoice">
+    <div class="invoice-actions"><button type="button" onclick="window.print()">Печать</button></div>
+    <div class="invoice-head">
+        <div>
+            <h1>Счёт №<?php echo h($order['number']); ?></h1>
+            <div class="invoice-muted">от <?php echo h($order['created_at_formatted']); ?></div>
+        </div>
+        <div>
+            <strong><?php echo h($site); ?></strong>
+            <?php if ($email !== ''): ?><div class="invoice-muted"><?php echo h($email); ?></div><?php endif; ?>
+            <div class="invoice-muted">Статус: <?php echo h($order['status_label']); ?></div>
+        </div>
+    </div>
+
+    <div class="invoice-grid">
+        <div>
+            <strong>Покупатель</strong><br />
+            <?php echo h($order['customer_name']); ?><br />
+            <?php echo h($order['email']); ?><br />
+            <?php echo h($order['phone']); ?>
+        </div>
+        <div>
+            <strong>Доставка</strong><br />
+            <?php echo h($order['delivery_title']); ?><br />
+            <?php echo nl2br(h($order['address'])); ?>
+        </div>
+        <div>
+            <strong>Оплата</strong><br />
+            <?php echo h($order['payment_title']); ?>
+            <?php if ($order['tracking_number'] !== ''): ?>
+            <br /><strong>Трек:</strong> <?php echo h($order['tracking_number']); ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <table>
+        <thead><tr><th>Товар</th><th>Артикул</th><th class="num">Цена</th><th class="num">Кол-во</th><th class="num">Итого</th></tr></thead>
+        <tbody>
+        <?php foreach ($items as $item): ?>
+            <tr>
+                <td><?php echo h($item['product_title']); ?><?php if ($item['variant_title'] !== ''): ?><div class="invoice-muted"><?php echo h($item['variant_title']); ?></div><?php endif; ?></td>
+                <td><?php echo h($item['sku']); ?></td>
+                <td class="num"><?php echo h($item['price_formatted']); ?></td>
+                <td class="num"><?php echo (int)$item['quantity']; ?></td>
+                <td class="num"><?php echo h($item['total_formatted']); ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+
+    <div class="invoice-totals">
+        <div><span>Товары:</span><span><?php echo h($order['subtotal_formatted']); ?></span></div>
+        <div><span>Доставка:</span><span><?php echo h($order['delivery_price_formatted']); ?></span></div>
+        <div class="total"><span>Итого:</span><span><?php echo h($order['total_formatted']); ?></span></div>
+    </div>
+
+    <?php if (!empty($order['comment'])): ?>
+    <p><strong>Комментарий:</strong><br /><?php echo nl2br(h($order['comment'])); ?></p>
+    <?php endif; ?>
+</div>
+</body>
+</html>
+    <?php
+    return ob_get_clean();
+}
 
 function shop_admin_url($params = array())
 {
@@ -860,6 +1097,7 @@ function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
         $tabs['attributes'] = 'Атрибуты';
         $tabs['categories'] = 'Категории';
         $tabs['landings'] = 'Посадочные страницы';
+        $tabs['reviews'] = 'Отзывы';
     }
     if ($canOrders) $tabs['orders'] = 'Заказы';
 
@@ -907,12 +1145,83 @@ function shop_admin_dashboard($canProducts, $canOrders)
     $newRows = $DB->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('orders') . "` WHERE `status` = 'new'");
     $counts['new_orders'] = !empty($newRows[0]['cnt']) ? (int)$newRows[0]['cnt'] : 0;
 
+    $report = array(
+        'currency' => ShopHelper::activeCurrency(),
+        'today' => 0.0,
+        'week' => 0.0,
+        'month' => 0.0,
+        'days' => array(),
+        'products' => array(),
+        'categories' => array(),
+    );
+    if ($canOrders) {
+        $ordersTable = ShopHelper::table('orders');
+        $itemsTable = ShopHelper::table('order_items');
+        $code = ShopHelper::esc($report['currency']['code']);
+        $today = date('Y-m-d 00:00:00');
+        $week = date('Y-m-d 00:00:00', strtotime('-6 days'));
+        $month = date('Y-m-d 00:00:00', strtotime('-29 days'));
+
+        $sumRows = $DB->query("SELECT
+            COALESCE(SUM(CASE WHEN `created_at` >= '{$today}' THEN `total` ELSE 0 END), 0) AS today,
+            COALESCE(SUM(CASE WHEN `created_at` >= '{$week}' THEN `total` ELSE 0 END), 0) AS week,
+            COALESCE(SUM(CASE WHEN `created_at` >= '{$month}' THEN `total` ELSE 0 END), 0) AS month
+            FROM `{$ordersTable}`
+            WHERE `status` <> 'cancelled' AND `currency_code` = '{$code}'");
+        if (!empty($sumRows[0])) {
+            $report['today'] = (float)$sumRows[0]['today'];
+            $report['week'] = (float)$sumRows[0]['week'];
+            $report['month'] = (float)$sumRows[0]['month'];
+        }
+
+        $since14 = date('Y-m-d 00:00:00', strtotime('-13 days'));
+        for ($i = 13; $i >= 0; $i--) {
+            $day = date('Y-m-d', strtotime("-{$i} days"));
+            $report['days'][$day] = array(
+                'label' => date('d.m', strtotime($day)),
+                'count' => 0,
+                'total' => 0.0,
+            );
+        }
+        $dayRows = $DB->query("SELECT DATE(`created_at`) AS day, COUNT(*) AS cnt, SUM(`total`) AS total
+            FROM `{$ordersTable}`
+            WHERE `status` <> 'cancelled' AND `currency_code` = '{$code}'
+                AND `created_at` >= '{$since14}'
+            GROUP BY DATE(`created_at`)");
+        foreach ($dayRows as $row) {
+            $day = (string)$row['day'];
+            if (!isset($report['days'][$day])) continue;
+            $report['days'][$day]['count'] = (int)$row['cnt'];
+            $report['days'][$day]['total'] = (float)$row['total'];
+        }
+
+        $report['products'] = $DB->query("SELECT oi.`product_title`,
+                SUM(oi.`quantity`) AS qty, SUM(oi.`total`) AS total
+            FROM `{$itemsTable}` oi
+            INNER JOIN `{$ordersTable}` o ON o.`id` = oi.`order_id`
+            WHERE o.`status` <> 'cancelled' AND o.`currency_code` = '{$code}'
+            GROUP BY oi.`product_title`
+            ORDER BY total DESC LIMIT 5");
+
+        $report['categories'] = $DB->query("SELECT c.`title`,
+                SUM(oi.`quantity`) AS qty, SUM(oi.`total`) AS total
+            FROM `{$itemsTable}` oi
+            INNER JOIN `{$ordersTable}` o ON o.`id` = oi.`order_id`
+            LEFT JOIN `" . ShopHelper::table('variants') . "` v ON v.`id` = oi.`variant_id`
+            LEFT JOIN `" . ShopHelper::table('products') . "` p ON p.`id` = v.`product_id`
+            LEFT JOIN `" . ShopHelper::table('categories') . "` c ON c.`id` = p.`category_id`
+            WHERE o.`status` <> 'cancelled' AND o.`currency_code` = '{$code}'
+            GROUP BY c.`id`, c.`title`
+            ORDER BY total DESC LIMIT 5");
+    }
+
     $recent = $DB->query("SELECT * FROM `" . ShopHelper::table('orders') . "` ORDER BY `id` DESC LIMIT 8");
+    $lowStockThreshold = max(0, (int)ShopHelper::cfg('low_stock_threshold', 3));
     $lowStock = $DB->query("SELECT v.`id`, v.`title`, v.`sku`, v.`stock`, p.`id` AS product_id, p.`title` AS product_title
         FROM `" . ShopHelper::table('variants') . "` v
         INNER JOIN `" . ShopHelper::table('products') . "` p ON p.`id` = v.`product_id`
-        WHERE v.`active` = 1 AND v.`stock` <= 0
-        ORDER BY p.`title` ASC, v.`id` ASC LIMIT 8");
+        WHERE v.`active` = 1 AND v.`stock` <= {$lowStockThreshold}
+        ORDER BY v.`stock` ASC, p.`title` ASC, v.`id` ASC LIMIT 8");
 
     ob_start(); ?>
     <div class="shop-admin-cards">
@@ -950,6 +1259,79 @@ function shop_admin_dashboard($canProducts, $canOrders)
         <?php endif; ?>
     </div>
 
+    <?php if ($canOrders): ?>
+    <div class="shop-admin-cards">
+        <div class="shop-admin-card">
+            <span class="shop-admin-card-value"><?php echo h(ShopHelper::formatPrice($report['today'], $report['currency']['code'])); ?></span>
+            <span class="shop-admin-card-label">Выручка за сегодня</span>
+        </div>
+        <div class="shop-admin-card">
+            <span class="shop-admin-card-value"><?php echo h(ShopHelper::formatPrice($report['week'], $report['currency']['code'])); ?></span>
+            <span class="shop-admin-card-label">Выручка за 7 дней</span>
+        </div>
+        <div class="shop-admin-card">
+            <span class="shop-admin-card-value"><?php echo h(ShopHelper::formatPrice($report['month'], $report['currency']['code'])); ?></span>
+            <span class="shop-admin-card-label">Выручка за 30 дней</span>
+        </div>
+    </div>
+
+    <div class="shop-admin-columns">
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>Продажи за 14 дней</h2><span class="shop-admin-muted"><?php echo h($report['currency']['code']); ?></span></div>
+            <table class="grid shop-admin-table">
+                <thead><tr><th>Дата</th><th>Заказов</th><th>Сумма</th></tr></thead>
+                <tbody>
+                <?php foreach ($report['days'] as $day): ?>
+                    <tr>
+                        <td><?php echo h($day['label']); ?></td>
+                        <td><?php echo (int)$day['count']; ?></td>
+                        <td><?php echo h(ShopHelper::formatPrice($day['total'], $report['currency']['code'])); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>Топ товаров</h2></div>
+            <?php if ($report['products']): ?>
+            <table class="grid shop-admin-table">
+                <thead><tr><th>Товар</th><th>Кол-во</th><th>Сумма</th></tr></thead>
+                <tbody>
+                <?php foreach ($report['products'] as $product): ?>
+                    <tr>
+                        <td><?php echo h($product['product_title']); ?></td>
+                        <td><?php echo (int)$product['qty']; ?></td>
+                        <td><?php echo h(ShopHelper::formatPrice($product['total'], $report['currency']['code'])); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php else: ?>
+            <div class="shop-admin-empty">Продаж пока нет.</div>
+            <?php endif; ?>
+
+            <div class="shop-admin-panel-head"><h2>Топ категорий</h2></div>
+            <?php if ($report['categories']): ?>
+            <table class="grid shop-admin-table">
+                <thead><tr><th>Категория</th><th>Кол-во</th><th>Сумма</th></tr></thead>
+                <tbody>
+                <?php foreach ($report['categories'] as $category): ?>
+                    <tr>
+                        <td><?php echo h($category['title'] !== null && $category['title'] !== '' ? $category['title'] : 'Без категории'); ?></td>
+                        <td><?php echo (int)$category['qty']; ?></td>
+                        <td><?php echo h(ShopHelper::formatPrice($category['total'], $report['currency']['code'])); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php else: ?>
+            <div class="shop-admin-empty">Продаж пока нет.</div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <div class="shop-admin-columns">
         <div class="shop-admin-panel">
             <div class="shop-admin-panel-head">
@@ -978,7 +1360,7 @@ function shop_admin_dashboard($canProducts, $canOrders)
         <?php if ($canProducts): ?>
         <div class="shop-admin-panel">
             <div class="shop-admin-panel-head">
-                <h2>Нет в наличии</h2>
+                <h2>Низкий остаток</h2>
                 <a href="<?php echo h(shop_admin_url(array('tab' => 'products'))); ?>">Товары</a>
             </div>
             <?php if ($lowStock): ?>
@@ -1930,23 +2312,66 @@ function shop_admin_landing_form()
     return ob_get_clean();
 }
 
+function shop_admin_reviews()
+{
+    $reviews = ShopHelper::getReviews(null, 300);
+    $pending = 0;
+    foreach ($reviews as $review) {
+        if (empty($review['active'])) $pending++;
+    }
+
+    ob_start();
+    ?>
+    <div class="shop-admin-panel">
+        <div class="shop-admin-panel-head"><h2>Отзывы покупателей</h2></div>
+        <p class="shop-admin-muted">На проверке: <?php echo (int)$pending; ?>. Отзывы с оценкой показываются на карточке товара после публикации.</p>
+        <?php if (!$reviews): ?>
+            <p>Отзывов пока нет.</p>
+        <?php else: ?>
+        <table class="grid shop-admin-table">
+            <thead><tr><th>Товар</th><th>Автор</th><th>Оценка</th><th>Отзыв</th><th>Дата</th><th>Статус</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($reviews as $review): ?>
+                <tr>
+                    <td>
+                        <?php if (!empty($review['product_url'])): ?>
+                        <a class="shop-admin-title-link" href="<?php echo h($review['product_url']); ?>" target="_blank"><?php echo h($review['product_title']); ?></a>
+                        <?php else: ?>
+                        <span class="shop-admin-muted">Товар удалён</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><?php echo h($review['name']); ?><div class="shop-admin-muted"><?php echo h($review['email']); ?></div></td>
+                    <td><?php echo h($review['rating_stars']); ?></td>
+                    <td><?php echo h($review['text']); ?></td>
+                    <td><?php echo h($review['created_at_formatted']); ?></td>
+                    <td><?php echo !empty($review['active']) ? 'Опубликован' : 'На проверке'; ?></td>
+                    <td>
+                        <form method="post" action="" class="shop-admin-inline-form">
+                            <?php echo shop_admin_csrf(); ?>
+                            <input type="hidden" name="id" value="<?php echo (int)$review['id']; ?>" />
+                            <?php if (!empty($review['active'])): ?>
+                            <button type="submit" name="action" value="review_unpublish" class="shop-admin-btn">Снять</button>
+                            <?php else: ?>
+                            <button type="submit" name="action" value="review_approve" class="shop-admin-btn shop-admin-btn-primary">Опубликовать</button>
+                            <?php endif; ?>
+                            <button type="submit" name="action" value="review_delete" class="shop-admin-btn shop-admin-btn-danger">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
 function shop_admin_orders()
 {
-    $status = isset($_GET['status']) ? preg_replace('/[^a-z_]/', '', (string)$_GET['status']) : '';
-    $statuses = ShopHelper::statuses();
-    if ($status !== '' && !isset($statuses[$status])) $status = '';
-    $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+    list($whereSql, $status, $q) = shop_admin_orders_where();
     $page = max(1, (int)(isset($_GET['page']) ? $_GET['page'] : 1));
     $limit = 30;
-
-    $where = array();
-    if ($status !== '') $where[] = "`status` = '" . ShopHelper::esc($status) . "'";
-    if ($q !== '') {
-        $escaped = ShopHelper::esc($q);
-        $where[] = "(`customer_name` LIKE '%{$escaped}%' OR `email` LIKE '%{$escaped}%'
-            OR `phone` LIKE '%{$escaped}%' OR CAST(`id` AS CHAR) LIKE '%{$escaped}%')";
-    }
-    $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
     $countRows = ShopHelper::db()->query("SELECT COUNT(*) AS cnt FROM `" . ShopHelper::table('orders') . "`{$whereSql}");
     $total = !empty($countRows[0]['cnt']) ? (int)$countRows[0]['cnt'] : 0;
@@ -1977,6 +2402,7 @@ function shop_admin_orders()
             </select>
             <button type="submit" class="shop-admin-btn">Фильтр</button>
         </form>
+        <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'orders', 'status' => $status, 'q' => $q, 'export' => 'csv'))); ?>">Экспорт CSV</a>
     </div>
 
     <?php if ($orders): ?>
@@ -2010,6 +2436,7 @@ function shop_admin_order()
     $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
     $order = $id > 0 ? ShopHelper::getOrder($id) : false;
     if (!$order) return '<div class="shop-admin-empty">Заказ не найден.</div>';
+    ShopHelper::ensureOrderTrackingColumns();
     $items = ShopHelper::getOrderItems($id, $order['currency_code']);
 
     try {
@@ -2026,6 +2453,7 @@ function shop_admin_order()
     <div class="shop-admin-page-head">
         <h1>Заказ №<?php echo h($order['number']); ?></h1>
         <a href="<?php echo h(shop_admin_url(array('tab' => 'orders'))); ?>">← К заказам</a>
+        <a href="<?php echo h(shop_admin_url(array('tab' => 'order', 'id' => $id, 'print' => '1'))); ?>" target="_blank">Печать счёта</a>
     </div>
 
     <div class="shop-admin-order-grid">
@@ -2139,6 +2567,26 @@ function shop_admin_order()
             <h3>Комментарий</h3>
             <div class="shop-admin-pre"><?php echo h($order['comment']); ?></div>
             <?php endif; ?>
+        </div>
+
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>Отслеживание</h2></div>
+            <form method="post" action="" class="shop-admin-simple-form">
+                <?php echo shop_admin_csrf(); ?>
+                <input type="hidden" name="action" value="order_tracking" />
+                <input type="hidden" name="id" value="<?php echo $id; ?>" />
+                <label>Трек-номер
+                    <input type="text" name="tracking_number" maxlength="128" value="<?php echo h($order['tracking_number']); ?>" />
+                </label>
+                <label>Ссылка на трек
+                    <input type="url" name="tracking_url" maxlength="255" value="<?php echo h($order['tracking_url']); ?>" placeholder="https://..." />
+                </label>
+                <label class="shop-admin-inline-check">
+                    <input type="checkbox" name="notify" value="1" />
+                    Отправить письмо покупателю с трек-номером
+                </label>
+                <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Сохранить</button>
+            </form>
         </div>
     </div>
     <?php

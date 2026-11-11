@@ -29,6 +29,22 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 - Admin status changes can add a comment and optionally e-mail the customer
   about the new status. Order e-mails now contain a direct link to the order.
 - Checkout rejects phone numbers without 7–15 digits.
+- Shop customer retention: product reviews with star ratings and moderation,
+  `AggregateRating` JSON-LD, "similar products", "recently viewed", a
+  "featured" block on the catalogue home page, and stock-arrival e-mail
+  subscriptions for out-of-stock products. Reviews and subscriptions use
+  tables created on first use, so an existing installation keeps working
+  without a module reinstall; new installs get them from `install_db.php`.
+- Shop admin and operations: orders export to CSV with the current filters,
+  a printable invoice (`?tab=order&id=N&print=1`), and a tracking number with
+  an optional tracking link. The tracking data is shown on the customer order
+  page and included in order e-mails. The dashboard now shows revenue for the
+  last day, 7 and 30 days, a 14-day sales table, top products and top
+  categories (cancelled orders excluded). A `low_stock_threshold` setting
+  (default 3, `0` disables) sends one e-mail per low-stock episode from the
+  request-driven maintenance. Logged-in customers get their cart saved in
+  `shop_carts` and restored on the next visit or login. Existing installations
+  get the tracking and low-stock columns on first use.
 - Password hashing helpers: `atm_password_hash()`, `atm_password_verify()`,
   `atm_password_needs_rehash()` in `sys/inc/helpers.lib.php`.
 - "Server protocols" section in the admin panel (System settings) with
@@ -86,6 +102,10 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   Redactor.
 
 ### Fixed
+- Shop status changes now roll back when the status history row cannot be
+  written, instead of silently committing a change without an audit entry.
+  The concurrent order test worker now provides the database `save()` method
+  used by the history log.
 - Profile password change did not work: an empty result of the custom
   password validator was treated as an error, so any profile submit with
   a filled "current password" field was rejected.
