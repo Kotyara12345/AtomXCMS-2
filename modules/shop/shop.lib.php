@@ -272,10 +272,21 @@ class ShopHelper
                 `user_id` INT UNSIGNED NOT NULL,
                 `data` MEDIUMTEXT,
                 `updated_at` DATETIME DEFAULT NULL,
+                `reminded_at` DATETIME DEFAULT NULL,
                 PRIMARY KEY (`user_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         } catch (Throwable $e) {
             return false;
+        }
+
+        try {
+            self::db()->query("SELECT `reminded_at` FROM `{$table}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$table}` ADD COLUMN `reminded_at` DATETIME DEFAULT NULL");
+            } catch (Throwable $alterError) {
+                return false;
+            }
         }
 
         self::$cartsTableReady = true;
@@ -339,6 +350,140 @@ class ShopHelper
         } catch (Throwable $e) {
             error_log('Shop cart persistence failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Carts untouched for the configured hours, with the products they hold.
+     */
+    public static function abandonedCartRecipients($hours = null, $limit = 50)
+    {
+        if ($hours === null) $hours = (int)self::cfg('abandoned_cart_hours', 24);
+        $hours = (int)$hours;
+        if ($hours < 1 || !self::ensureCartsTable()) return array();
+
+        $limit = max(1, (int)$limit);
+        $carts = self::table('carts');
+        $users = self::db()->getFullTableName('users');
+        $variants = self::table('variants');
+        $products = self::table('products');
+        $prices = self::table('variant_prices');
+        $code = self::esc(self::activeCurrency()['code']);
+
+        try {
+            $rows = self::db()->query("SELECT c.`user_id`, c.`data`, c.`updated_at`,
+                    u.`email`, u.`name`, u.`first_name`
+                FROM `{$carts}` c
+                INNER JOIN `{$users}` u ON u.`id` = c.`user_id`
+                WHERE c.`data` IS NOT NULL AND c.`data` <> ''
+                    AND u.`email` <> ''
+                    AND c.`updated_at` IS NOT NULL
+                    AND c.`updated_at` <= DATE_SUB(NOW(), INTERVAL {$hours} HOUR)
+                    AND (c.`reminded_at` IS NULL OR c.`reminded_at` < c.`updated_at`)
+                ORDER BY c.`updated_at` ASC
+                LIMIT {$limit}");
+        } catch (Throwable $e) {
+            return array();
+        }
+
+        $recipients = array();
+        foreach ($rows as $row) {
+            $cart = self::cleanCart(json_decode((string)$row['data'], true));
+            if (!$cart) continue;
+            $ids = implode(',', array_map('intval', array_keys($cart)));
+            try {
+                $variantsRows = self::db()->query("SELECT v.`id` AS variant_id, v.`title` AS variant_title, v.`sku`,
+                        p.`id` AS product_id, p.`title` AS product_title, p.`clean_url_title`,
+                        vp.`price`
+                    FROM `{$variants}` v
+                    INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
+                    LEFT JOIN `{$prices}` vp ON vp.`variant_id` = v.`id` AND vp.`currency_code` = '{$code}'
+                    WHERE v.`id` IN ({$ids}) AND v.`active` = 1 AND p.`active` = 1");
+            } catch (Throwable $e) {
+                continue;
+            }
+
+            $byId = array();
+            foreach ($variantsRows as $variantRow) $byId[(int)$variantRow['variant_id']] = $variantRow;
+
+            $lines = array();
+            $total = 0.0;
+            foreach ($cart as $variantId => $qty) {
+                if (empty($byId[$variantId])) continue;
+                $variantRow = $byId[$variantId];
+                $price = (float)$variantRow['price'];
+                if ($price <= 0) continue;
+                $sum = $price * $qty;
+                $total += $sum;
+                $lines[] = array(
+                    'variant_id' => (int)$variantId,
+                    'product_id' => (int)$variantRow['product_id'],
+                    'product_title' => $variantRow['product_title'],
+                    'variant_title' => (string)$variantRow['variant_title'],
+                    'sku' => (string)$variantRow['sku'],
+                    'quantity' => (int)$qty,
+                    'price' => $price,
+                    'total' => $sum,
+                    'url' => self::absoluteUrl(self::productUrl(array(
+                        'id' => (int)$variantRow['product_id'],
+                        'clean_url_title' => $variantRow['clean_url_title'],
+                    ))),
+                );
+            }
+            if (!$lines) continue;
+
+            $name = trim((string)$row['first_name']);
+            if ($name === '') $name = trim((string)$row['name']);
+            $recipients[] = array(
+                'user_id' => (int)$row['user_id'],
+                'email' => (string)$row['email'],
+                'name' => $name,
+                'updated_at' => $row['updated_at'],
+                'items' => $lines,
+                'total' => $total,
+            );
+        }
+        return $recipients;
+    }
+
+    public static function remindAbandonedCarts()
+    {
+        $recipients = self::abandonedCartRecipients();
+        if (!$recipients) return true;
+
+        $templatePath = ROOT . '/sys/settings/email_templates/';
+        $code = self::activeCurrency()['code'];
+        $cartUrl = self::absoluteUrl(get_url('/shop/cart/'));
+        $carts = self::table('carts');
+
+        foreach ($recipients as $recipient) {
+            $body = '<h2>Ваша корзина ждёт</h2>'
+                . '<p>' . ($recipient['name'] !== '' ? h($recipient['name']) . ', вы' : 'Вы')
+                . ' оставили товары в корзине магазина.</p>'
+                . '<table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;">'
+                . '<tr><th>Товар</th><th>Артикул</th><th>Цена</th><th>Кол-во</th><th>Итого</th></tr>';
+            foreach ($recipient['items'] as $item) {
+                $body .= '<tr><td><a href="' . h($item['url']) . '">' . h($item['product_title']) . '</a>'
+                    . ($item['variant_title'] !== '' ? '<br /><small>' . h($item['variant_title']) . '</small>' : '')
+                    . '</td><td>' . h($item['sku']) . '</td><td>'
+                    . h(self::formatPrice($item['price'], $code)) . '</td><td>'
+                    . (int)$item['quantity'] . '</td><td>'
+                    . h(self::formatPrice($item['total'], $code)) . '</td></tr>';
+            }
+            $body .= '</table><p>Сумма: <strong>' . h(self::formatPrice($recipient['total'], $code))
+                . '</strong></p><p><a href="' . h($cartUrl) . '">Вернуться в корзину</a></p>';
+
+            try {
+                $mailer = new AtmMail($templatePath);
+                $mailer->prepare($body);
+                if (@$mailer->sendMail($recipient['email'], 'Ваша корзина ждёт', array())) {
+                    self::db()->query("UPDATE `{$carts}` SET `reminded_at` = NOW()
+                        WHERE `user_id` = " . (int)$recipient['user_id']);
+                }
+            } catch (Throwable $e) {
+                error_log('Shop cart reminder failed for user ' . (int)$recipient['user_id']);
+            }
+        }
+        return true;
     }
 
     public static function cartCount()
@@ -2482,6 +2627,197 @@ class ShopHelper
         }
         return self::getProducts(array('ids' => $ids, 'limit' => $limit));
     }
+
+    /* ---------------------------------------------------------------------
+     * Product CSV import
+     * ------------------------------------------------------------------ */
+
+    private static function csvHeaderMap($header)
+    {
+        $aliases = array(
+            'title' => array('title', 'название', 'наименование'),
+            'slug' => array('slug', 'url', 'clean_url_title', 'ссылка'),
+            'category' => array('category', 'категория'),
+            'short_description' => array('short_description', 'краткое описание', 'краткое_описание'),
+            'description' => array('description', 'описание'),
+            'sku' => array('sku', 'артикул'),
+            'price' => array('price', 'цена'),
+            'stock' => array('stock', 'остаток', 'количество'),
+            'active' => array('active', 'активен', 'активность'),
+            'featured' => array('featured', 'рекомендуемый', 'рекомендовать'),
+            'meta_title' => array('meta_title', 'meta title', 'meta-заголовок'),
+            'meta_description' => array('meta_description', 'meta description', 'meta-описание'),
+            'meta_keywords' => array('meta_keywords', 'meta keywords', 'meta-ключевые слова'),
+        );
+        $map = array();
+        foreach ((array)$header as $index => $name) {
+            $name = preg_replace('/^\xEF\xBB\xBF/', '', (string)$name);
+            $name = mb_strtolower(trim($name));
+            foreach ($aliases as $field => $names) {
+                if (isset($map[$field])) continue;
+                if (in_array($name, $names, true)) {
+                    $map[$field] = (int)$index;
+                    break;
+                }
+            }
+        }
+        return $map;
+    }
+
+    private static function csvFlag($value)
+    {
+        return in_array(mb_strtolower(trim((string)$value)), array('1', 'да', 'yes', 'true', '+', 'y'), true) ? 1 : 0;
+    }
+
+    /**
+     * Import or update products from a CSV file. Existing products match by slug.
+     */
+    public static function importProductsCsv($path)
+    {
+        $result = array('created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => array());
+        $handle = @fopen((string)$path, 'rb');
+        if (!$handle) {
+            $result['errors'][] = 'Не удалось открыть файл.';
+            return $result;
+        }
+
+        $firstLine = (string)fgets($handle);
+        $delimiter = substr_count($firstLine, ';') >= substr_count($firstLine, ',') ? ';' : ',';
+        rewind($handle);
+
+        $map = null;
+        $rowNumber = 0;
+        $now = date('Y-m-d H:i:s');
+        $currency = self::activeCurrency();
+        $products = self::table('products');
+        $variants = self::table('variants');
+        $prices = self::table('variant_prices');
+        $categories = self::table('categories');
+
+        while (($row = fgetcsv($handle, 0, $delimiter, '"', '')) !== false) {
+            $rowNumber++;
+            if ($map === null) {
+                $map = self::csvHeaderMap($row);
+                if (!isset($map['title'])) {
+                    $result['errors'][] = 'В первой строке нет колонки с названием товара.';
+                    break;
+                }
+                continue;
+            }
+
+            $empty = true;
+            foreach ($row as $value) {
+                if (trim((string)$value) !== '') $empty = false;
+            }
+            if ($empty) continue;
+            if ($result['created'] + $result['updated'] + $result['skipped'] >= 2000) {
+                $result['errors'][] = 'Обработаны первые 2000 строк.';
+                break;
+            }
+
+            $cell = function ($field) use ($row, $map) {
+                return isset($map[$field], $row[$map[$field]]) ? trim((string)$row[$map[$field]]) : '';
+            };
+
+            try {
+                $title = $cell('title');
+                if ($title === '') throw new RuntimeException('пустое название');
+
+                $slugSource = $cell('slug');
+                if ($slugSource === '') $slugSource = $title;
+                $slug = self::slugify($slugSource);
+                if ($slug === '') throw new RuntimeException('пустой URL');
+
+                $existingRows = self::db()->query("SELECT * FROM `{$products}`
+                    WHERE `clean_url_title` = '" . self::esc($slug) . "' LIMIT 1");
+                $existing = isset($existingRows[0]) ? $existingRows[0] : null;
+
+                $categoryId = 0;
+                $categoryValue = $cell('category');
+                if ($categoryValue !== '') {
+                    if (ctype_digit($categoryValue)) {
+                        $categoryId = (int)$categoryValue;
+                    } else {
+                        $categoryRows = self::db()->query("SELECT `id` FROM `{$categories}`
+                            WHERE `title` = '" . self::esc($categoryValue) . "'
+                                OR `clean_url_title` = '" . self::esc(self::slugify($categoryValue)) . "'
+                            LIMIT 1");
+                        if (isset($categoryRows[0])) $categoryId = (int)$categoryRows[0]['id'];
+                    }
+                }
+
+                $data = array(
+                    'title' => $title,
+                    'clean_url_title' => $existing ? $existing['clean_url_title'] : self::uniqueSlug('shop_products', $slugSource),
+                    'updated_at' => $now,
+                );
+                if ($categoryValue !== '' || !$existing) $data['category_id'] = $categoryId;
+                foreach (array('short_description', 'description', 'meta_title', 'meta_description', 'meta_keywords') as $field) {
+                    if (isset($map[$field], $row[$map[$field]])) {
+                        $data[$field] = (string)$row[$map[$field]];
+                    }
+                }
+                if (isset($map['active']) && $cell('active') !== '') $data['active'] = self::csvFlag($cell('active'));
+                if (isset($map['featured']) && $cell('featured') !== '') $data['featured'] = self::csvFlag($cell('featured'));
+
+                if ($existing) {
+                    $data['id'] = (int)$existing['id'];
+                    self::db()->save('shop_products', $data);
+                    $productId = (int)$existing['id'];
+                } else {
+                    $data['image'] = '';
+                    $data['position'] = 0;
+                    $data['views'] = 0;
+                    $data['created_at'] = $now;
+                    $productId = (int)self::db()->save('shop_products', $data);
+                    if ($productId < 1) throw new RuntimeException('товар не сохранён');
+                }
+
+                $variantRows = self::db()->query("SELECT `id` FROM `{$variants}` WHERE `product_id` = {$productId}
+                    ORDER BY `position` ASC, `id` ASC LIMIT 1");
+                if (empty($variantRows[0])) {
+                    // Imported products have no attributes, so one default variant is enough.
+                    $variantId = (int)self::db()->save('shop_variants', array(
+                        'product_id' => $productId,
+                        'title' => 'Стандарт',
+                        'sku' => '',
+                        'stock' => 0,
+                        'image' => '',
+                        'active' => 1,
+                        'position' => 0,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ));
+                    if ($variantId < 1) throw new RuntimeException('вариант не создан');
+                } else {
+                    $variantId = (int)$variantRows[0]['id'];
+                }
+
+                self::db()->save('shop_variants', array(
+                    'sku' => mb_substr($cell('sku'), 0, 64),
+                    'stock' => max(0, (int)$cell('stock')),
+                    'active' => 1,
+                    'updated_at' => $now,
+                ), array('id' => $variantId));
+
+                $price = (float)str_replace(array(' ', ','), array('', '.'), $cell('price'));
+                if ($price < 0) $price = 0.0;
+                self::db()->query("INSERT INTO `{$prices}` (`variant_id`, `currency_code`, `price`)
+                    VALUES ({$variantId}, '" . self::esc($currency['code']) . "', " . number_format($price, 2, '.', '') . ")
+                    ON DUPLICATE KEY UPDATE `price` = VALUES(`price`)");
+
+                if ($existing) $result['updated']++; else $result['created']++;
+            } catch (Throwable $e) {
+                $result['skipped']++;
+                if (count($result['errors']) < 20) {
+                    $result['errors'][] = 'Строка ' . $rowNumber . ': ' . $e->getMessage();
+                }
+            }
+        }
+        fclose($handle);
+
+        return $result;
+    }
 }
 
 /**
@@ -2508,5 +2844,13 @@ if (!function_exists('shopLowStockAlert')) {
     {
         if (!class_exists('ShopHelper', false)) return false;
         return ShopHelper::lowStockAlert();
+    }
+}
+
+if (!function_exists('shopRemindCarts')) {
+    function shopRemindCarts()
+    {
+        if (!class_exists('ShopHelper', false)) return false;
+        return ShopHelper::remindAbandonedCarts();
     }
 }

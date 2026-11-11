@@ -282,5 +282,6 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_carts` (
     `user_id` INT UNSIGNED NOT NULL,
     `data` MEDIUMTEXT,
     `updated_at` DATETIME DEFAULT NULL,
+    `reminded_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";

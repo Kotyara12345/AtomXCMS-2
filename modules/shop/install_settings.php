@@ -24,6 +24,8 @@ $FpsInstallSettings = array(
     'notify_email' => '',
     'order_ttl_hours' => 72,
     'low_stock_threshold' => 3,
+    'abandoned_cart_hours' => 24,
     'reviews_enabled' => 1,
     'reviews_moderate' => 1,
+    'structured_data' => 1,
 );

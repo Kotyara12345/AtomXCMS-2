@@ -107,6 +107,7 @@ class ShopModule extends Module
             fpsCron('shopExpireOrders', 900);
             fpsCron('shopNotifyStock', 900);
             fpsCron('shopLowStockAlert', 86400);
+            fpsCron('shopRemindCarts', 3600);
         }
         parent::_afterRender();
     }
@@ -1176,6 +1177,8 @@ class ShopModule extends Module
 
     private function buildProductStructuredData($product, $variants, $currency, $gallery)
     {
+        if ((int)ShopHelper::cfg('structured_data', 1) !== 1) return '';
+
         $url = $this->absoluteUrl($product['url']);
         if ($url === '') return '';
 
@@ -1195,11 +1198,31 @@ class ShopModule extends Module
 
         $sku = '';
         $prices = array();
+        $variantOffers = array();
         $available = false;
         foreach ($variants as $variant) {
+            $price = (float)$variant['price'];
             if ($sku === '' && !empty($variant['sku'])) $sku = (string)$variant['sku'];
             if (!empty($variant['available'])) $available = true;
-            if ((float)$variant['price'] > 0) $prices[] = (float)$variant['price'];
+            if ($price <= 0) continue;
+            $prices[] = $price;
+
+            $variantData = array(
+                '@type' => 'Product',
+                'name' => (string)$product['title']
+                    . (!empty($variant['title']) ? ' — ' . $variant['title'] : ''),
+                'offers' => array(
+                    '@type' => 'Offer',
+                    'url' => $url,
+                    'price' => number_format($price, 2, '.', ''),
+                    'priceCurrency' => (string)$currency['code'],
+                    'availability' => !empty($variant['available'])
+                        ? 'https://schema.org/InStock'
+                        : 'https://schema.org/OutOfStock',
+                ),
+            );
+            if (!empty($variant['sku'])) $variantData['sku'] = (string)$variant['sku'];
+            $variantOffers[] = $variantData;
         }
 
         $data = array(
@@ -1224,6 +1247,10 @@ class ShopModule extends Module
                     ? 'https://schema.org/InStock'
                     : 'https://schema.org/OutOfStock',
             );
+        }
+
+        if (count($variantOffers) > 1) {
+            $data['hasVariant'] = $variantOffers;
         }
 
         if (!empty($this->productRating['count'])) {
@@ -1262,6 +1289,8 @@ class ShopModule extends Module
 
     private function buildBreadcrumbStructuredData()
     {
+        if ((int)ShopHelper::cfg('structured_data', 1) !== 1) return '';
+
         $items = array();
         foreach ($this->breadcrumbData as $position => $crumb) {
             $item = array(

@@ -45,6 +45,19 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   request-driven maintenance. Logged-in customers get their cart saved in
   `shop_carts` and restored on the next visit or login. Existing installations
   get the tracking and low-stock columns on first use.
+- Shop sales tools: abandoned-cart reminders and CSV product import.
+  Carts untouched for `abandoned_cart_hours` (default 24, `0` disables) get one
+  e-mail with the cart contents and a return link; the `reminded_at` column is
+  added to existing `shop_carts` tables on first use. The admin product list
+  imports products from a CSV file: an existing slug is updated, a new slug
+  creates a product with one default variant. Columns: title, slug, category,
+  short_description, description, sku, price, stock, active, featured and the
+  Meta fields; the delimiter is detected automatically.
+- Shop SEO: product JSON-LD now describes every priced variant as a
+  `hasVariant` entry with its own `Offer`, SKU, price and availability, while
+  the `AggregateOffer` range stays. A `structured_data` setting in the module
+  settings (default on) enables or disables the product, offer, rating and
+  breadcrumb JSON-LD for installations where another plugin prints markup.
 - Password hashing helpers: `atm_password_hash()`, `atm_password_verify()`,
   `atm_password_needs_rehash()` in `sys/inc/helpers.lib.php`.
 - "Server protocols" section in the admin panel (System settings) with

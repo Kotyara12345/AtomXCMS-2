@@ -137,6 +137,30 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         shop_admin_go(array('tab' => 'products'));
     }
 
+    if ($action === 'product_import') {
+        $file = isset($_FILES['csv']) ? $_FILES['csv'] : null;
+        if (empty($file) || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+            $_SESSION['errors'] = 'Выберите CSV-файл для импорта.';
+            shop_admin_go(array('tab' => 'products'));
+        }
+        if (!empty($file['error']) || (int)$file['size'] > 5 * 1024 * 1024) {
+            $_SESSION['errors'] = 'Файл не загружен или больше 5 МБ.';
+            shop_admin_go(array('tab' => 'products'));
+        }
+
+        $result = ShopHelper::importProductsCsv($file['tmp_name']);
+        $message = 'Импорт завершён. Создано: ' . (int)$result['created']
+            . ', обновлено: ' . (int)$result['updated']
+            . ', пропущено: ' . (int)$result['skipped'] . '.';
+        if ($result['errors']) {
+            $errors = array_map('h', array_slice($result['errors'], 0, 10));
+            $_SESSION['errors'] = $message . ' ' . implode(' ', $errors);
+        } else {
+            $_SESSION['message'] = $message;
+        }
+        shop_admin_go(array('tab' => 'products'));
+    }
+
     if ($action === 'variants_save') {
         $productId = isset($_POST['id']) ? (int)$_POST['id'] : 0;
         $product = $productId > 0 ? ShopHelper::getProduct($productId, false) : false;
@@ -1420,7 +1444,18 @@ function shop_admin_products()
             <button type="submit" class="shop-admin-btn">Найти</button>
         </form>
         <a class="shop-admin-btn shop-admin-btn-primary" href="<?php echo h(shop_admin_url(array('tab' => 'product', 'id' => 0))); ?>">Добавить товар</a>
+        <form method="post" action="" enctype="multipart/form-data" class="shop-admin-inline-action">
+            <?php echo shop_admin_csrf(); ?>
+            <input type="hidden" name="action" value="product_import" />
+            <input type="hidden" name="tab" value="products" />
+            <input type="file" name="csv" accept=".csv,text/csv" required="required" />
+            <button type="submit" class="shop-admin-btn">Импорт CSV</button>
+        </form>
     </div>
+    <details class="shop-admin-import-hint">
+        <summary>Формат CSV</summary>
+        <p>Разделитель «;» или «,». Колонки: title, slug, category, short_description, description, sku, price, stock, active, featured, meta_title, meta_description, meta_keywords. Товар ищется по slug и обновляется; строка без совпадения создаёт новый товар с одним вариантом.</p>
+    </details>
 
     <?php if ($result['items']): ?>
     <table class="grid shop-admin-table">

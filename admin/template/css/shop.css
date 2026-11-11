@@ -927,3 +927,17 @@
 .shop-admin-btn-danger:hover {
     background: #fdf1f1;
 }
+
+.shop-admin-import-hint {
+    margin: 0 0 14px;
+    color: #555;
+}
+
+.shop-admin-import-hint summary {
+    cursor: pointer;
+}
+
+.shop-admin-import-hint p {
+    margin: 6px 0 0;
+    max-width: 900px;
+}
