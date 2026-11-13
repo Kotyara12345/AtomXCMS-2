@@ -134,6 +134,23 @@ $settingsInfo = array(
         'default' => '1',
     ),
 
+    'similar_enabled' => array(
+        'type' => 'checkbox',
+        'title' => 'Блок «Похожие товары»',
+        'description' => 'Показывать на карточке товара автоматическую подборку товаров той же категории.',
+        'value' => '1',
+        'checked' => '1',
+        'default' => '1',
+    ),
+    'related_enabled' => array(
+        'type' => 'checkbox',
+        'title' => 'Блок «С этим покупают»',
+        'description' => 'Показывать на карточке товара ручную подборку сопутствующих товаров из админки.',
+        'value' => '1',
+        'checked' => '1',
+        'default' => '1',
+    ),
+
     'SEO',
     'structured_data' => array(
         'type' => 'checkbox',

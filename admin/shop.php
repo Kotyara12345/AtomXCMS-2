@@ -32,7 +32,7 @@ if (!$canProducts && !$canOrders) {
 }
 
 $tab = isset($_GET['tab']) ? preg_replace('/[^a-z_]/', '', (string)$_GET['tab']) : 'dashboard';
-$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing', 'reviews');
+$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing', 'reviews', 'promocodes', 'promocode');
 $orderTabs = array('orders', 'order');
 if (!in_array($tab, array_merge($productTabs, $orderTabs), true)) $tab = 'dashboard';
 if (in_array($tab, $productTabs, true) && !$canProducts) $tab = 'orders';
@@ -105,6 +105,8 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
 
         $values = isset($_POST['attributes']) ? (array)$_POST['attributes'] : array();
         ShopHelper::syncProductAttributeValues($id, $values);
+        $related = isset($_POST['related']) ? (array)$_POST['related'] : array();
+        ShopHelper::syncRelatedProducts($id, $related);
         ShopHelper::syncProductVariants($id);
 
         $_SESSION['message'] = 'Товар сохранён. Настройте цены и остатки вариантов.';
@@ -129,6 +131,9 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
             $DB->query("DELETE FROM `" . ShopHelper::table('variants') . "` WHERE `id` IN ({$ids})");
         }
         $DB->query("DELETE FROM `" . ShopHelper::table('product_attribute_values') . "` WHERE `product_id` = {$id}");
+        ShopHelper::ensureRelatedProductsTable();
+        $DB->query("DELETE FROM `" . ShopHelper::table('related_products') . "`
+            WHERE `product_id` = {$id} OR `related_product_id` = {$id}");
         shop_admin_delete_product_gallery($id);
         $DB->query("DELETE FROM `" . ShopHelper::table('products') . "` WHERE `id` = {$id}");
         if (!empty($product['image'])) shop_admin_delete_upload($product['image']);
@@ -188,10 +193,13 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
             foreach ($currencies as $code => $currency) {
                 $price = isset($data['prices'][$code]) ? (float)str_replace(',', '.', $data['prices'][$code]) : 0;
                 if ($price < 0) $price = 0;
+                $compare = isset($data['compare_prices'][$code]) ? (float)str_replace(',', '.', $data['compare_prices'][$code]) : 0;
+                if ($compare <= $price) $compare = 0;
                 $DB->query("INSERT INTO `" . ShopHelper::table('variant_prices') . "`
-                    (`variant_id`, `currency_code`, `price`) VALUES
-                    ({$variantId}, '" . ShopHelper::esc($code) . "', " . number_format($price, 2, '.', '') . ")
-                    ON DUPLICATE KEY UPDATE `price` = VALUES(`price`)");
+                    (`variant_id`, `currency_code`, `price`, `compare_price`) VALUES
+                    ({$variantId}, '" . ShopHelper::esc($code) . "', " . number_format($price, 2, '.', '') . ",
+                    " . number_format($compare, 2, '.', '') . ")
+                    ON DUPLICATE KEY UPDATE `price` = VALUES(`price`), `compare_price` = VALUES(`compare_price`)");
             }
         }
 
@@ -491,6 +499,101 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         shop_admin_go(array('tab' => 'reviews'));
     }
 
+    if ($action === 'promocode_save') {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $existing = false;
+        if ($id > 0) {
+            $rows = $DB->query("SELECT * FROM `" . ShopHelper::table('promocodes') . "` WHERE `id` = {$id} LIMIT 1");
+            $existing = $rows[0] ?? false;
+            if (!$existing) {
+                $_SESSION['errors'] = 'Промокод не найден.';
+                shop_admin_go(array('tab' => 'promocodes'));
+            }
+        }
+
+        $code = ShopHelper::promoNormalize(isset($_POST['code']) ? $_POST['code'] : '');
+        if ($code === '') {
+            $_SESSION['errors'] = 'Укажите код промокода: латинские буквы, цифры, дефис или подчёркивание.';
+            shop_admin_go(array('tab' => 'promocode', 'id' => $id));
+        }
+        $duplicate = $DB->query("SELECT `id` FROM `" . ShopHelper::table('promocodes') . "`
+            WHERE `code` = '" . ShopHelper::esc($code) . "' AND `id` <> {$id} LIMIT 1");
+        if (!empty($duplicate[0])) {
+            $_SESSION['errors'] = 'Промокод с таким кодом уже существует.';
+            shop_admin_go(array('tab' => 'promocode', 'id' => $id));
+        }
+
+        $type = (isset($_POST['discount_type']) && $_POST['discount_type'] === 'fixed')
+            ? 'fixed' : 'percent';
+        $value = (float)str_replace(',', '.', (string)(isset($_POST['value']) ? $_POST['value'] : '0'));
+        if ($value <= 0 || ($type === 'percent' && $value > 100)) {
+            $_SESSION['errors'] = $type === 'percent'
+                ? 'Процент скидки должен быть больше 0 и не больше 100.'
+                : 'Сумма скидки должна быть больше 0.';
+            shop_admin_go(array('tab' => 'promocode', 'id' => $id));
+        }
+
+        $currencies = ShopHelper::currencies(false);
+        $currencyCode = strtoupper(trim((string)(isset($_POST['currency_code']) ? $_POST['currency_code'] : '')));
+        if (!isset($currencies[$currencyCode])) $currencyCode = ShopHelper::activeCurrency()['code'];
+
+        $minTotal = (float)str_replace(',', '.', (string)(isset($_POST['min_total']) ? $_POST['min_total'] : '0'));
+        if ($minTotal < 0) $minTotal = 0;
+        $maxUses = max(0, (int)(isset($_POST['max_uses']) ? $_POST['max_uses'] : 0));
+        $startsAt = shop_admin_datetime(isset($_POST['starts_at']) ? $_POST['starts_at'] : '');
+        $endsAt = shop_admin_datetime(isset($_POST['ends_at']) ? $_POST['ends_at'] : '');
+        if ($startsAt === false || $endsAt === false) {
+            $_SESSION['errors'] = 'Проверьте даты начала и окончания.';
+            shop_admin_go(array('tab' => 'promocode', 'id' => $id));
+        }
+        if ($startsAt !== null && $endsAt !== null && $endsAt < $startsAt) {
+            $_SESSION['errors'] = 'Дата окончания не может быть раньше даты начала.';
+            shop_admin_go(array('tab' => 'promocode', 'id' => $id));
+        }
+
+        ShopHelper::ensurePromoTables();
+        $now = date('Y-m-d H:i:s');
+        $table = ShopHelper::table('promocodes');
+        $valueSql = number_format($value, 2, '.', '');
+        $minSql = number_format($minTotal, 2, '.', '');
+        $startsSql = $startsAt === null ? 'NULL' : "'" . ShopHelper::esc($startsAt) . "'";
+        $endsSql = $endsAt === null ? 'NULL' : "'" . ShopHelper::esc($endsAt) . "'";
+        $codeSql = ShopHelper::esc($code);
+        $typeSql = ShopHelper::esc($type);
+        $currencySql = ShopHelper::esc($currencyCode);
+        $active = !empty($_POST['active']) ? 1 : 0;
+        if ($id > 0) {
+            $DB->query("UPDATE `{$table}` SET
+                `code` = '{$codeSql}', `discount_type` = '{$typeSql}', `value` = {$valueSql},
+                `currency_code` = '{$currencySql}', `min_total` = {$minSql}, `max_uses` = {$maxUses},
+                `starts_at` = {$startsSql}, `ends_at` = {$endsSql}, `active` = {$active},
+                `updated_at` = '" . ShopHelper::esc($now) . "'
+                WHERE `id` = {$id}");
+        } else {
+            $DB->query("INSERT INTO `{$table}`
+                (`code`, `discount_type`, `value`, `currency_code`, `min_total`, `max_uses`,
+                    `used_count`, `starts_at`, `ends_at`, `active`, `created_at`, `updated_at`)
+                VALUES ('{$codeSql}', '{$typeSql}', {$valueSql}, '{$currencySql}', {$minSql}, {$maxUses},
+                    0, {$startsSql}, {$endsSql}, {$active}, '" . ShopHelper::esc($now) . "',
+                    '" . ShopHelper::esc($now) . "')");
+        }
+
+        $_SESSION['message'] = 'Промокод сохранён.';
+        shop_admin_go(array('tab' => 'promocodes'));
+    }
+
+    if ($action === 'promocode_delete') {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $rows = $DB->query("SELECT `id` FROM `" . ShopHelper::table('promocodes') . "` WHERE `id` = {$id} LIMIT 1");
+        if (empty($rows[0])) {
+            $_SESSION['errors'] = 'Промокод не найден.';
+            shop_admin_go(array('tab' => 'promocodes'));
+        }
+        $DB->query("DELETE FROM `" . ShopHelper::table('promocodes') . "` WHERE `id` = {$id}");
+        $_SESSION['message'] = 'Промокод удалён. Заказы сохранили свою скидку.';
+        shop_admin_go(array('tab' => 'promocodes'));
+    }
+
     if ($action === 'order_mail') {
         $id = (int)($_POST['id'] ?? 0);
         $recipient = $_POST['recipient'] ?? '';
@@ -609,7 +712,7 @@ if ($tab === 'orders' && isset($_GET['export']) && $_GET['export'] === 'csv') {
     $out = fopen('php://output', 'w');
     fputcsv($out, array(
         'Номер', 'Дата', 'Статус', 'Покупатель', 'E-mail', 'Телефон', 'Доставка',
-        'Адрес', 'Оплата', 'Товары', 'Доставка, сумма', 'Итого', 'Валюта',
+        'Адрес', 'Оплата', 'Товары', 'Промокод', 'Скидка', 'Доставка, сумма', 'Итого', 'Валюта',
         'Отслеживание', 'Ссылка', 'Комментарий',
     ), ';');
     foreach ($rows as $order) {
@@ -624,6 +727,8 @@ if ($tab === 'orders' && isset($_GET['export']) && $_GET['export'] === 'csv') {
             $order['address'],
             $order['payment_title'],
             $order['subtotal'],
+            isset($order['promocode']) ? $order['promocode'] : '',
+            isset($order['discount']) ? $order['discount'] : 0,
             $order['delivery_price'],
             $order['total'],
             $order['currency_code'],
@@ -674,6 +779,10 @@ if ($tab === 'dashboard') {
     $output .= shop_admin_landing_form();
 } elseif ($tab === 'reviews') {
     $output .= shop_admin_reviews();
+} elseif ($tab === 'promocodes') {
+    $output .= shop_admin_promocodes();
+} elseif ($tab === 'promocode') {
+    $output .= shop_admin_promocode_form();
 } elseif ($tab === 'orders') {
     $output .= shop_admin_orders();
 } elseif ($tab === 'order') {
@@ -716,6 +825,15 @@ function shop_admin_csv_cell($value)
     $value = (string)$value;
     if ($value !== '' && strpos('=+-@', $value[0]) !== false) return "'" . $value;
     return $value;
+}
+
+/** Empty input means "no date"; false means the value could not be parsed. */
+function shop_admin_datetime($value)
+{
+    $value = trim((string)$value);
+    if ($value === '') return null;
+    $time = strtotime(str_replace('T', ' ', $value));
+    return $time ? date('Y-m-d H:i:s', $time) : false;
 }
 
 function shop_admin_order_print()
@@ -811,6 +929,9 @@ function shop_admin_order_print()
 
     <div class="invoice-totals">
         <div><span>Товары:</span><span><?php echo h($order['subtotal_formatted']); ?></span></div>
+        <?php if (!empty($order['discount'])): ?>
+        <div><span>Скидка<?php echo $order['promocode'] !== '' ? ' (' . h($order['promocode']) . ')' : ''; ?>:</span><span>−<?php echo h($order['discount_formatted']); ?></span></div>
+        <?php endif; ?>
         <div><span>Доставка:</span><span><?php echo h($order['delivery_price_formatted']); ?></span></div>
         <div class="total"><span>Итого:</span><span><?php echo h($order['total_formatted']); ?></span></div>
     </div>
@@ -1122,6 +1243,7 @@ function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
         $tabs['categories'] = 'Категории';
         $tabs['landings'] = 'Посадочные страницы';
         $tabs['reviews'] = 'Отзывы';
+        $tabs['promocodes'] = 'Промокоды';
     }
     if ($canOrders) $tabs['orders'] = 'Заказы';
 
@@ -1526,6 +1648,10 @@ function shop_admin_product_form()
     $selectedValues = $id > 0 ? ShopHelper::getProductAttributeValueIds($id) : array();
     $attributes = ShopHelper::getAttributes(true);
     $gallery = $id > 0 ? ShopHelper::getProductImages($id, true) : array();
+    ShopHelper::ensureRelatedProductsTable();
+    $relatedIds = $id > 0 ? ShopHelper::relatedProductIds($id) : array();
+    $relatedOptions = ShopHelper::db()->query("SELECT `id`, `title` FROM `" . ShopHelper::table('products') . "`"
+        . ($id > 0 ? " WHERE `id` <> {$id}" : '') . " ORDER BY `title` ASC LIMIT 500");
     $isActive = $product ? !empty($product['active']) : true;
     $isFeatured = $product ? !empty($product['featured']) : false;
 
@@ -1607,6 +1733,22 @@ function shop_admin_product_form()
         </div>
 
         <div class="shop-admin-section">
+            <h2>С этим покупают</h2>
+            <p class="shop-admin-muted">Ручная подборка для блока «С этим покупают» на странице товара. Удерживайте Ctrl (Cmd), чтобы выбрать несколько.</p>
+            <?php if ($relatedOptions): ?>
+            <div class="shop-admin-field">
+                <select name="related[]" multiple="multiple" size="10" class="shop-admin-select-multiple">
+                    <?php foreach ($relatedOptions as $option): ?>
+                    <option value="<?php echo (int)$option['id']; ?>"<?php echo in_array((int)$option['id'], $relatedIds, true) ? ' selected="selected"' : ''; ?>><?php echo h($option['title']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php else: ?>
+            <div class="shop-admin-empty">Других товаров пока нет.</div>
+            <?php endif; ?>
+        </div>
+
+        <div class="shop-admin-section">
             <h2>Атрибуты товара</h2>
             <p class="shop-admin-muted">Отметьте значения атрибутов. Варианты и цены будут созданы автоматически после сохранения.</p>
             <?php if ($attributes): ?>
@@ -1663,7 +1805,8 @@ function shop_admin_variants()
     $product = $id > 0 ? ShopHelper::getProduct($id, false) : false;
     if (!$product) return '<div class="shop-admin-empty">Товар не найден.</div>';
 
-    $rows = ShopHelper::db()->query("SELECT v.*, vp.`currency_code`, vp.`price`
+    ShopHelper::ensurePromoTables();
+    $rows = ShopHelper::db()->query("SELECT v.*, vp.`currency_code`, vp.`price`, vp.`compare_price`
         FROM `" . ShopHelper::table('variants') . "` v
         LEFT JOIN `" . ShopHelper::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
         WHERE v.`product_id` = {$id}
@@ -1673,10 +1816,12 @@ function shop_admin_variants()
         $variantId = (int)$row['id'];
         if (!isset($variants[$variantId])) {
             $row['prices'] = array();
+            $row['compare_prices'] = array();
             $variants[$variantId] = $row;
         }
         if (!empty($row['currency_code'])) {
             $variants[$variantId]['prices'][$row['currency_code']] = $row['price'];
+            $variants[$variantId]['compare_prices'][$row['currency_code']] = $row['compare_price'];
         }
     }
     $currencies = ShopHelper::currencies(false);
@@ -1715,7 +1860,7 @@ function shop_admin_variants()
                         <th>Остаток</th>
                         <th>Активен</th>
                         <?php foreach ($currencies as $code => $currency): ?>
-                        <th<?php echo $code === $activeCurrency['code'] ? ' class="active-currency"' : ''; ?>><?php echo h($code); ?></th>
+                        <th<?php echo $code === $activeCurrency['code'] ? ' class="active-currency"' : ''; ?>><?php echo h($code); ?><div class="shop-admin-muted">цена / старая</div></th>
                         <?php endforeach; ?>
                     </tr>
                 </thead>
@@ -1732,6 +1877,7 @@ function shop_admin_variants()
                         <?php foreach ($currencies as $code => $currency): ?>
                         <td<?php echo $code === $activeCurrency['code'] ? ' class="active-currency"' : ''; ?>>
                             <input class="shop-admin-price-input" type="number" min="0" step="0.01" name="variants[<?php echo (int)$variant['id']; ?>][prices][<?php echo h($code); ?>]" value="<?php echo h(isset($variant['prices'][$code]) ? $variant['prices'][$code] : '0.00'); ?>" />
+                            <input class="shop-admin-price-input" type="number" min="0" step="0.01" name="variants[<?php echo (int)$variant['id']; ?>][compare_prices][<?php echo h($code); ?>]" value="<?php echo h(isset($variant['compare_prices'][$code]) ? $variant['compare_prices'][$code] : '0.00'); ?>" placeholder="Старая цена" title="Старая цена для показа скидки" />
                         </td>
                         <?php endforeach; ?>
                     </tr>
@@ -2402,6 +2548,168 @@ function shop_admin_reviews()
     return ob_get_clean();
 }
 
+function shop_admin_promocodes()
+{
+    ShopHelper::ensurePromoTables();
+    $rows = ShopHelper::db()->query("SELECT * FROM `" . ShopHelper::table('promocodes') . "`
+        ORDER BY `active` DESC, `id` DESC");
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1>Промокоды</h1>
+        <a class="shop-admin-btn shop-admin-btn-primary" href="<?php echo h(shop_admin_url(array('tab' => 'promocode'))); ?>">Новый промокод</a>
+    </div>
+
+    <p class="shop-admin-muted">Скидка применяется к стоимости товаров. Доставка считается после скидки и не уменьшается. Лимит 0 означает отсутствие ограничения.</p>
+
+    <?php if (!$rows): ?>
+    <div class="shop-admin-empty">Промокодов пока нет.</div>
+    <?php else: ?>
+    <table class="grid shop-admin-table">
+        <thead><tr><th>Код</th><th>Скидка</th><th>Мин. сумма</th><th>Применений</th><th>Период</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($rows as $row): ?>
+            <?php
+            $value = (float)$row['value'];
+            $discountLabel = $row['discount_type'] === 'fixed'
+                ? ShopHelper::formatPrice($value, $row['currency_code'])
+                : rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.') . '%';
+            $period = array();
+            if (!empty($row['starts_at'])) $period[] = 'с ' . ShopHelper::formatDate($row['starts_at']);
+            if (!empty($row['ends_at'])) $period[] = 'по ' . ShopHelper::formatDate($row['ends_at']);
+            ?>
+            <tr>
+                <td><strong><?php echo h($row['code']); ?></strong></td>
+                <td><?php echo h($discountLabel); ?></td>
+                <td><?php echo (float)$row['min_total'] > 0 ? h(ShopHelper::formatPrice($row['min_total'], $row['currency_code'])) : '—'; ?></td>
+                <td><?php echo (int)$row['used_count']; ?><?php echo (int)$row['max_uses'] > 0 ? ' / ' . (int)$row['max_uses'] : ''; ?></td>
+                <td><?php echo $period ? h(implode(' ', $period)) : '—'; ?></td>
+                <td><?php echo !empty($row['active']) ? 'Активен' : 'Выключен'; ?></td>
+                <td>
+                    <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'promocode', 'id' => (int)$row['id']))); ?>">Изменить</a>
+                    <form method="post" action="" class="shop-admin-inline-form" onsubmit="return confirm('Удалить промокод? Уже оформленные заказы сохранят скидку.');">
+                        <?php echo shop_admin_csrf(); ?>
+                        <input type="hidden" name="action" value="promocode_delete" />
+                        <input type="hidden" name="id" value="<?php echo (int)$row['id']; ?>" />
+                        <button type="submit" class="shop-admin-btn shop-admin-btn-danger">Удалить</button>
+                    </form>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+    <?php
+    return ob_get_clean();
+}
+
+function shop_admin_promocode_form()
+{
+    ShopHelper::ensurePromoTables();
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    $activeCurrency = ShopHelper::activeCurrency();
+    $promo = array(
+        'id' => 0,
+        'code' => '',
+        'discount_type' => 'percent',
+        'value' => '',
+        'currency_code' => $activeCurrency['code'],
+        'min_total' => '0.00',
+        'max_uses' => 0,
+        'used_count' => 0,
+        'starts_at' => null,
+        'ends_at' => null,
+        'active' => 1,
+    );
+    if ($id > 0) {
+        $rows = ShopHelper::db()->query("SELECT * FROM `" . ShopHelper::table('promocodes') . "` WHERE `id` = {$id} LIMIT 1");
+        if (empty($rows[0])) return '<div class="shop-admin-empty">Промокод не найден.</div>';
+        $promo = $rows[0];
+    }
+    $currencies = ShopHelper::currencies(false);
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1><?php echo $id > 0 ? 'Промокод ' . h($promo['code']) : 'Новый промокод'; ?></h1>
+        <a href="<?php echo h(shop_admin_url(array('tab' => 'promocodes'))); ?>">← К промокодам</a>
+    </div>
+
+    <form method="post" action="" class="shop-admin-form">
+        <?php echo shop_admin_csrf(); ?>
+        <input type="hidden" name="action" value="promocode_save" />
+        <input type="hidden" name="id" value="<?php echo (int)$promo['id']; ?>" />
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-code">Код *</label>
+            <input id="shop-promo-code" type="text" name="code" maxlength="64" required="required"
+                value="<?php echo h($promo['code']); ?>" placeholder="SALE10" />
+            <div class="shop-admin-muted">Латинские буквы, цифры, дефис и подчёркивание. Покупатель вводит код без учёта регистра.</div>
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-type">Тип скидки *</label>
+            <select id="shop-promo-type" name="discount_type">
+                <option value="percent"<?php echo $promo['discount_type'] === 'fixed' ? '' : ' selected="selected"'; ?>>Процент от суммы товаров</option>
+                <option value="fixed"<?php echo $promo['discount_type'] === 'fixed' ? ' selected="selected"' : ''; ?>>Фиксированная сумма</option>
+            </select>
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-value">Размер скидки *</label>
+            <input id="shop-promo-value" type="number" min="0" step="0.01" name="value" required="required"
+                value="<?php echo h($promo['value']); ?>" />
+            <div class="shop-admin-muted">Для процента: от 0 до 100. Для фиксированной суммы: в валюте ниже.</div>
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-currency">Валюта фиксированной скидки</label>
+            <select id="shop-promo-currency" name="currency_code">
+                <?php foreach ($currencies as $code => $currency): ?>
+                <option value="<?php echo h($code); ?>"<?php echo $promo['currency_code'] === $code ? ' selected="selected"' : ''; ?>><?php echo h($code . ' — ' . $currency['title']); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="shop-admin-muted">Процентная скидка действует во всех валютах.</div>
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-min">Минимальная сумма товаров</label>
+            <input id="shop-promo-min" type="number" min="0" step="0.01" name="min_total"
+                value="<?php echo h($promo['min_total']); ?>" />
+            <div class="shop-admin-muted">0 — без ограничения.</div>
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-max">Лимит применений</label>
+            <input id="shop-promo-max" type="number" min="0" name="max_uses" value="<?php echo (int)$promo['max_uses']; ?>" />
+            <div class="shop-admin-muted">0 — без ограничения. Уже применён: <?php echo (int)$promo['used_count']; ?>.</div>
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-start">Действует с</label>
+            <input id="shop-promo-start" type="datetime-local" name="starts_at"
+                value="<?php echo !empty($promo['starts_at']) ? h(date('Y-m-d\TH:i', strtotime($promo['starts_at']))) : ''; ?>" />
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-end">Действует по</label>
+            <input id="shop-promo-end" type="datetime-local" name="ends_at"
+                value="<?php echo !empty($promo['ends_at']) ? h(date('Y-m-d\TH:i', strtotime($promo['ends_at']))) : ''; ?>" />
+        </div>
+
+        <label class="shop-admin-inline-check">
+            <input type="checkbox" name="active" value="1"<?php echo !empty($promo['active']) ? ' checked="checked"' : ''; ?> />
+            Промокод активен
+        </label>
+
+        <div class="shop-admin-form-actions">
+            <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Сохранить</button>
+            <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'promocodes'))); ?>">Отмена</a>
+        </div>
+    </form>
+    <?php
+    return ob_get_clean();
+}
+
 function shop_admin_orders()
 {
     list($whereSql, $status, $q) = shop_admin_orders_where();
@@ -2510,6 +2818,9 @@ function shop_admin_order()
             </table>
             <div class="shop-admin-totals">
                 <div><span>Товары:</span><span><?php echo h($order['subtotal_formatted']); ?></span></div>
+                <?php if (!empty($order['discount'])): ?>
+                <div><span>Скидка<?php echo $order['promocode'] !== '' ? ' (' . h($order['promocode']) . ')' : ''; ?>:</span><span>−<?php echo h($order['discount_formatted']); ?></span></div>
+                <?php endif; ?>
                 <div><span>Доставка:</span><span><?php echo h($order['delivery_price_formatted']); ?></span></div>
                 <div class="total"><span>Итого:</span><span><?php echo h($order['total_formatted']); ?></span></div>
             </div>

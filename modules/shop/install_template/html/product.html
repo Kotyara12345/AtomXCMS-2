@@ -58,6 +58,10 @@
                     <div class="shop-product-price">
                         {% if product.price_from_formatted %}
                         <span class="shop-price shop-price-large">от {{ product.price_from_formatted }}</span>
+                        {% if product.price_from_compare_formatted %}
+                        <span class="shop-price-old">{{ product.price_from_compare_formatted }}</span>
+                        <span class="shop-badge-discount">−{{ product.price_discount_percent }}%</span>
+                        {% endif %}
                         {% else %}
                         <span class="shop-muted">Цена по запросу</span>
                         {% endif %}
@@ -91,7 +95,7 @@
                                         {% if variant.sku %}Артикул: {{ variant.sku|escape }}{% endif %}
                                         {% if variant.available %}{% if variant.sku %} · {% endif %}В наличии: {{ variant.stock }}{% else %}{% if variant.sku %} · {% endif %}Нет в наличии{% endif %}
                                     </span>
-                                    <span class="shop-variant-price">{{ variant.price_formatted }}</span>
+                                    <span class="shop-variant-price">{{ variant.price_formatted }}{% if variant.compare_price_formatted %} <span class="shop-price-old">{{ variant.compare_price_formatted }}</span> <span class="shop-badge-discount">−{{ variant.discount_percent }}%</span>{% endif %}</span>
                                 </span>
                             </label>
                             {% endfor %}
@@ -148,6 +152,32 @@
             </div>
             {% endif %}
 
+            {% if related_products %}
+            <div class="shop-related">
+                <h2 class="shop-section-title">С этим покупают</h2>
+                <div class="shop-grid">
+                    {% for item in related_products %}
+                    <article class="shop-card">
+                        <a class="shop-card-image" href="{{ item.url }}">
+                            {% if item.image_url %}
+                            <img src="{{ item.image_url }}" alt="{{ item.title|escape }}" loading="lazy" />
+                            {% else %}
+                            <span class="shop-noimage">Нет фото</span>
+                            {% endif %}
+                        </a>
+                        <div class="shop-card-body">
+                            <h2 class="shop-card-title"><a href="{{ item.url }}">{{ item.title|escape }}</a></h2>
+                            {% if item.rating_count %}
+                            <div class="shop-card-rating"><span class="shop-stars">{{ item.rating_stars }}</span> {{ item.rating_avg_formatted }} ({{ item.rating_count }})</div>
+                            {% endif %}
+                            <div class="shop-card-price">{% if item.price_from_formatted %}<span class="shop-price">{{ item.price_from_formatted }}</span>{% if item.price_from_compare_formatted %} <span class="shop-price-old">{{ item.price_from_compare_formatted }}</span> <span class="shop-badge-discount">−{{ item.price_discount_percent }}%</span>{% endif %}{% else %}<span class="shop-muted">Цена по запросу</span>{% endif %}</div>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             {% if similar_products %}
             <div class="shop-related">
                 <h2 class="shop-section-title">Похожие товары</h2>
@@ -166,7 +196,7 @@
                             {% if item.rating_count %}
                             <div class="shop-card-rating"><span class="shop-stars">{{ item.rating_stars }}</span> {{ item.rating_avg_formatted }} ({{ item.rating_count }})</div>
                             {% endif %}
-                            <div class="shop-card-price">{% if item.price_from_formatted %}<span class="shop-price">{{ item.price_from_formatted }}</span>{% else %}<span class="shop-muted">Цена по запросу</span>{% endif %}</div>
+                            <div class="shop-card-price">{% if item.price_from_formatted %}<span class="shop-price">{{ item.price_from_formatted }}</span>{% if item.price_from_compare_formatted %} <span class="shop-price-old">{{ item.price_from_compare_formatted }}</span> <span class="shop-badge-discount">−{{ item.price_discount_percent }}%</span>{% endif %}{% else %}<span class="shop-muted">Цена по запросу</span>{% endif %}</div>
                         </div>
                     </article>
                     {% endfor %}
@@ -189,7 +219,7 @@
                         </a>
                         <div class="shop-card-body">
                             <h2 class="shop-card-title"><a href="{{ item.url }}">{{ item.title|escape }}</a></h2>
-                            <div class="shop-card-price">{% if item.price_from_formatted %}<span class="shop-price">{{ item.price_from_formatted }}</span>{% else %}<span class="shop-muted">Цена по запросу</span>{% endif %}</div>
+                            <div class="shop-card-price">{% if item.price_from_formatted %}<span class="shop-price">{{ item.price_from_formatted }}</span>{% if item.price_from_compare_formatted %} <span class="shop-price-old">{{ item.price_from_compare_formatted }}</span> <span class="shop-badge-discount">−{{ item.price_discount_percent }}%</span>{% endif %}{% else %}<span class="shop-muted">Цена по запросу</span>{% endif %}</div>
                         </div>
                     </article>
                     {% endfor %}

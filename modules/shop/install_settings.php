@@ -27,5 +27,7 @@ $FpsInstallSettings = array(
     'abandoned_cart_hours' => 24,
     'reviews_enabled' => 1,
     'reviews_moderate' => 1,
+    'similar_enabled' => 1,
+    'related_enabled' => 1,
     'structured_data' => 1,
 );

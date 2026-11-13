@@ -144,6 +144,14 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_product_at
     KEY `attribute_value_id` (`attribute_value_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_related_products` (
+    `product_id` INT UNSIGNED NOT NULL,
+    `related_product_id` INT UNSIGNED NOT NULL,
+    `position` INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`product_id`, `related_product_id`),
+    KEY `related_product_id` (`related_product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_variants` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `product_id` INT UNSIGNED NOT NULL DEFAULT 0,
@@ -172,6 +180,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_variant_pr
     `variant_id` INT UNSIGNED NOT NULL,
     `currency_code` VARCHAR(3) NOT NULL DEFAULT 'RUB',
     `price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `compare_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     PRIMARY KEY (`variant_id`, `currency_code`),
     KEY `currency_price` (`currency_code`, `price`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
@@ -182,6 +191,8 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_orders` (
     `status` VARCHAR(32) NOT NULL DEFAULT 'new',
     `currency_code` VARCHAR(3) NOT NULL DEFAULT 'RUB',
     `subtotal` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `discount` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `promocode` VARCHAR(64) NOT NULL DEFAULT '',
     `delivery_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `customer_name` VARCHAR(255) NOT NULL DEFAULT '',
@@ -204,6 +215,25 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_orders` (
     KEY `status` (`status`),
     KEY `created_at` (`created_at`),
     KEY `access_token` (`access_token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_promocodes` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `code` VARCHAR(64) NOT NULL DEFAULT '',
+    `discount_type` VARCHAR(16) NOT NULL DEFAULT 'percent',
+    `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `currency_code` VARCHAR(3) NOT NULL DEFAULT 'RUB',
+    `min_total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `max_uses` INT UNSIGNED NOT NULL DEFAULT 0,
+    `used_count` INT UNSIGNED NOT NULL DEFAULT 0,
+    `starts_at` DATETIME DEFAULT NULL,
+    `ends_at` DATETIME DEFAULT NULL,
+    `active` TINYINT(1) NOT NULL DEFAULT 1,
+    `created_at` DATETIME DEFAULT NULL,
+    `updated_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `code` (`code`),
+    KEY `active` (`active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_requests` (

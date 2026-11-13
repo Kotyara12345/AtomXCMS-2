@@ -326,7 +326,11 @@ class ShopModule extends Module
         $this->productStructuredData = $this->buildProductStructuredData($product, $variants, $currency, $gallery);
         ShopHelper::recordProductView($product['id']);
 
-        $similarProducts = ShopHelper::similarProducts($product, 4);
+        $relatedProducts = (int)ShopHelper::cfg('related_enabled', 1) === 1
+            ? ShopHelper::relatedProducts($product['id'], 4) : array();
+        $this->attachRatings($relatedProducts);
+        $similarProducts = (int)ShopHelper::cfg('similar_enabled', 1) === 1
+            ? ShopHelper::similarProducts($product, 4) : array();
         $this->attachRatings($similarProducts);
         $recentlyViewed = ShopHelper::getRecentlyViewed($product['id'], 4);
         $this->attachRatings($recentlyViewed);
@@ -387,6 +391,7 @@ class ShopModule extends Module
             'user_name' => $user['name'],
             'user_email' => $user['email'],
             'similar_products' => $similarProducts,
+            'related_products' => $relatedProducts,
             'recently_viewed' => $recentlyViewed,
         ));
 
@@ -410,6 +415,8 @@ class ShopModule extends Module
             'currency' => $currency,
             'update_action' => get_url('/shop/update_cart/'),
             'remove_action' => get_url('/shop/remove_from_cart/'),
+            'apply_promo_action' => get_url('/shop/apply_promo/'),
+            'remove_promo_action' => get_url('/shop/remove_promo/'),
             'checkout_url' => get_url('/shop/checkout/'),
             'shop_url' => get_url('/shop/'),
             'cart_url' => get_url('/shop/cart/'),
@@ -419,6 +426,58 @@ class ShopModule extends Module
         ));
 
         return $this->_view($source);
+    }
+
+    public function apply_promo()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+            redirect('/shop/cart/');
+        }
+        $target = (isset($_POST['return']) && $_POST['return'] === 'checkout')
+            ? '/shop/checkout/' : '/shop/cart/';
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
+            redirect($target);
+        }
+
+        $code = ShopHelper::promoNormalize(isset($_POST['promocode']) ? $_POST['promocode'] : '');
+        if ($code === '') {
+            ShopHelper::clearPromoCode();
+            ShopHelper::flash('error', 'Введите промокод.');
+            redirect($target);
+        }
+
+        $currency = ShopHelper::activeCurrency();
+        $totals = ShopHelper::cartTotals(ShopHelper::cartItems($currency['code']), $currency['code']);
+        $check = ShopHelper::promoCheck($code, $totals['subtotal'], $currency['code']);
+        if (!$check['valid']) {
+            ShopHelper::clearPromoCode();
+            ShopHelper::flash('error', $check['error']);
+            redirect($target);
+        }
+
+        ShopHelper::setPromoCode($code);
+        ShopHelper::flash('success', 'Промокод ' . $code . ' применён: скидка '
+            . ShopHelper::formatPrice($check['discount'], $currency['code']) . '.');
+        redirect($target);
+    }
+
+    public function remove_promo()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+            redirect('/shop/cart/');
+        }
+        $target = (isset($_POST['return']) && $_POST['return'] === 'checkout')
+            ? '/shop/checkout/' : '/shop/cart/';
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
+            redirect($target);
+        }
+        ShopHelper::clearPromoCode();
+        ShopHelper::flash('success', 'Промокод удалён.');
+        redirect($target);
     }
 
     public function add_to_cart()
@@ -681,6 +740,7 @@ class ShopModule extends Module
         }
 
         try {
+            ShopHelper::ensurePromoTables();
             ShopHelper::ensureOrderRequestsTable();
             ShopHelper::ensureOrderStatusHistoryTable();
             $existing = ShopHelper::orderForAttempt($attempt);
@@ -717,6 +777,12 @@ class ShopModule extends Module
 
         $items = ShopHelper::cartItems($currency['code'], false);
         $deliveryPrice = $deliveryMethods[$old['delivery_method']]['price'];
+        $totals = ShopHelper::cartTotals($items, $currency['code']);
+        $promoCode = $totals['promo_code'];
+        $discount = $totals['discount'];
+        if ($promoCode !== '' && $totals['promo_error'] !== '') {
+            return $this->renderCheckout($old, array());
+        }
         $changes = array();
         foreach ($quote['items'] as $id => $previous) {
             if (!isset($items[$id])) {
@@ -732,6 +798,10 @@ class ShopModule extends Module
         if (($quote['delivery'][$old['delivery_method']] ?? null) !== $deliveryPrice) {
             $changes[] = 'Изменилась стоимость или доступность выбранной доставки.';
         }
+        if ((string)($quote['promo_code'] ?? '') !== $promoCode
+            || round((float)($quote['discount'] ?? 0), 2) !== round($discount, 2)) {
+            $changes[] = 'Изменились условия промокода.';
+        }
         if (array_column($items, 'quantity', 'variant_id') != ShopHelper::getCart()) {
             $changes[] = 'Остатки изменились. Корзина обновлена.';
         }
@@ -741,7 +811,7 @@ class ShopModule extends Module
         }
 
         $subtotal = array_sum(array_column($items, 'total'));
-        $total = $subtotal + $deliveryPrice;
+        $total = $subtotal - $discount + $deliveryPrice;
         $now = date('Y-m-d H:i:s');
         $DB = ShopHelper::db();
         $variants = ShopHelper::table('variants');
@@ -775,11 +845,21 @@ class ShopModule extends Module
                     WHERE `id` = {$variantId}");
             }
 
+            if ($promoCode !== '') {
+                $lockedPromo = ShopHelper::promoCheck($promoCode, $subtotal, $currency['code'], true);
+                if (!$lockedPromo['valid'] || abs($lockedPromo['discount'] - $discount) > 0.005) {
+                    $change = 'Изменились условия промокода. Проверьте заказ и подтвердите его ещё раз.';
+                    throw new RuntimeException($change);
+                }
+            }
+
             $orderId = (int)$DB->save('shop_orders', array(
                 'user_id' => (int)$user['id'],
                 'status' => 'new',
                 'currency_code' => $currency['code'],
                 'subtotal' => $subtotal,
+                'discount' => $discount,
+                'promocode' => $promoCode,
                 'delivery_price' => $deliveryPrice,
                 'total' => $total,
                 'customer_name' => mb_substr($old['customer_name'], 0, 255),
@@ -798,6 +878,12 @@ class ShopModule extends Module
             ));
 
             if ($orderId < 1) throw new RuntimeException('Order ID was not generated');
+
+            if ($promoCode !== '') {
+                $DB->query("UPDATE `" . ShopHelper::table('promocodes') . "`
+                    SET `used_count` = `used_count` + 1
+                    WHERE `code` = '" . ShopHelper::esc($promoCode) . "'");
+            }
 
             foreach ($items as $item) {
                 $DB->save('shop_order_items', array(
@@ -839,6 +925,7 @@ class ShopModule extends Module
         }, $quote['items']) == ShopHelper::getCart()) {
             ShopHelper::saveCart(array());
         }
+        ShopHelper::clearPromoCode();
         $_SESSION['shop_checkout'][$attempt]['completed'] = true;
         $_SESSION['shop_last_order'] = array('id' => (int)$order['id'], 'token' => $order['access_token']);
         if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
@@ -871,10 +958,15 @@ class ShopModule extends Module
             ? $old['delivery_method'] : key($deliveryMethods);
         $paymentMethod = isset($paymentMethods[$old['payment_method']])
             ? $old['payment_method'] : key($paymentMethods);
-        $subtotal = 0.0;
-        foreach ($items as $item) $subtotal += (float)$item['total'];
+        $totals = ShopHelper::cartTotals($items, $currency['code']);
+        $subtotal = $totals['subtotal'];
+        $promoCode = $totals['promo_code'];
+        $discount = $totals['discount'];
         $deliveryPrice = ShopHelper::deliveryPrice($deliveryMethod, $currency['code']);
-        $total = $subtotal + $deliveryPrice;
+        $total = $subtotal - $discount + $deliveryPrice;
+        if ($totals['promo_error'] !== '') {
+            $errors[] = $totals['promo_error'] . ' Измените или уберите промокод.';
+        }
 
         if (ShopHelper::getCart() != $cart) {
             $errors[] = 'Остатки изменились. Проверьте количество и состав обновлённой корзины.';
@@ -892,6 +984,8 @@ class ShopModule extends Module
             'currency' => $currency['code'],
             'items' => $quoteItems,
             'delivery' => array_column($deliveryMethods, 'price', 'code'),
+            'promo_code' => $promoCode,
+            'discount' => $discount,
         );
         if ($attempt === null || ($_SESSION['shop_checkout'][$attempt] ?? null) !== $quote) {
             $attempt = bin2hex(random_bytes(24));
@@ -915,8 +1009,13 @@ class ShopModule extends Module
             'currency' => $currency,
             'subtotal_raw' => $subtotal,
             'subtotal_formatted' => ShopHelper::formatPrice($subtotal, $currency['code']),
+            'promo_code' => $promoCode,
+            'discount_raw' => $discount,
+            'discount_formatted' => ShopHelper::formatPrice($discount, $currency['code']),
             'delivery_price_formatted' => ShopHelper::formatPrice($deliveryPrice, $currency['code']),
             'total_formatted' => ShopHelper::formatPrice($total, $currency['code']),
+            'apply_promo_action' => get_url('/shop/apply_promo/'),
+            'remove_promo_action' => get_url('/shop/remove_promo/'),
             'delivery_method' => $deliveryMethod,
             'payment_method' => $paymentMethod,
             'delivery_methods' => $deliveryMethods,
@@ -925,6 +1024,7 @@ class ShopModule extends Module
             'errors_html' => $errorsHtml,
             'form_action' => get_url('/shop/place_order/'),
             'csrf_token' => $attempt,
+            'promo_csrf_token' => ShopHelper::csrfToken(),
             'cart_url' => get_url('/shop/cart/'),
             'shop_url' => get_url('/shop/'),
             'breadcrumbs' => $this->buildSimpleBreadcrumbs('Оформление заказа'),

@@ -88,9 +88,26 @@
             </div>
             {% endfor %}
 
+            <form class="shop-promo" method="post" action="{{ apply_promo_action }}">
+                <input type="hidden" name="csrf_token" value="{{ promo_csrf_token }}" />
+                <input type="hidden" name="return" value="checkout" />
+                {% if promo_code %}
+                <span class="shop-promo-applied">Промокод: <strong>{{ promo_code|escape }}</strong></span>
+                <button type="submit" class="shop-link-danger" formaction="{{ remove_promo_action }}">Убрать</button>
+                {% else %}
+                <label for="shop-promo-code">Промокод</label>
+                <input id="shop-promo-code" type="text" name="promocode" maxlength="64" />
+                <button type="submit" class="shop-btn shop-btn-small">Применить</button>
+                {% endif %}
+            </form>
+
             <div class="shop-summary-row">
                 <span>Товары:</span>
                 <span id="shop-subtotal">{{ subtotal_formatted }}</span>
+            </div>
+            <div class="shop-summary-row shop-summary-discount" id="shop-discount-row"{% if discount_raw <= 0 %} style="display:none"{% endif %}>
+                <span>Скидка:</span>
+                <span id="shop-discount">−{{ discount_formatted }}</span>
             </div>
             <div class="shop-summary-row">
                 <span>Доставка:</span>
@@ -108,6 +125,7 @@
 <script>
 (function () {
     var subtotal = {{ subtotal_raw }};
+    var discount = {{ discount_raw }};
     var symbol = '{{ currency.symbol|escape }}';
     var methods = document.querySelectorAll('input[name="delivery_method"]');
     var deliveryNode = document.getElementById('shop-delivery');
@@ -130,7 +148,7 @@
             }
         }
         deliveryNode.textContent = price > 0 ? format(price) : 'Бесплатно';
-        totalNode.textContent = format(subtotal + price);
+        totalNode.textContent = format(subtotal - discount + price);
     }
 
     for (var i = 0; i < methods.length; i++) {

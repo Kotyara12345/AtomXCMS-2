@@ -14,6 +14,7 @@ class ShopHelper
     const CART_KEY = 'shop_cart';
     const FLASH_KEY = 'shop_flash';
     const CSRF_KEY = 'shop_csrf_token';
+    const PROMO_KEY = 'shop_promocode';
 
     /** @var array|null */
     private static $currencyCache = null;
@@ -291,6 +292,189 @@ class ShopHelper
 
         self::$cartsTableReady = true;
         return true;
+    }
+
+    /** @var bool */
+    private static $promoTablesReady = false;
+
+    /**
+     * Promo codes and the price columns that ship with them are added to older
+     * installations on first use, like the cart and tracking helpers.
+     */
+    public static function ensurePromoTables()
+    {
+        if (self::$promoTablesReady) return true;
+
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('promocodes') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `code` VARCHAR(64) NOT NULL DEFAULT '',
+                `discount_type` VARCHAR(16) NOT NULL DEFAULT 'percent',
+                `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                `currency_code` VARCHAR(3) NOT NULL DEFAULT 'RUB',
+                `min_total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                `max_uses` INT UNSIGNED NOT NULL DEFAULT 0,
+                `used_count` INT UNSIGNED NOT NULL DEFAULT 0,
+                `starts_at` DATETIME DEFAULT NULL,
+                `ends_at` DATETIME DEFAULT NULL,
+                `active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` DATETIME DEFAULT NULL,
+                `updated_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `code` (`code`),
+                KEY `active` (`active`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        $orders = self::table('orders');
+        try {
+            self::db()->query("SELECT `discount` FROM `{$orders}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$orders}`
+                    ADD COLUMN `discount` DECIMAL(12,2) NOT NULL DEFAULT 0.00");
+            } catch (Throwable $alterError) {
+            }
+        }
+        try {
+            self::db()->query("SELECT `promocode` FROM `{$orders}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$orders}`
+                    ADD COLUMN `promocode` VARCHAR(64) NOT NULL DEFAULT ''");
+            } catch (Throwable $alterError) {
+            }
+        }
+
+        $prices = self::table('variant_prices');
+        try {
+            self::db()->query("SELECT `compare_price` FROM `{$prices}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$prices}`
+                    ADD COLUMN `compare_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00");
+            } catch (Throwable $alterError) {
+            }
+        }
+
+        self::$promoTablesReady = true;
+        return true;
+    }
+
+    /**
+     * Promo codes are stored and compared in upper case ASCII. Anything else
+     * is usually a copy-paste artefact, so it is dropped instead of rejected.
+     */
+    public static function promoNormalize($code)
+    {
+        $code = strtoupper(trim((string)$code));
+        $code = preg_replace('/[^A-Z0-9_-]/', '', $code);
+        return strlen($code) >= 2 && strlen($code) <= 64 ? $code : '';
+    }
+
+    public static function promoCode()
+    {
+        return isset($_SESSION[self::PROMO_KEY]) ? self::promoNormalize($_SESSION[self::PROMO_KEY]) : '';
+    }
+
+    public static function setPromoCode($code)
+    {
+        $code = self::promoNormalize($code);
+        if ($code === '') {
+            unset($_SESSION[self::PROMO_KEY]);
+            return '';
+        }
+        $_SESSION[self::PROMO_KEY] = $code;
+        return $code;
+    }
+
+    public static function clearPromoCode()
+    {
+        unset($_SESSION[self::PROMO_KEY]);
+    }
+
+    /**
+     * Validate a promo code against a cart subtotal.
+     *
+     * With $forUpdate the promo row is locked by the caller's transaction, so
+     * the usage limit cannot be exceeded by two orders checked at once.
+     */
+    public static function promoCheck($code, $subtotal, $currencyCode = null, $forUpdate = false)
+    {
+        $result = array('valid' => false, 'error' => '', 'promocode' => null, 'discount' => 0.0);
+        $code = self::promoNormalize($code);
+        if ($code === '') {
+            $result['error'] = 'Введите промокод.';
+            return $result;
+        }
+
+        // Never run DDL inside the order transaction; the caller migrates earlier.
+        if (!$forUpdate) self::ensurePromoTables();
+        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
+        $subtotal = round((float)$subtotal, 2);
+        try {
+            $rows = self::db()->query("SELECT * FROM `" . self::table('promocodes') . "`
+                WHERE `code` = '" . self::esc($code) . "' LIMIT 1" . ($forUpdate ? ' FOR UPDATE' : ''));
+        } catch (Throwable $e) {
+            $result['error'] = 'Промокод не найден.';
+            return $result;
+        }
+        if (empty($rows[0])) {
+            $result['error'] = 'Промокод не найден.';
+            return $result;
+        }
+
+        $promo = $rows[0];
+        $result['promocode'] = $promo;
+        if (empty($promo['active'])) {
+            $result['error'] = 'Промокод не действует.';
+            return $result;
+        }
+        $now = time();
+        if (!empty($promo['starts_at']) && strtotime($promo['starts_at']) > $now) {
+            $result['error'] = 'Промокод ещё не начал действовать.';
+            return $result;
+        }
+        if (!empty($promo['ends_at']) && strtotime($promo['ends_at']) < $now) {
+            $result['error'] = 'Срок действия промокода истёк.';
+            return $result;
+        }
+        if ((int)$promo['max_uses'] > 0 && (int)$promo['used_count'] >= (int)$promo['max_uses']) {
+            $result['error'] = 'Промокод больше не действует: исчерпан лимит применений.';
+            return $result;
+        }
+        if ((float)$promo['min_total'] > 0 && $subtotal < (float)$promo['min_total']) {
+            $result['error'] = 'Промокод действует при заказе от '
+                . self::formatPrice($promo['min_total'], $currency['code']) . '.';
+            return $result;
+        }
+
+        $type = (string)$promo['discount_type'];
+        $value = (float)$promo['value'];
+        if ($type === 'percent') {
+            if ($value <= 0 || $value > 100) {
+                $result['error'] = 'Промокод настроен некорректно.';
+                return $result;
+            }
+            $discount = round($subtotal * $value / 100, 2);
+        } else {
+            if (strtoupper((string)$promo['currency_code']) !== strtoupper((string)$currency['code'])) {
+                $result['error'] = 'Промокод действует только в валюте ' . $promo['currency_code'] . '.';
+                return $result;
+            }
+            $discount = round($value, 2);
+        }
+        if ($discount <= 0) {
+            $result['error'] = 'Промокод не даёт скидку для этого заказа.';
+            return $result;
+        }
+        if ($discount > $subtotal) $discount = $subtotal;
+
+        $result['valid'] = true;
+        $result['discount'] = $discount;
+        return $result;
     }
 
     private static function cleanCart($cart)
@@ -662,19 +846,40 @@ class ShopHelper
         return $items;
     }
 
-    public static function cartTotals($items = null)
+    public static function cartTotals($items = null, $currencyCode = null)
     {
         if ($items === null) $items = self::cartItems();
+        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
         $subtotal = 0.0;
         $quantity = 0;
         foreach ($items as $item) {
             $subtotal += (float)$item['total'];
             $quantity += (int)$item['quantity'];
         }
+
+        $promoCode = self::promoCode();
+        $promoError = '';
+        $discount = 0.0;
+        if ($promoCode !== '') {
+            $promo = self::promoCheck($promoCode, $subtotal, $currency['code']);
+            if ($promo['valid']) {
+                $discount = $promo['discount'];
+            } else {
+                $promoError = $promo['error'];
+            }
+        }
+
         return array(
             'subtotal' => $subtotal,
-            'subtotal_formatted' => self::formatPrice($subtotal),
+            'subtotal_formatted' => self::formatPrice($subtotal, $currency['code']),
             'quantity' => $quantity,
+            'promo_code' => $promoCode,
+            'promo_error' => $promoError,
+            'discount' => $discount,
+            'discount_formatted' => self::formatPrice($discount, $currency['code']),
+            'total' => $subtotal - $discount,
+            'total_formatted' => self::formatPrice($subtotal - $discount, $currency['code']),
+            'currency_code' => $currency['code'],
         );
     }
 
@@ -799,9 +1004,15 @@ class ShopHelper
             : '';
         $product['description_html'] = self::formatDescription($product['description']);
         $product['short_description_html'] = nl2br(h((string)$product['short_description']));
-        $product['price_from'] = self::productMinPrice($product['id']);
-        $product['price_from_formatted'] = $product['price_from'] > 0
-            ? self::formatPrice($product['price_from']) : '';
+        self::ensurePromoTables();
+        $price = self::productMinPriceInfo($product['id']);
+        $product['price_from'] = $price['price'];
+        $product['price_from_formatted'] = $price['price'] > 0
+            ? self::formatPrice($price['price']) : '';
+        $product['price_from_compare'] = $price['compare'];
+        $product['price_from_compare_formatted'] = $price['compare'] > 0
+            ? self::formatPrice($price['compare']) : '';
+        $product['price_discount_percent'] = $price['percent'];
         return $product;
     }
 
@@ -827,6 +1038,7 @@ class ShopHelper
 
     public static function getProducts($filters = array())
     {
+        self::ensurePromoTables();
         $products = self::table('products');
         $categories = self::table('categories');
         $pav = self::table('product_attribute_values');
@@ -890,6 +1102,11 @@ class ShopHelper
             INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
             WHERE v.`product_id` = p.`id` AND v.`active` = 1
                 AND vp.`currency_code` = '{$code}' AND vp.`price` > 0)";
+        $compareSql = "(SELECT NULLIF(vp.`compare_price`, 0) FROM `" . self::table('variants') . "` v
+            INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
+            WHERE v.`product_id` = p.`id` AND v.`active` = 1
+                AND vp.`currency_code` = '{$code}' AND vp.`price` > 0
+            ORDER BY vp.`price` ASC, v.`id` ASC LIMIT 1)";
         $gallerySql = "(SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
             WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1)";
 
@@ -902,7 +1119,8 @@ class ShopHelper
             $offset = ($page - 1) * $limit;
             $sortByPrice = $sort === 'price_asc' || $sort === 'price_desc';
             $innerPrice = $sortByPrice ? ", {$minSql} AS min_price" : '';
-            $outerPrice = $sortByPrice ? '' : ", {$minSql} AS min_price";
+            $outerPrice = ($sortByPrice ? '' : ", {$minSql} AS min_price")
+                . ", {$compareSql} AS min_compare_price";
             $rows = self::db()->query("SELECT p.*, c.`title` AS category_title, c.`clean_url_title` AS category_slug
                     {$outerPrice}, {$gallerySql} AS gallery_image
                 FROM (
@@ -928,6 +1146,13 @@ class ShopHelper
             $minPrice = isset($row['min_price']) ? (float)$row['min_price'] : 0.0;
             $row['price_from'] = $minPrice;
             $row['price_from_formatted'] = $minPrice > 0 ? self::formatPrice($minPrice, $currency['code']) : '';
+            $comparePrice = isset($row['min_compare_price']) ? (float)$row['min_compare_price'] : 0.0;
+            if ($minPrice <= 0 || $comparePrice <= $minPrice) $comparePrice = 0.0;
+            $row['price_from_compare'] = $comparePrice;
+            $row['price_from_compare_formatted'] = $comparePrice > 0
+                ? self::formatPrice($comparePrice, $currency['code']) : '';
+            $row['price_discount_percent'] = $comparePrice > 0
+                ? (int)round(100 - ($minPrice / $comparePrice * 100)) : 0;
             $row['short_description_html'] = nl2br(h((string)$row['short_description']));
             $items[] = $row;
         }
@@ -944,16 +1169,35 @@ class ShopHelper
 
     public static function productMinPrice($productId, $currencyCode = null)
     {
+        $info = self::productMinPriceInfo($productId, $currencyCode);
+        return $info['price'];
+    }
+
+    /**
+     * Lowest active price for a product and, when the seller set an old price
+     * on that same variant, the old price and the visible discount percent.
+     */
+    public static function productMinPriceInfo($productId, $currencyCode = null)
+    {
+        self::ensurePromoTables();
         $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
         $code = self::esc($currency['code']);
         $variants = self::table('variants');
         $prices = self::table('variant_prices');
-        $rows = self::db()->query("SELECT MIN(vp.`price`) AS min_price
+        $rows = self::db()->query("SELECT vp.`price`, vp.`compare_price`
             FROM `{$variants}` v
             INNER JOIN `{$prices}` vp ON vp.`variant_id` = v.`id`
             WHERE v.`product_id` = " . (int)$productId . "
-                AND v.`active` = 1 AND vp.`currency_code` = '{$code}' AND vp.`price` > 0");
-        return !empty($rows[0]['min_price']) ? (float)$rows[0]['min_price'] : 0.0;
+                AND v.`active` = 1 AND vp.`currency_code` = '{$code}' AND vp.`price` > 0
+            ORDER BY vp.`price` ASC, v.`id` ASC LIMIT 1");
+        $price = !empty($rows[0]['price']) ? (float)$rows[0]['price'] : 0.0;
+        $compare = !empty($rows[0]['compare_price']) ? (float)$rows[0]['compare_price'] : 0.0;
+        if ($price <= 0 || $compare <= $price) $compare = 0.0;
+        return array(
+            'price' => $price,
+            'compare' => $compare,
+            'percent' => $compare > 0 ? (int)round(100 - ($price / $compare * 100)) : 0,
+        );
     }
 
     public static function getProductVariants($productId, $currencyCode = null, $onlyAvailable = false)
@@ -961,6 +1205,7 @@ class ShopHelper
         $productId = (int)$productId;
         if ($productId < 1) return array();
 
+        self::ensurePromoTables();
         $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
         $code = self::esc($currency['code']);
         $variants = self::table('variants');
@@ -972,7 +1217,7 @@ class ShopHelper
                     SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
                     WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1
                 )) AS product_image,
-                vp.`price` AS price
+                vp.`price` AS price, vp.`compare_price` AS compare_price
             FROM `{$variants}` v
             INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
             LEFT JOIN `{$prices}` vp ON vp.`variant_id` = v.`id` AND vp.`currency_code` = '{$code}'
@@ -1014,6 +1259,8 @@ class ShopHelper
             if ($onlyAvailable && !$available) continue;
 
             $image = !empty($row['image']) ? $row['image'] : $row['product_image'];
+            $comparePrice = (float)$row['compare_price'];
+            if ($price <= 0 || $comparePrice <= $price) $comparePrice = 0.0;
             $result[] = array(
                 'id' => $vid,
                 'product_id' => (int)$row['product_id'],
@@ -1022,6 +1269,11 @@ class ShopHelper
                 'stock' => $stock,
                 'price' => $price,
                 'price_formatted' => $price > 0 ? self::formatPrice($price, $currency['code']) : '',
+                'compare_price' => $comparePrice,
+                'compare_price_formatted' => $comparePrice > 0
+                    ? self::formatPrice($comparePrice, $currency['code']) : '',
+                'discount_percent' => $comparePrice > 0
+                    ? (int)round(100 - ($price / $comparePrice * 100)) : 0,
                 'available' => $available,
                 'image_url' => self::imageUrl($image, false),
                 'attributes' => isset($valuesByVariant[$vid]) ? $valuesByVariant[$vid] : array(),
@@ -1706,6 +1958,10 @@ class ShopHelper
         $order['number'] = self::orderNumber($order['id']);
         $order['status_label'] = self::statusLabel($order['status']);
         $order['subtotal_formatted'] = self::formatPrice($order['subtotal'], $order['currency_code']);
+        $order['discount'] = isset($order['discount']) ? (float)$order['discount'] : 0.0;
+        $order['discount_formatted'] = $order['discount'] > 0
+            ? self::formatPrice($order['discount'], $order['currency_code']) : '';
+        $order['promocode'] = isset($order['promocode']) ? (string)$order['promocode'] : '';
         $order['delivery_price_formatted'] = self::formatPrice($order['delivery_price'], $order['currency_code']);
         $order['total_formatted'] = self::formatPrice($order['total'], $order['currency_code']);
         $order['created_at_formatted'] = self::formatDate($order['created_at']);
@@ -1757,6 +2013,7 @@ class ShopHelper
         $variants = self::table('variants');
         $orderId = (int)$orderId;
         if (!self::ensureOrderStatusHistoryTable()) return false;
+        self::ensurePromoTables();
         try {
             self::db()->query('START TRANSACTION');
             $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
@@ -1773,6 +2030,12 @@ class ShopHelper
                     $variantId = (int)$item['variant_id'];
                     $qty = (int)$item['quantity'];
                     if ($variantId > 0 && $qty > 0) self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` + {$qty} WHERE `id` = {$variantId}");
+                }
+                // A cancelled order frees its promo redemption for another customer.
+                if (!empty($order['promocode'])) {
+                    self::db()->query("UPDATE `" . self::table('promocodes') . "`
+                        SET `used_count` = GREATEST(`used_count` - 1, 0)
+                        WHERE `code` = '" . self::esc($order['promocode']) . "'");
                 }
                 $released = 1;
             }
@@ -1950,8 +2213,12 @@ class ShopHelper
                 . h(self::formatPrice($item['total'], $order['currency_code'])) . '</td></tr>';
         }
         $body .= '</table>'
-            . '<p>Товары: ' . h(self::formatPrice($order['subtotal'], $order['currency_code'])) . '<br />'
-            . 'Доставка: ' . h(self::formatPrice($order['delivery_price'], $order['currency_code'])) . '<br />'
+            . '<p>Товары: ' . h(self::formatPrice($order['subtotal'], $order['currency_code'])) . '<br />';
+        if (!empty($order['discount'])) {
+            $body .= 'Скидка' . (!empty($order['promocode']) ? ' по промокоду ' . h($order['promocode']) : '')
+                . ': −' . h(self::formatPrice($order['discount'], $order['currency_code'])) . '<br />';
+        }
+        $body .= 'Доставка: ' . h(self::formatPrice($order['delivery_price'], $order['currency_code'])) . '<br />'
             . '<strong>Итого: ' . h(self::formatPrice($order['total'], $order['currency_code'])) . '</strong></p>';
         if (!empty($order['comment'])) {
             $body .= '<p>Комментарий: ' . nl2br(h($order['comment'])) . '</p>';
@@ -2334,6 +2601,9 @@ class ShopHelper
     /** @var bool */
     private static $stockSubscriptionsReady = false;
 
+    /** @var bool */
+    private static $relatedProductsReady = false;
+
     public static function ensureStockSubscriptionsTable()
     {
         if (self::$stockSubscriptionsReady) return true;
@@ -2427,6 +2697,85 @@ class ShopHelper
     /* ---------------------------------------------------------------------
      * Product recommendations
      * ------------------------------------------------------------------ */
+
+    /**
+     * Manual "customers also buy" picks, stored per product. The table is
+     * created on first use so updated installations need no module reinstall.
+     */
+    public static function ensureRelatedProductsTable()
+    {
+        if (self::$relatedProductsReady) return true;
+
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('related_products') . "` (
+                `product_id` INT UNSIGNED NOT NULL,
+                `related_product_id` INT UNSIGNED NOT NULL,
+                `position` INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (`product_id`, `related_product_id`),
+                KEY `related_product_id` (`related_product_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$relatedProductsReady = true;
+        return true;
+    }
+
+    public static function relatedProductIds($productId)
+    {
+        $productId = (int)$productId;
+        if ($productId < 1 || !self::ensureRelatedProductsTable()) return array();
+
+        $rows = self::db()->query("SELECT `related_product_id` FROM `" . self::table('related_products') . "`
+            WHERE `product_id` = {$productId}
+            ORDER BY `position` ASC, `related_product_id` ASC");
+        $ids = array();
+        foreach ($rows as $row) $ids[] = (int)$row['related_product_id'];
+        return $ids;
+    }
+
+    public static function syncRelatedProducts($productId, $relatedIds)
+    {
+        $productId = (int)$productId;
+        if ($productId < 1 || !self::ensureRelatedProductsTable()) return false;
+
+        $table = self::table('related_products');
+        $products = self::table('products');
+        self::db()->query("DELETE FROM `{$table}` WHERE `product_id` = {$productId}");
+
+        $seen = array();
+        $position = 0;
+        foreach ((array)$relatedIds as $relatedId) {
+            $relatedId = (int)$relatedId;
+            if ($relatedId < 1 || $relatedId === $productId || isset($seen[$relatedId])) continue;
+            $seen[$relatedId] = true;
+            $exists = self::db()->query("SELECT `id` FROM `{$products}` WHERE `id` = {$relatedId} LIMIT 1");
+            if (empty($exists[0])) continue;
+            self::db()->query("INSERT INTO `{$table}` (`product_id`, `related_product_id`, `position`)
+                VALUES ({$productId}, {$relatedId}, {$position})");
+            $position++;
+            if ($position >= 20) break;
+        }
+        return true;
+    }
+
+    public static function relatedProducts($productId, $limit = 4)
+    {
+        $limit = max(1, min(12, (int)$limit));
+        $ids = array_slice(self::relatedProductIds($productId), 0, $limit);
+        if (!$ids) return array();
+
+        $result = self::getProducts(array('ids' => $ids, 'limit' => count($ids)));
+        $byId = array();
+        foreach ($result['items'] as $item) $byId[(int)$item['id']] = $item;
+
+        $items = array();
+        foreach ($ids as $id) {
+            if (isset($byId[$id])) $items[] = $byId[$id];
+        }
+        return $items;
+    }
 
     public static function similarProducts($product, $limit = 4)
     {

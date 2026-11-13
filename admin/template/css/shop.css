@@ -941,3 +941,8 @@
     margin: 6px 0 0;
     max-width: 900px;
 }
+
+.shop-admin-select-multiple {
+    width: 100%;
+    min-height: 190px;
+}

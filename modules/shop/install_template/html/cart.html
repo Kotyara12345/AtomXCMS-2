@@ -66,14 +66,35 @@
         </div>
     </form>
 
+    <form class="shop-promo" method="post" action="{{ apply_promo_action }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        {% if totals.promo_code %}
+        <span class="shop-promo-applied">Промокод: <strong>{{ totals.promo_code|escape }}</strong></span>
+        <button type="submit" class="shop-link-danger" formaction="{{ remove_promo_action }}">Убрать</button>
+        {% else %}
+        <label for="shop-promo-code">Промокод</label>
+        <input id="shop-promo-code" type="text" name="promocode" maxlength="64" />
+        <button type="submit" class="shop-btn shop-btn-small">Применить</button>
+        {% endif %}
+    </form>
+    {% if totals.promo_error %}
+    <div class="shop-alert shop-alert-error">{{ totals.promo_error|escape }}</div>
+    {% endif %}
+
     <div class="shop-cart-summary">
         <div class="shop-summary-row">
             <span>Товаров:</span>
             <span>{{ totals.quantity }}</span>
         </div>
+        {% if totals.discount > 0 %}
+        <div class="shop-summary-row shop-summary-discount">
+            <span>Скидка{% if totals.promo_code %} ({{ totals.promo_code|escape }}){% endif %}:</span>
+            <span>−{{ totals.discount_formatted }}</span>
+        </div>
+        {% endif %}
         <div class="shop-summary-row shop-summary-total">
             <span>Итого:</span>
-            <span>{{ totals.subtotal_formatted }}</span>
+            <span>{{ totals.total_formatted }}</span>
         </div>
         <a class="shop-btn shop-btn-block" href="{{ checkout_url }}">Оформить заказ</a>
     </div>

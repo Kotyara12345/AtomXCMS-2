@@ -291,6 +291,27 @@
     font-size: 25px;
 }
 
+.shop-price-old {
+    color: #8a949e;
+    font-size: 14px;
+    font-weight: 400;
+    text-decoration: line-through;
+    white-space: nowrap;
+}
+
+.shop-badge-discount {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: #c0392b;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
 .shop-btn {
     display: inline-block;
     padding: 10px 18px;
@@ -678,6 +699,44 @@
     border-top: 1px solid #dce2e8;
     font-size: 18px;
     font-weight: 700;
+}
+
+.shop-summary-discount {
+    color: #1f7a3d;
+}
+
+.shop-promo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 9px;
+    max-width: 370px;
+    margin: 18px 0 0 auto;
+    padding: 14px 18px;
+    border: 1px dashed #c6d0da;
+    border-radius: 8px;
+}
+
+.shop-promo label {
+    font-weight: 600;
+}
+
+.shop-promo input[type="text"] {
+    flex: 1 1 140px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid #c6d0da;
+    border-radius: 5px;
+}
+
+.shop-promo-applied {
+    flex: 1 1 auto;
+}
+
+.shop-checkout-summary .shop-promo {
+    max-width: none;
+    margin: 14px 0;
+    padding: 10px 12px;
 }
 
 .shop-cart-summary .shop-btn {

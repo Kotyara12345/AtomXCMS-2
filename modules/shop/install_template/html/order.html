@@ -50,6 +50,12 @@
                         <span>Товары:</span>
                         <span>{{ order.subtotal_formatted }}</span>
                     </div>
+                    {% if order.discount > 0 %}
+                    <div class="shop-summary-row shop-summary-discount">
+                        <span>Скидка{% if order.promocode %} ({{ order.promocode|escape }}){% endif %}:</span>
+                        <span>−{{ order.discount_formatted }}</span>
+                    </div>
+                    {% endif %}
                     <div class="shop-summary-row">
                         <span>Доставка:</span>
                         <span>{{ order.delivery_price_formatted }}</span>

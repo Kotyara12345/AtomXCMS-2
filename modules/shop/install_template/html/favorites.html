@@ -44,6 +44,7 @@
                             <div class="shop-card-price">
                                 {% if product.price_from_formatted %}
                                 <span class="shop-price">{{ product.price_from_formatted }}</span>
+                                {% if product.price_from_compare_formatted %} <span class="shop-price-old">{{ product.price_from_compare_formatted }}</span> <span class="shop-badge-discount">−{{ product.price_discount_percent }}%</span>{% endif %}
                                 {% else %}
                                 <span class="shop-muted">Цена по запросу</span>
                                 {% endif %}

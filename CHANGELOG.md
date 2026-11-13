@@ -58,6 +58,29 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   the `AggregateOffer` range stays. A `structured_data` setting in the module
   settings (default on) enables or disables the product, offer, rating and
   breadcrumb JSON-LD for installations where another plugin prints markup.
+- Promo codes and old prices in the shop. The admin gets a "Промокоды" tab
+  with percent or fixed-amount codes, currency, minimum order total, usage
+  limit, start/end dates and an on/off switch. The cart and checkout accept a
+  code, show the discount row and keep it in the session; the order stores the
+  code and the discount, the invoice, order page, e-mails and CSV export print
+  it. The cart quote is rechecked inside the order transaction with a row lock,
+  so a usage limit cannot be exceeded by two simultaneous orders, and
+  cancelling an order gives the redemption back. Percent codes work in every
+  currency, fixed codes only in their own. Each variant price now has a
+  `compare_price` field ("старая цена" in the admin): the storefront shows it
+  struck through with a discount badge on product, catalogue, favourites and
+  related-product cards. Tables and columns are added to existing installations
+  on first use.
+- Manual "customers also buy" picks for the shop: the product form has a
+  multi-select of other products, and the product page shows them in a
+  "С этим покупают" block above the automatic "Похожие товары". Manual order
+  is kept, the section is hidden when empty, and links are cleaned up when a
+  product is deleted. The `shop_related_products` table is created on first
+  use, so existing installations need no module reinstall.
+- Shop settings can turn off the "Похожие товары" and "С этим покупают" blocks
+  on the product page (`similar_enabled`, `related_enabled`, both on by
+  default), so a site that does not need recommendations skips the queries
+  and the markup.
 - Password hashing helpers: `atm_password_hash()`, `atm_password_verify()`,
   `atm_password_needs_rehash()` in `sys/inc/helpers.lib.php`.
 - "Server protocols" section in the admin panel (System settings) with
