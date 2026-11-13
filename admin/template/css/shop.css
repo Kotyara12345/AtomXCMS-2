@@ -946,3 +946,98 @@
     width: 100%;
     min-height: 190px;
 }
+
+.shop-admin-emails {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.shop-admin-email-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.shop-admin-email-list li {
+    margin-bottom: 6px;
+}
+
+.shop-admin-email-list a {
+    display: block;
+    padding: 8px 10px;
+    border: 1px solid #d8e1ea;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
+.shop-admin-email-list a.active {
+    background: #eef5fc;
+    border-color: #9fc3e3;
+}
+
+.shop-admin-email-list .shop-admin-muted {
+    display: block;
+    font-size: 12px;
+}
+
+.shop-admin-code {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+}
+
+.shop-admin-field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.shop-admin-order-line {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.shop-admin-order-line select {
+    flex: 1;
+}
+
+.shop-admin-order-line input {
+    width: 90px;
+}
+
+.shop-admin-review-reply {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: #f3f8fd;
+    border-left: 3px solid #9fc3e3;
+}
+
+.shop-admin-review-reply-form {
+    margin-top: 8px;
+}
+
+.shop-admin-review-reply-form summary {
+    cursor: pointer;
+    color: #1f5f9e;
+}
+
+.shop-admin-review-reply-form textarea {
+    width: 100%;
+    margin: 8px 0;
+    box-sizing: border-box;
+}
+
+.shop-admin-order-edit {
+    margin-top: 12px;
+}
+
+.shop-admin-order-edit summary {
+    cursor: pointer;
+    color: #1f5f9e;
+}
+
+.shop-admin-funnel td:first-child {
+    font-weight: 600;
+}

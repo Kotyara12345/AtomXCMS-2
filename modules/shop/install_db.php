@@ -267,9 +267,32 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_reviews` (
     `rating` TINYINT UNSIGNED NOT NULL DEFAULT 0,
     `text` TEXT,
     `active` TINYINT(1) NOT NULL DEFAULT 0,
+    `reply` TEXT,
+    `replied_at` DATETIME DEFAULT NULL,
     `created_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `product_active` (`product_id`, `active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_email_templates` (
+    `code` VARCHAR(64) NOT NULL,
+    `subject` VARCHAR(255) NOT NULL DEFAULT '',
+    `body` MEDIUMTEXT,
+    `updated_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_funnel_events` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `event` VARCHAR(32) NOT NULL DEFAULT '',
+    `session_key` VARCHAR(64) NOT NULL DEFAULT '',
+    `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `product_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `event_created` (`event`, `created_at`),
+    KEY `session_key` (`session_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_stock_subscriptions` (

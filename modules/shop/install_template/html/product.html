@@ -240,6 +240,12 @@
                             <span class="shop-muted">{{ review.created_at_formatted }}</span>
                         </div>
                         <div class="shop-review-text">{{ review.text_html }}</div>
+                        {% if review.reply_html %}
+                        <div class="shop-review-reply">
+                            <strong>Ответ магазина</strong>
+                            <div>{{ review.reply_html }}</div>
+                        </div>
+                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>

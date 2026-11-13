@@ -157,6 +157,106 @@ class ShopModule extends Module
         return $this->renderCatalog(null, 0, 'Поиск по каталогу');
     }
 
+    /**
+     * YML feed for Yandex.Market and similar catalogues. Echoes raw XML:
+     * Module::_view() would wrap it into the site layout.
+     */
+    public function yml()
+    {
+        if ((int)ShopHelper::cfg('yml_enabled', 1) !== 1) {
+            $this->Parser->showHttpError();
+        }
+
+        $currency = ShopHelper::activeCurrency();
+        $code = $currency['code'];
+        $rootUrl = rtrim(ShopHelper::absoluteUrl('/'), '/');
+        $siteName = trim((string)Config::read('site_title'));
+        if ($siteName === '' || strpos($siteName, '{{') !== false) {
+            $siteName = trim((string)Config::read('title', 'shop'));
+        }
+        if ($siteName === '' || strpos($siteName, '{{') !== false) $siteName = 'Магазин';
+
+        $categories = ShopHelper::db()->query("SELECT `id`, `parent_id`, `title`
+            FROM `" . ShopHelper::table('categories') . "` ORDER BY `position` ASC, `id` ASC");
+        $products = ShopHelper::db()->query("SELECT p.`id`, p.`title`, p.`clean_url_title`,
+                p.`category_id`, p.`short_description`, p.`description`, p.`image`
+            FROM `" . ShopHelper::table('products') . "` p
+            WHERE p.`active` = 1
+            ORDER BY p.`id` ASC");
+        $offers = ShopHelper::db()->query("SELECT v.`id`, v.`product_id`, v.`title` AS variant_title,
+                v.`sku`, v.`stock`, v.`image` AS variant_image,
+                vp.`price`, vp.`compare_price`
+            FROM `" . ShopHelper::table('variants') . "` v
+            INNER JOIN `" . ShopHelper::table('variant_prices') . "` vp
+                ON vp.`variant_id` = v.`id` AND vp.`currency_code` = '" . ShopHelper::esc($code) . "'
+            WHERE v.`active` = 1 AND vp.`price` > 0
+            ORDER BY v.`product_id` ASC, v.`position` ASC, v.`id` ASC");
+
+        $byProduct = array();
+        foreach ($products as $product) $byProduct[(int)$product['id']] = $product;
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+            . '<!DOCTYPE yml_catalog SYSTEM "shops.dtd">' . "\n"
+            . '<yml_catalog date="' . date('Y-m-d H:i') . '">' . "\n<shop>\n"
+            . '<name>' . h($siteName) . '</name>' . "\n"
+            . '<company>' . h($siteName) . '</company>' . "\n"
+            . '<url>' . h($rootUrl . '/') . '</url>' . "\n"
+            . '<currencies><currency id="' . h($code) . '" rate="1"/></currencies>' . "\n"
+            . "<categories>\n";
+        foreach ($categories as $category) {
+            $xml .= '<category id="' . (int)$category['id'] . '" parentId="' . (int)$category['parent_id'] . '">'
+                . h((string)$category['title']) . "</category>\n";
+        }
+        $xml .= "</categories>\n<offers>\n";
+
+        foreach ($offers as $offer) {
+            $product = isset($byProduct[(int)$offer['product_id']]) ? $byProduct[(int)$offer['product_id']] : null;
+            if (!$product) continue;
+
+            $name = (string)$product['title'];
+            if (trim((string)$offer['variant_title']) !== '') {
+                $name .= ' — ' . trim((string)$offer['variant_title']);
+            }
+            $description = trim((string)$product['description']);
+            if ($description === '') $description = trim((string)$product['short_description']);
+            $description = trim(preg_replace('/\s+/u', ' ', strip_tags(html_entity_decode($description, ENT_QUOTES, 'UTF-8'))));
+
+            $image = trim((string)$offer['variant_image']);
+            if ($image === '') $image = trim((string)$product['image']);
+            $picture = $image !== '' ? ShopHelper::absoluteUrl(ShopHelper::imageUrl($image, false)) : '';
+            $url = ShopHelper::absoluteUrl(ShopHelper::productUrl(array(
+                'id' => (int)$product['id'],
+                'clean_url_title' => (string)$product['clean_url_title'],
+            )));
+
+            $xml .= '<offer id="' . (int)$offer['id'] . '" group_id="' . (int)$product['id']
+                . '" available="' . ((int)$offer['stock'] > 0 ? 'true' : 'false') . '">' . "\n"
+                . '<url>' . h($url) . '</url>' . "\n"
+                . '<price>' . number_format((float)$offer['price'], 2, '.', '') . '</price>' . "\n";
+            if ((float)$offer['compare_price'] > (float)$offer['price']) {
+                $xml .= '<oldprice>' . number_format((float)$offer['compare_price'], 2, '.', '') . '</oldprice>' . "\n";
+            }
+            $xml .= '<currencyId>' . h($code) . '</currencyId>' . "\n";
+            if ((int)$product['category_id'] > 0) {
+                $xml .= '<categoryId>' . (int)$product['category_id'] . '</categoryId>' . "\n";
+            }
+            if ($picture !== '') $xml .= '<picture>' . h($picture) . '</picture>' . "\n";
+            $xml .= '<name>' . h($name) . '</name>' . "\n";
+            if (trim((string)$offer['sku']) !== '') {
+                $xml .= '<vendorCode>' . h((string)$offer['sku']) . '</vendorCode>' . "\n";
+            }
+            if ($description !== '') $xml .= '<description>' . h($description) . '</description>' . "\n";
+            $xml .= "</offer>\n";
+        }
+
+        $xml .= "</offers>\n</shop>\n</yml_catalog>\n";
+
+        header('Content-Type: application/xml; charset=utf-8');
+        header('X-Content-Type-Options: nosniff');
+        echo $xml;
+        exit;
+    }
+
     private function renderCatalog($category, $categoryId, $pageTitle, $landing = null)
     {
         $currency = ShopHelper::activeCurrency();
@@ -167,6 +267,15 @@ class ShopModule extends Module
 
         $page = max(1, (int)(isset($_GET['page']) ? $_GET['page'] : 1));
         $perPage = min(100, max(1, (int)ShopHelper::cfg('per_page', 12)));
+
+        $priceMin = isset($_GET['price_min']) ? max(0, (float)$_GET['price_min']) : 0.0;
+        $priceMax = isset($_GET['price_max']) ? max(0, (float)$_GET['price_max']) : 0.0;
+        if ($priceMin > 0 && $priceMax > 0 && $priceMax < $priceMin) {
+            $swap = $priceMin;
+            $priceMin = $priceMax;
+            $priceMax = $swap;
+        }
+        $inStock = !empty($_GET['in_stock']);
 
         $categoryIds = array();
         if ($landing) {
@@ -180,6 +289,36 @@ class ShopModule extends Module
             $categoryIds = ShopHelper::categoryDescendantIds($categoryId);
         }
 
+        // Attribute checkboxes: only values that occur in this catalogue branch.
+        $attributeGroups = $landing ? array() : ShopHelper::getCatalogAttributeGroups($categoryIds);
+        $selectedByAttribute = array();
+        $selectedAttributeValues = array();
+        $postedAttributes = isset($_GET['attr']) && is_array($_GET['attr']) ? $_GET['attr'] : array();
+        foreach ($attributeGroups as $attributeId => $group) {
+            $allowed = array();
+            foreach ($group['values'] as $value) $allowed[(int)$value['id']] = true;
+            $selected = array();
+            if (isset($postedAttributes[$attributeId])) {
+                foreach ((array)$postedAttributes[$attributeId] as $valueId) {
+                    $valueId = (int)$valueId;
+                    if ($valueId > 0 && isset($allowed[$valueId]) && !in_array($valueId, $selected, true)) {
+                        $selected[] = $valueId;
+                    }
+                }
+            }
+            if (!$selected) continue;
+            $selectedByAttribute[$attributeId] = $selected;
+            foreach ($selected as $valueId) $selectedAttributeValues[] = $valueId;
+        }
+        foreach ($attributeGroups as $attributeId => &$group) {
+            foreach ($group['values'] as &$value) {
+                $value['checked'] = !empty($selectedByAttribute[$attributeId])
+                    && in_array((int)$value['id'], $selectedByAttribute[$attributeId], true);
+            }
+            unset($value);
+        }
+        unset($group);
+
         $filters = array(
             'category_ids' => $categoryIds,
             'q' => $q,
@@ -187,14 +326,21 @@ class ShopModule extends Module
             'limit' => $perPage,
             'sort' => $sort,
             'currency' => $currency['code'],
+            'price_min' => $priceMin,
+            'price_max' => $priceMax,
+            'in_stock' => $inStock,
         );
+        if ($selectedAttributeValues) {
+            $filters['attribute_value_ids'] = $selectedAttributeValues;
+        }
         if ($landing && !empty($landing['attribute_value_ids'])) {
             $filters['attribute_value_ids'] = $landing['attribute_value_ids'];
         }
         $result = ShopHelper::getProducts($filters);
         $this->attachRatings($result['items']);
         $featuredProducts = array();
-        if (!$landing && $categoryId === 0 && $q === '' && $page === 1) {
+        if (!$landing && $categoryId === 0 && $q === '' && $page === 1
+            && $priceMin <= 0 && $priceMax <= 0 && !$inStock && !$selectedAttributeValues) {
             $featuredResult = ShopHelper::getProducts(array(
                 'featured' => 1,
                 'limit' => 4,
@@ -214,6 +360,10 @@ class ShopModule extends Module
         $query = array();
         if ($q !== '') $query['q'] = $q;
         if ($sort !== 'default') $query['sort'] = $sort;
+        if ($priceMin > 0) $query['price_min'] = $priceMin;
+        if ($priceMax > 0) $query['price_max'] = $priceMax;
+        if ($inStock) $query['in_stock'] = 1;
+        if ($selectedByAttribute) $query['attr'] = $selectedByAttribute;
         if ($query) $baseUrl .= '?' . http_build_query($query);
 
         list($pagination, $currentPage) = pagination($result['total'], $perPage, $baseUrl);
@@ -248,7 +398,12 @@ class ShopModule extends Module
             $this->ogImageUrl = $this->absoluteUrl(ShopHelper::imageUrl($category['image'], false));
         }
 
-        $sortOptions = $this->buildSortOptions($categoryId, $q, $sort, $landing);
+        $sortOptions = $this->buildSortOptions($categoryId, $q, $sort, $landing, array_filter(array(
+            'price_min' => $priceMin > 0 ? $priceMin : null,
+            'price_max' => $priceMax > 0 ? $priceMax : null,
+            'in_stock' => $inStock ? 1 : null,
+            'attr' => $selectedByAttribute ? $selectedByAttribute : null,
+        ), function ($value) { return $value !== null; }));
         $breadcrumbs = $landing
             ? $this->buildLandingBreadcrumbs($landing)
             : $this->buildCatalogBreadcrumbs($category);
@@ -267,6 +422,12 @@ class ShopModule extends Module
             'shop_pagination' => $pagination,
             'sort_options' => $sortOptions,
             'search_query' => $q,
+            'filter_price_min' => $priceMin > 0 ? rtrim(rtrim(number_format($priceMin, 2, '.', ''), '0'), '.') : '',
+            'filter_price_max' => $priceMax > 0 ? rtrim(rtrim(number_format($priceMax, 2, '.', ''), '0'), '.') : '',
+            'filter_in_stock' => $inStock,
+            'filter_active' => $priceMin > 0 || $priceMax > 0 || $inStock || $selectedAttributeValues,
+            'filter_reset_url' => get_url($searchPath),
+            'attribute_filter_groups' => $attributeGroups,
             'category' => $category,
             'category_id' => $categoryId,
             'landing' => $landing,
@@ -325,6 +486,10 @@ class ShopModule extends Module
         $this->productRating = ShopHelper::productRating($product['id']);
         $this->productStructuredData = $this->buildProductStructuredData($product, $variants, $currency, $gallery);
         ShopHelper::recordProductView($product['id']);
+        ShopHelper::recordFunnelEvent('product_view', array(
+            'product_id' => (int)$product['id'],
+            'user_id' => (int)ShopHelper::currentUser()['id'],
+        ));
 
         $relatedProducts = (int)ShopHelper::cfg('related_enabled', 1) === 1
             ? ShopHelper::relatedProducts($product['id'], 4) : array();
@@ -931,6 +1096,7 @@ class ShopModule extends Module
         if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
 
         if ($created) {
+            ShopHelper::recordFunnelEvent('order_created', array('order_id' => (int)$order['id']));
             try {
                 $order = ShopHelper::getOrder($order['id']);
                 if ($order) ShopHelper::sendOrderEmails($order, ShopHelper::getOrderItems($order['id'], $order['currency_code']));
@@ -945,6 +1111,7 @@ class ShopModule extends Module
     {
         $currency = ShopHelper::activeCurrency();
         header('Cache-Control: private, no-store');
+        ShopHelper::recordFunnelEvent('checkout_start');
         $cart = ShopHelper::getCart();
         $items = ShopHelper::cartItems($currency['code']);
         if (empty($items)) {
@@ -1140,7 +1307,7 @@ class ShopModule extends Module
         return $html;
     }
 
-    private function buildSortOptions($categoryId, $q, $selected, $landing = null)
+    private function buildSortOptions($categoryId, $q, $selected, $landing = null, $extra = array())
     {
         if ($landing) {
             $base = ShopHelper::landingPath($landing);
@@ -1158,6 +1325,9 @@ class ShopModule extends Module
         foreach ($options as $value => $title) {
             $query = array();
             if ($q !== '') $query['q'] = $q;
+            foreach ((array)$extra as $key => $value) {
+                if ($value !== null && $value !== '') $query[$key] = $value;
+            }
             if ($value !== 'default') $query['sort'] = $value;
             $url = $base . ($query ? '?' . http_build_query($query) : '');
             $result[] = array(

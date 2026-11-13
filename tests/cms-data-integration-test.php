@@ -55,10 +55,11 @@ try{
         'forums'=>'id int PRIMARY KEY, parent_forum_id int, lock_posts int, lock_passwd varchar(64)',
         'shop_orders'=>'id int PRIMARY KEY, status varchar(32), stock_released int, updated_at datetime, created_at datetime, subtotal decimal(12,2) NOT NULL DEFAULT 0, discount decimal(12,2) NOT NULL DEFAULT 0, promocode varchar(64) NOT NULL DEFAULT \'\', delivery_price decimal(12,2) NOT NULL DEFAULT 0, total decimal(12,2) NOT NULL DEFAULT 0, currency_code varchar(3) NOT NULL DEFAULT \'RUB\'',
         'shop_variants'=>'id int AUTO_INCREMENT PRIMARY KEY, stock int, product_id int, title varchar(255), sku varchar(64), image varchar(255), active int, position int, created_at datetime, updated_at datetime',
-        'shop_order_items'=>'id int PRIMARY KEY, order_id int, variant_id int, quantity int, price decimal(12,2), total decimal(12,2)',
+        'shop_order_items'=>'id int AUTO_INCREMENT PRIMARY KEY, order_id int, variant_id int, quantity int, price decimal(12,2), total decimal(12,2), product_id int NOT NULL DEFAULT 0, product_title varchar(255) NOT NULL DEFAULT \'\', variant_title varchar(255) NOT NULL DEFAULT \'\', sku varchar(64) NOT NULL DEFAULT \'\'',
         'shop_order_status_history'=>'id int AUTO_INCREMENT PRIMARY KEY, order_id int, status varchar(32), comment varchar(255), user_id int, user_name varchar(255), created_at datetime',
         'shop_order_requests'=>'attempt char(48) DEFAULT NULL, order_id int DEFAULT NULL, customer_mail varchar(12) NOT NULL DEFAULT \'unknown\', admin_mail varchar(12) NOT NULL DEFAULT \'unknown\', created_at datetime DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY attempt (attempt), UNIQUE KEY order_id (order_id)',
         'shop_reviews'=>'id int AUTO_INCREMENT PRIMARY KEY, product_id int, user_id int, name varchar(255), email varchar(255), rating int, text text, active int, created_at datetime',
+        'shop_email_templates'=>'code varchar(64) PRIMARY KEY, subject varchar(255), body mediumtext, updated_at datetime',
         'shop_stock_subscriptions'=>'id int AUTO_INCREMENT PRIMARY KEY, product_id int, email varchar(255), notified int, created_at datetime, UNIQUE KEY product_email (product_id, email)',
         'shop_carts'=>'user_id int PRIMARY KEY, data mediumtext, updated_at datetime, reminded_at datetime',
         'shop_currencies'=>'id int AUTO_INCREMENT PRIMARY KEY, code varchar(3), title varchar(64), symbol varchar(16), position int, enabled int, UNIQUE KEY code (code)',
@@ -70,6 +71,8 @@ try{
         'shop_variant_values'=>'variant_id int, attribute_value_id int, PRIMARY KEY (variant_id, attribute_value_id)',
         'shop_variant_prices'=>'variant_id int, currency_code varchar(3), price decimal(12,2), compare_price decimal(12,2) NOT NULL DEFAULT 0, PRIMARY KEY (variant_id, currency_code)',
         'shop_related_products'=>'product_id int, related_product_id int, position int NOT NULL DEFAULT 0, PRIMARY KEY (product_id, related_product_id)',
+        'shop_product_attribute_values'=>'product_id int, attribute_value_id int, PRIMARY KEY (product_id, attribute_value_id)',
+        'shop_funnel_events'=>'id int AUTO_INCREMENT PRIMARY KEY, event varchar(32), session_key varchar(64), user_id int, product_id int, order_id int, created_at datetime, KEY event_created (event, created_at)',
         'shop_promocodes'=>'id int AUTO_INCREMENT PRIMARY KEY, code varchar(64) NOT NULL DEFAULT \'\', discount_type varchar(16) NOT NULL DEFAULT \'percent\', value decimal(12,2) NOT NULL DEFAULT 0, currency_code varchar(3) NOT NULL DEFAULT \'RUB\', min_total decimal(12,2) NOT NULL DEFAULT 0, max_uses int unsigned NOT NULL DEFAULT 0, used_count int unsigned NOT NULL DEFAULT 0, starts_at datetime DEFAULT NULL, ends_at datetime DEFAULT NULL, active int NOT NULL DEFAULT 1, created_at datetime DEFAULT NULL, updated_at datetime DEFAULT NULL, UNIQUE KEY code (code)',
         'users'=>'id int PRIMARY KEY, name varchar(255), first_name varchar(255), email varchar(255), passw varchar(255), status int'
     );
@@ -94,7 +97,7 @@ try{
 
     $db->query("INSERT INTO `{$prefix}shop_orders` (`id`,`status`,`stock_released`,`created_at`,`updated_at`) VALUES(1,'new',0,NOW(),NOW())");
     $db->query("INSERT INTO `{$prefix}shop_variants` (`id`,`stock`) VALUES(1,10)");
-    $db->query("INSERT INTO `{$prefix}shop_order_items` VALUES(1,1,1,2,5,10)");
+    $db->query("INSERT INTO `{$prefix}shop_order_items` (`id`,`order_id`,`variant_id`,`quantity`,`price`,`total`) VALUES(1,1,1,2,5,10)");
     $pdo->beginTransaction();$pdo->query("SELECT * FROM `{$prefix}shop_orders` WHERE id=1 FOR UPDATE");
     for($i=0;$i<2;$i++){
         $process=proc_open(array(PHP_BINARY,$root.'/tests/shop-stock-worker.php',$prefix),array(0=>array('pipe','r'),1=>array('pipe','w'),2=>array('pipe','w')),$pipes);
@@ -112,7 +115,7 @@ try{
 
     $db->query("INSERT INTO `{$prefix}shop_orders` (`id`,`status`,`stock_released`,`created_at`,`updated_at`) VALUES(2,'new',0,DATE_SUB(NOW(),INTERVAL 4 DAY),NOW())");
     $db->query("INSERT INTO `{$prefix}shop_variants` (`id`,`stock`) VALUES(2,5)");
-    $db->query("INSERT INTO `{$prefix}shop_order_items` VALUES(2,2,2,2,5,10)");
+    $db->query("INSERT INTO `{$prefix}shop_order_items` (`id`,`order_id`,`variant_id`,`quantity`,`price`,`total`) VALUES(2,2,2,2,5,10)");
     cms_check(ShopHelper::expireUnpaidOrders()===true,'Unpaid order expiry run failed');
     cms_check($pdo->query("SELECT status FROM `{$prefix}shop_orders` WHERE id=2")->fetchColumn()==='cancelled','Unpaid order was not cancelled after its term');
     cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=2")->fetchColumn()===7,'Expired order stock was not released');
@@ -216,9 +219,81 @@ try{
     ShopHelper::syncRelatedProducts(1,array());
     cms_check(ShopHelper::relatedProductIds(1)===array(),'Related products were not cleared');
 
+    $cheap=ShopHelper::getProducts(array('currency'=>'RUB','price_max'=>600));
+    cms_check(count($cheap['items'])===1 && (int)$cheap['items'][0]['id']===1,'Price filter kept the wrong products');
+    $expensive=ShopHelper::getProducts(array('currency'=>'RUB','price_min'=>800));
+    cms_check(count($expensive['items'])===1 && $expensive['items'][0]['title']==='Чайник','Price min filter kept the wrong products');
+    $inStock=ShopHelper::getProducts(array('currency'=>'RUB','in_stock'=>1));
+    cms_check(count($inStock['items'])===2,'In-stock filter hid products with stock');
+    $db->query("UPDATE `{$prefix}shop_variants` SET `stock`=0 WHERE `id`=3");
+    $inStock=ShopHelper::getProducts(array('currency'=>'RUB','in_stock'=>1));
+    cms_check(count($inStock['items'])===1 && $inStock['items'][0]['title']==='Чайник','In-stock filter kept an out-of-stock product');
+    $db->query("UPDATE `{$prefix}shop_variants` SET `stock`=10 WHERE `id`=3");
+
+    $export=ShopHelper::exportProductsCsv();
+    cms_check(count($export)>=2 && $export[0]['slug']==='kruzhka' && abs((float)$export[0]['price']-500.0)<0.01,
+        'Product CSV export is wrong');
+    cms_check(isset($export[0]['title'],$export[1]['meta_keywords']),'Product CSV export misses import columns');
+
+    $db->query("INSERT INTO `{$prefix}shop_attributes` VALUES(1,'Цвет',0,1)");
+    $db->query("INSERT INTO `{$prefix}shop_attribute_values` VALUES(7,1,'Красный',0,1)");
+    $db->query("INSERT INTO `{$prefix}shop_product_attribute_values` VALUES(1,7)");
+    $groups=ShopHelper::getCatalogAttributeGroups(array());
+    cms_check(isset($groups[1]) && $groups[1]['title']==='Цвет' && (int)$groups[1]['values'][0]['count']===1,
+        'Catalog attribute groups are wrong');
+    $byAttribute=ShopHelper::getProducts(array('currency'=>'RUB','attribute_value_ids'=>array(7)));
+    cms_check(count($byAttribute['items'])===1 && (int)$byAttribute['items'][0]['id']===1,
+        'Attribute filter kept the wrong products');
+
+    $variantExport=ShopHelper::exportVariantsCsv();
+    $exportedVariant=null;
+    foreach($variantExport as$row){if($row['variant_id']===3 && $row['currency']==='RUB'){$exportedVariant=$row;break;}}
+    cms_check($exportedVariant!==null && abs((float)$exportedVariant['price']-500.0)<0.01 && $exportedVariant['product_slug']==='kruzhka',
+        'Variant CSV export is wrong');
+    cms_check(array_key_exists('compare_price',$exportedVariant),'Variant CSV export misses the old price column');
+
+    ShopHelper::recordFunnelEvent('product_view',array('product_id'=>1));
+    ShopHelper::recordFunnelEvent('add_to_cart',array('product_id'=>1));
+    ShopHelper::recordFunnelEvent('order_created',array('order_id'=>1));
+    $funnel=ShopHelper::funnelReport(30);
+    cms_check((int)$funnel['product_view']['sessions']===1 && (int)$funnel['order_created']['sessions']===1,
+        'Funnel events were not counted');
+    cms_check($funnel['order_created']['rate']===100.0,'Funnel conversion rate is wrong');
+
+
+    cms_check(ShopHelper::saveEmailTemplate('order','Заказ {number}','<p>Номер {number}</p>')===true,'Email template was not saved');
+    $tpl=ShopHelper::renderEmailTemplate('order',array('number'=>'42'));
+    cms_check($tpl['subject']==='Заказ 42' && $tpl['body']==='<p>Номер 42</p>','Email template placeholders are wrong');
+    cms_check(ShopHelper::resetEmailTemplate('order')===true,'Email template was not reset');
+    $tpl=ShopHelper::renderEmailTemplate('order',array('number'=>'42'));
+    cms_check($tpl['subject']==='Заказ №42','Email template reset kept the custom subject');
+
+    cms_check(ShopHelper::replyToReview($reviewId,'Спасибо за отзыв!')===true,'Review reply was not saved');
+    $review=ShopHelper::getProductReviews(1,true);
+    cms_check(!empty($review[0]['reply_html']) && strpos($review[0]['reply_html'],'Спасибо')!==false,
+        'Review reply is not exposed to the storefront');
+    cms_check(ShopHelper::replyToReview($reviewId,'')===true,'Review reply was not cleared');
+    $review=ShopHelper::getProductReviews(1,true);
+    cms_check($review[0]['reply_html']==='','Cleared review reply is still visible');
+
     $db->query("UPDATE `{$prefix}shop_promocodes` SET `used_count`=1 WHERE `code`='SALE10'");
     $db->query("INSERT INTO `{$prefix}shop_orders` (`id`,`status`,`stock_released`,`created_at`,`updated_at`,`subtotal`,`discount`,`promocode`,`delivery_price`,`total`) VALUES(3,'new',0,NOW(),NOW(),1000,100,'SALE10',0,900)");
-    $db->query("INSERT INTO `{$prefix}shop_order_items` VALUES(3,3,3,1,1000,1000)");
+    $db->query("INSERT INTO `{$prefix}shop_order_items` (`id`,`order_id`,`variant_id`,`quantity`,`price`,`total`) VALUES(3,3,3,1,1000,1000)");
+    $editError='';
+    cms_check(ShopHelper::updateOrderItems(3,array(3=>2),$editError)===true,'Order items were not updated: '.$editError);
+    cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=3")->fetchColumn()===9,
+        'Order item update did not reserve stock');
+    $edited=ShopHelper::getOrder(3);
+    cms_check(abs((float)$edited['subtotal']-2000.0)<0.01 && abs((float)$edited['total']-1900.0)<0.01,
+        'Order totals were not recalculated');
+    $editError='';
+    cms_check(ShopHelper::updateOrderItems(3,array(),$editError)===false && $editError!=='',
+        'Empty order composition was accepted');
+    cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=3")->fetchColumn()===9,
+        'Rejected order edit changed the stock');
+    cms_check(ShopHelper::updateOrderItems(3,array(3=>1))===true,'Order items were not restored');
+    cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=3")->fetchColumn()===10,
+        'Restoring order quantity did not return stock');
     cms_check(ShopHelper::setOrderStatus(3,'cancelled')===true,'Promo order was not cancelled');
     cms_check((int)$pdo->query("SELECT `used_count` FROM `{$prefix}shop_promocodes` WHERE `code`='SALE10'")->fetchColumn()===0,'Cancelled order did not free the promo redemption');
 

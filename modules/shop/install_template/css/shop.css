@@ -193,6 +193,26 @@
     font: inherit;
 }
 
+.shop-attr-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+    flex: 1 1 100%;
+    padding-top: 8px;
+    border-top: 1px solid #e3e6ea;
+}
+
+.shop-attr-group {
+    display: grid;
+    gap: 4px;
+    align-content: start;
+}
+
+.shop-attr-title {
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
 .shop-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -1088,6 +1108,27 @@
 
 .shop-review-text {
     color: #30465c;
+}
+
+.shop-review-reply {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-left: 3px solid #9fc3e3;
+    background: #f3f8fd;
+    color: #30465c;
+}
+
+.shop-review-reply strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.shop-price-input {
+    width: 110px;
+}
+
+.shop-filter-reset {
+    color: #1f5f9e;
 }
 
 .shop-review-form {

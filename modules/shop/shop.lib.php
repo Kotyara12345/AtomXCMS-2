@@ -640,26 +640,30 @@ class ShopHelper
         $carts = self::table('carts');
 
         foreach ($recipients as $recipient) {
-            $body = '<h2>Ваша корзина ждёт</h2>'
-                . '<p>' . ($recipient['name'] !== '' ? h($recipient['name']) . ', вы' : 'Вы')
-                . ' оставили товары в корзине магазина.</p>'
-                . '<table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;">'
+            $itemsTable = '<table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;">'
                 . '<tr><th>Товар</th><th>Артикул</th><th>Цена</th><th>Кол-во</th><th>Итого</th></tr>';
             foreach ($recipient['items'] as $item) {
-                $body .= '<tr><td><a href="' . h($item['url']) . '">' . h($item['product_title']) . '</a>'
+                $itemsTable .= '<tr><td><a href="' . h($item['url']) . '">' . h($item['product_title']) . '</a>'
                     . ($item['variant_title'] !== '' ? '<br /><small>' . h($item['variant_title']) . '</small>' : '')
                     . '</td><td>' . h($item['sku']) . '</td><td>'
                     . h(self::formatPrice($item['price'], $code)) . '</td><td>'
                     . (int)$item['quantity'] . '</td><td>'
                     . h(self::formatPrice($item['total'], $code)) . '</td></tr>';
             }
-            $body .= '</table><p>Сумма: <strong>' . h(self::formatPrice($recipient['total'], $code))
-                . '</strong></p><p><a href="' . h($cartUrl) . '">Вернуться в корзину</a></p>';
+            $itemsTable .= '</table>';
+            $name = ($recipient['name'] !== '' ? h($recipient['name']) . ', вы' : 'Вы')
+                . ' оставили товары в корзине магазина.';
+            $mail = self::renderEmailTemplate('cart_reminder', array(
+                'name' => $name,
+                'items' => $itemsTable,
+                'total' => h(self::formatPrice($recipient['total'], $code)),
+                'cart_url' => h($cartUrl),
+            ));
 
             try {
                 $mailer = new AtmMail($templatePath);
-                $mailer->prepare($body);
-                if (@$mailer->sendMail($recipient['email'], 'Ваша корзина ждёт', array())) {
+                $mailer->prepare($mail['body']);
+                if (@$mailer->sendMail($recipient['email'], $mail['subject'], array())) {
                     self::db()->query("UPDATE `{$carts}` SET `reminded_at` = NOW()
                         WHERE `user_id` = " . (int)$recipient['user_id']);
                 }
@@ -721,6 +725,9 @@ class ShopHelper
         self::saveCart($cart);
 
         $message = $newQty > $current ? 'Товар добавлен в корзину.' : 'В корзине уже максимальное доступное количество.';
+        if ($newQty > $current) {
+            self::recordFunnelEvent('add_to_cart', array('product_id' => (int)$row['product_id']));
+        }
         return array('ok' => true, 'message' => $message, 'quantity' => $newQty);
     }
 
@@ -1045,6 +1052,19 @@ class ShopHelper
         $attributeValues = self::table('attribute_values');
         $currency = isset($filters['currency']) ? self::currency($filters['currency']) : self::activeCurrency();
         $code = self::esc($currency['code']);
+        $variants = self::table('variants');
+
+        $minSql = "(SELECT MIN(vp.`price`) FROM `" . self::table('variants') . "` v
+            INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
+            WHERE v.`product_id` = p.`id` AND v.`active` = 1
+                AND vp.`currency_code` = '{$code}' AND vp.`price` > 0)";
+        $compareSql = "(SELECT NULLIF(vp.`compare_price`, 0) FROM `" . self::table('variants') . "` v
+            INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
+            WHERE v.`product_id` = p.`id` AND v.`active` = 1
+                AND vp.`currency_code` = '{$code}' AND vp.`price` > 0
+            ORDER BY vp.`price` ASC, v.`id` ASC LIMIT 1)";
+        $gallerySql = "(SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
+            WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1)";
 
         $where = array();
         if (!isset($filters['active_only']) || !empty($filters['active_only'])) {
@@ -1084,6 +1104,14 @@ class ShopHelper
         if (!empty($filters['featured'])) {
             $where[] = 'p.`featured` = 1';
         }
+        $priceMin = isset($filters['price_min']) ? (float)$filters['price_min'] : 0.0;
+        $priceMax = isset($filters['price_max']) ? (float)$filters['price_max'] : 0.0;
+        if ($priceMin > 0) $where[] = "{$minSql} >= " . number_format($priceMin, 2, '.', '');
+        if ($priceMax > 0) $where[] = "{$minSql} <= " . number_format($priceMax, 2, '.', '');
+        if (!empty($filters['in_stock'])) {
+            $where[] = "EXISTS (SELECT 1 FROM `{$variants}` v2
+                WHERE v2.`product_id` = p.`id` AND v2.`active` = 1 AND v2.`stock` > 0)";
+        }
         $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
         $page = max(1, (int)(isset($filters['page']) ? $filters['page'] : 1));
@@ -1097,18 +1125,6 @@ class ShopHelper
         if ($sort === 'price_desc') $orderSql = 'min_price IS NULL ASC, min_price DESC, p.`id` DESC';
         if ($sort === 'new') $orderSql = 'p.`created_at` DESC, p.`id` DESC';
         if ($sort === 'title') $orderSql = 'p.`title` ASC, p.`id` DESC';
-
-        $minSql = "(SELECT MIN(vp.`price`) FROM `" . self::table('variants') . "` v
-            INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
-            WHERE v.`product_id` = p.`id` AND v.`active` = 1
-                AND vp.`currency_code` = '{$code}' AND vp.`price` > 0)";
-        $compareSql = "(SELECT NULLIF(vp.`compare_price`, 0) FROM `" . self::table('variants') . "` v
-            INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
-            WHERE v.`product_id` = p.`id` AND v.`active` = 1
-                AND vp.`currency_code` = '{$code}' AND vp.`price` > 0
-            ORDER BY vp.`price` ASC, v.`id` ASC LIMIT 1)";
-        $gallerySql = "(SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
-            WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1)";
 
         $countRows = self::db()->query("SELECT COUNT(*) AS cnt FROM `{$products}` p" . $whereSql);
         $total = !empty($countRows[0]['cnt']) ? (int)$countRows[0]['cnt'] : 0;
@@ -1754,6 +1770,53 @@ class ShopHelper
         return $groups;
     }
 
+    /**
+     * Attribute values that actually occur in the products of the given
+     * categories. Used by the catalogue sidebar filters.
+     */
+    public static function getCatalogAttributeGroups($categoryIds = array())
+    {
+        $pav = self::table('product_attribute_values');
+        $values = self::table('attribute_values');
+        $attributes = self::table('attributes');
+        $products = self::table('products');
+
+        $where = "p.`active` = 1 AND av.`active` = 1 AND a.`active` = 1";
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$categoryIds))));
+        if ($ids) $where .= ' AND p.`category_id` IN (' . implode(',', $ids) . ')';
+
+        $rows = self::db()->query("SELECT av.`id` AS value_id, av.`attribute_id`,
+                av.`title` AS value_title, a.`title` AS attribute_title,
+                a.`position` AS attribute_position, av.`position` AS value_position,
+                COUNT(DISTINCT p.`id`) AS product_count
+            FROM `{$pav}` pav
+            INNER JOIN `{$values}` av ON av.`id` = pav.`attribute_value_id`
+            INNER JOIN `{$attributes}` a ON a.`id` = av.`attribute_id`
+            INNER JOIN `{$products}` p ON p.`id` = pav.`product_id`
+            WHERE {$where}
+            GROUP BY av.`id`, av.`attribute_id`, av.`title`, a.`title`,
+                a.`position`, av.`position`
+            ORDER BY a.`position` ASC, a.`id` ASC, av.`position` ASC, av.`id` ASC");
+
+        $groups = array();
+        foreach ($rows as $row) {
+            $attributeId = (int)$row['attribute_id'];
+            if (!isset($groups[$attributeId])) {
+                $groups[$attributeId] = array(
+                    'id' => $attributeId,
+                    'title' => $row['attribute_title'],
+                    'values' => array(),
+                );
+            }
+            $groups[$attributeId]['values'][] = array(
+                'id' => (int)$row['value_id'],
+                'title' => $row['value_title'],
+                'count' => (int)$row['product_count'],
+            );
+        }
+        return $groups;
+    }
+
     public static function syncProductAttributeValues($productId, $valueIds)
     {
         $productId = (int)$productId;
@@ -1983,6 +2046,152 @@ class ShopHelper
         return $rows;
     }
 
+    /**
+     * Replace the order lines and keep the warehouse in sync. Existing lines
+     * keep their captured price, new lines use the current price.
+     *
+     * @param array $quantities variant_id => quantity (0 removes the line)
+     */
+    public static function updateOrderItems($orderId, $quantities, &$error = null)
+    {
+        $orderId = (int)$orderId;
+        $error = '';
+        if ($orderId < 1) {
+            $error = 'Заказ не найден.';
+            return false;
+        }
+
+        $orders = self::table('orders');
+        $itemsTable = self::table('order_items');
+        $variants = self::table('variants');
+        $products = self::table('products');
+        $prices = self::table('variant_prices');
+
+        $desired = array();
+        foreach ((array)$quantities as $variantId => $qty) {
+            $variantId = (int)$variantId;
+            $qty = (int)$qty;
+            if ($variantId < 1 || $qty < 0) continue;
+            if ($qty > 999) $qty = 999;
+            $desired[$variantId] = (isset($desired[$variantId]) ? $desired[$variantId] : 0) + $qty;
+        }
+
+        if (!self::ensureOrderStatusHistoryTable()) {
+            $error = 'Не удалось подготовить историю заказов.';
+            return false;
+        }
+
+        try {
+            self::db()->query('START TRANSACTION');
+            $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
+            $order = $rows[0] ?? null;
+            if (!$order) throw new RuntimeException('Заказ не найден.');
+            if (!empty($order['stock_released']) || $order['status'] === 'cancelled') {
+                throw new RuntimeException('Отменённый заказ нельзя редактировать.');
+            }
+
+            $current = array();
+            $itemRows = self::db()->query("SELECT * FROM `{$itemsTable}` WHERE `order_id` = {$orderId} ORDER BY `id` ASC");
+            foreach ($itemRows as $item) {
+                $variantId = (int)$item['variant_id'];
+                if (!isset($current[$variantId])) {
+                    $current[$variantId] = $item;
+                    $current[$variantId]['quantity'] = 0;
+                }
+                $current[$variantId]['quantity'] += (int)$item['quantity'];
+            }
+
+            $allIds = array_values(array_unique(array_merge(array_keys($current), array_keys($desired))));
+            foreach ($allIds as $variantId) {
+                $oldQty = isset($current[$variantId]) ? (int)$current[$variantId]['quantity'] : 0;
+                $newQty = isset($desired[$variantId]) ? (int)$desired[$variantId] : 0;
+                $delta = $newQty - $oldQty;
+                if ($delta > 0) {
+                    $variantRows = self::db()->query("SELECT v.`id`, v.`stock`, v.`active` AS variant_active,
+                            p.`active` AS product_active
+                        FROM `{$variants}` v
+                        INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
+                        WHERE v.`id` = {$variantId} FOR UPDATE");
+                    $variant = $variantRows[0] ?? null;
+                    if (!$variant || !$variant['variant_active'] || !$variant['product_active']) {
+                        throw new RuntimeException('Позиция недоступна для добавления.');
+                    }
+                    if ((int)$variant['stock'] < $delta) {
+                        throw new RuntimeException('Недостаточно остатка для добавления позиции.');
+                    }
+                    self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` - {$delta} WHERE `id` = {$variantId}");
+                } elseif ($delta < 0) {
+                    self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` + " . abs($delta) . " WHERE `id` = {$variantId}");
+                }
+            }
+
+            self::db()->query("DELETE FROM `{$itemsTable}` WHERE `order_id` = {$orderId}");
+            $subtotal = 0.0;
+            $lines = 0;
+            foreach ($desired as $variantId => $qty) {
+                if ($qty < 1) continue;
+                if (isset($current[$variantId])) {
+                    $line = $current[$variantId];
+                    $price = (float)$line['price'];
+                    $productId = (int)$line['product_id'];
+                    $productTitle = (string)$line['product_title'];
+                    $variantTitle = (string)$line['variant_title'];
+                    $sku = (string)$line['sku'];
+                } else {
+                    $code = self::esc($order['currency_code']);
+                    $variantRows = self::db()->query("SELECT v.`id`, v.`title` AS variant_title, v.`sku`,
+                            p.`id` AS product_id, p.`title` AS product_title, vp.`price`
+                        FROM `{$variants}` v
+                        INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
+                        INNER JOIN `{$prices}` vp ON vp.`variant_id` = v.`id`
+                            AND vp.`currency_code` = '{$code}'
+                        WHERE v.`id` = {$variantId} LIMIT 1");
+                    $variant = $variantRows[0] ?? null;
+                    if (!$variant) throw new RuntimeException('У выбранной позиции нет цены в валюте заказа.');
+                    $price = (float)$variant['price'];
+                    $productId = (int)$variant['product_id'];
+                    $productTitle = (string)$variant['product_title'];
+                    $variantTitle = (string)$variant['variant_title'];
+                    $sku = (string)$variant['sku'];
+                }
+                $total = $price * $qty;
+                $subtotal += $total;
+                $lines++;
+                self::db()->save('shop_order_items', array(
+                    'order_id' => $orderId,
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'product_title' => $productTitle,
+                    'variant_title' => $variantTitle,
+                    'sku' => $sku,
+                    'price' => $price,
+                    'quantity' => $qty,
+                    'total' => $total,
+                ));
+            }
+            if ($lines < 1) throw new RuntimeException('В заказе должна остаться хотя бы одна позиция.');
+
+            $discount = isset($order['discount']) ? (float)$order['discount'] : 0.0;
+            if ($discount > $subtotal) $discount = $subtotal;
+            $delivery = (float)$order['delivery_price'];
+            $total = $subtotal - $discount + $delivery;
+            $now = date('Y-m-d H:i:s');
+            self::db()->query("UPDATE `{$orders}` SET `subtotal` = " . number_format($subtotal, 2, '.', '')
+                . ", `discount` = " . number_format($discount, 2, '.', '')
+                . ", `total` = " . number_format($total, 2, '.', '')
+                . ", `updated_at` = '" . self::esc($now) . "' WHERE `id` = {$orderId}");
+
+            self::logOrderStatus($orderId, (string)$order['status'], 'Состав заказа изменён администратором.');
+            self::db()->query('COMMIT');
+            return true;
+        } catch (Throwable $e) {
+            try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
+            $error = $e instanceof RuntimeException ? $e->getMessage() : 'Не удалось изменить состав заказа.';
+            error_log('Shop order items update failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     public static function getUserOrders($userId)
     {
         $orders = self::table('orders');
@@ -2178,53 +2387,234 @@ class ShopHelper
         }
     }
 
+    /* ---------------------------------------------------------------------
+     * Editable email templates
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $emailTemplatesReady = false;
+
+    public static function ensureEmailTemplatesTable()
+    {
+        if (self::$emailTemplatesReady) return true;
+
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('email_templates') . "` (
+                `code` VARCHAR(64) NOT NULL,
+                `subject` VARCHAR(255) NOT NULL DEFAULT '',
+                `body` MEDIUMTEXT,
+                `updated_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`code`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$emailTemplatesReady = true;
+        return true;
+    }
+
+    /**
+     * Built-in letters. Placeholders in braces are replaced by renderEmailTemplate().
+     */
+    public static function defaultEmailTemplates()
+    {
+        return array(
+            'order' => array(
+                'title' => 'Заказ покупателю и администратору',
+                'description' => 'Письмо после оформления заказа и при смене статуса.',
+                'subject' => 'Заказ №{number}',
+                'placeholders' => '{number}, {date}, {status}, {link}, {tracking}, {customer}, {delivery}, {items}, {totals}, {comment}',
+                'body' => '<h2>Заказ №{number}</h2>'
+                    . '<p>Дата: {date}<br />Статус: {status}</p>'
+                    . '{link}{tracking}'
+                    . '<p>{customer}</p>'
+                    . '<p>{delivery}</p>'
+                    . '{items}'
+                    . '<p>{totals}</p>'
+                    . '{comment}',
+            ),
+            'cart_reminder' => array(
+                'title' => 'Напоминание о корзине',
+                'description' => 'Письмо покупателю, который оставил товары в корзине.',
+                'subject' => 'Ваша корзина ждёт',
+                'placeholders' => '{name}, {items}, {total}, {cart_url}',
+                'body' => '<h2>Ваша корзина ждёт</h2>'
+                    . '<p>{name}</p>'
+                    . '{items}'
+                    . '<p>Сумма: <strong>{total}</strong></p>'
+                    . '<p><a href="{cart_url}">Вернуться в корзину</a></p>',
+            ),
+            'stock_notification' => array(
+                'title' => 'Товар снова в наличии',
+                'description' => 'Письмо подписчику, который ждал поступления товара.',
+                'subject' => 'Товар снова в наличии',
+                'placeholders' => '{product}, {product_url}',
+                'body' => '<h2>Товар снова в наличии</h2>'
+                    . '<p>{product} снова доступен для заказа.</p>'
+                    . '<p><a href="{product_url}">Открыть товар на сайте</a></p>',
+            ),
+            'low_stock' => array(
+                'title' => 'Низкий остаток на складе',
+                'description' => 'Служебное письмо администратору о заканчивающихся вариантах.',
+                'subject' => 'Низкий остаток на складе',
+                'placeholders' => '{threshold}, {items}',
+                'body' => '<h2>Низкий остаток на складе</h2>'
+                    . '<p>Порог уведомления: {threshold} шт.</p>'
+                    . '{items}',
+            ),
+            'review_reply' => array(
+                'title' => 'Ответ на отзыв',
+                'description' => 'Письмо автору отзыва после ответа администратора.',
+                'subject' => 'Ответ на ваш отзыв',
+                'placeholders' => '{name}, {product}, {review}, {reply}, {product_url}',
+                'body' => '<h2>Ответ на отзыв</h2>'
+                    . '<p>{name}, здравствуйте!</p>'
+                    . '<p>Магазин ответил на ваш отзыв о товаре «{product}».</p>'
+                    . '<p>Ваш отзыв:<br />{review}</p>'
+                    . '<p><strong>Ответ магазина:</strong><br />{reply}</p>'
+                    . '<p><a href="{product_url}">Открыть страницу товара</a></p>',
+            ),
+        );
+    }
+
+    /**
+     * Defaults merged with the rows saved by the administrator.
+     */
+    public static function emailTemplates()
+    {
+        $templates = self::defaultEmailTemplates();
+        if (!self::ensureEmailTemplatesTable()) return $templates;
+
+        $rows = self::db()->query("SELECT * FROM `" . self::table('email_templates') . "`");
+        foreach ($rows as $row) {
+            $code = (string)$row['code'];
+            if (!isset($templates[$code])) continue;
+            $templates[$code]['subject'] = (string)$row['subject'];
+            $templates[$code]['body'] = (string)$row['body'];
+            $templates[$code]['custom'] = true;
+        }
+        return $templates;
+    }
+
+    public static function emailTemplate($code)
+    {
+        $templates = self::emailTemplates();
+        return isset($templates[$code]) ? $templates[$code] : $templates['order'];
+    }
+
+    public static function saveEmailTemplate($code, $subject, $body)
+    {
+        $defaults = self::defaultEmailTemplates();
+        if (!isset($defaults[$code]) || !self::ensureEmailTemplatesTable()) return false;
+
+        $subject = trim((string)$subject);
+        if ($subject === '') $subject = $defaults[$code]['subject'];
+        $body = (string)$body;
+        if (trim(strip_tags($body)) === '') $body = $defaults[$code]['body'];
+        try {
+            $table = self::table('email_templates');
+            self::db()->query("INSERT INTO `{$table}` (`code`, `subject`, `body`, `updated_at`)
+                VALUES ('" . self::esc($code) . "', '" . self::esc(mb_substr($subject, 0, 255)) . "',
+                    '" . self::esc($body) . "', NOW())
+                ON DUPLICATE KEY UPDATE `subject` = VALUES(`subject`), `body` = VALUES(`body`),
+                    `updated_at` = VALUES(`updated_at`)");
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop email template save failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Drop the custom row so the built-in letter is used again.
+     */
+    public static function resetEmailTemplate($code)
+    {
+        if (!isset(self::defaultEmailTemplates()[$code]) || !self::ensureEmailTemplatesTable()) {
+            return false;
+        }
+        try {
+            self::db()->query("DELETE FROM `" . self::table('email_templates') . "`
+                WHERE `code` = '" . self::esc($code) . "'");
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * @return array subject, body with {placeholders} replaced.
+     */
+    public static function renderEmailTemplate($code, $vars)
+    {
+        $template = self::emailTemplate($code);
+        $replace = array();
+        foreach ((array)$vars as $key => $value) {
+            $replace['{' . $key . '}'] = (string)$value;
+        }
+        return array(
+            'subject' => strtr((string)$template['subject'], $replace),
+            'body' => strtr((string)$template['body'], $replace),
+        );
+    }
+
     public static function sendOrderEmails($order, $items, $recipient = null, $force = false)
     {
-        $body = '<h2>Заказ №' . h(self::orderNumber($order['id'])) . '</h2>'
-            . '<p>Дата: ' . h(self::formatDate($order['created_at'])) . '</p>'
-            . '<p>Статус: ' . h(self::statusLabel($order['status'])) . '</p>';
         $orderLink = !empty($order['access_token'])
             ? self::absoluteUrl(get_url('/shop/order/' . (int)$order['id'] . '/' . $order['access_token'] . '/'))
             : '';
-        if ($orderLink !== '') {
-            $body .= '<p><a href="' . h($orderLink) . '">Открыть заказ на сайте</a></p>';
-        }
+        $link = $orderLink !== ''
+            ? '<p><a href="' . h($orderLink) . '">Открыть заказ на сайте</a></p>' : '';
+        $tracking = '';
         if (!empty($order['tracking_number'])) {
-            $body .= '<p>Отслеживание: ' . h($order['tracking_number']);
+            $tracking = '<p>Отслеживание: ' . h($order['tracking_number']);
             if (!empty($order['tracking_url'])) {
-                $body .= ' — <a href="' . h($order['tracking_url']) . '">открыть трек</a>';
+                $tracking .= ' — <a href="' . h($order['tracking_url']) . '">открыть трек</a>';
             }
-            $body .= '</p>';
+            $tracking .= '</p>';
         }
-        $body .= '<p>Покупатель: ' . h($order['customer_name']) . '<br />'
+        $customer = 'Покупатель: ' . h($order['customer_name']) . '<br />'
             . 'E-mail: ' . h($order['email']) . '<br />'
-            . 'Телефон: ' . h($order['phone']) . '</p>'
-            . '<p>Доставка: ' . h($order['delivery_title']) . '<br />'
+            . 'Телефон: ' . h($order['phone']);
+        $delivery = 'Доставка: ' . h($order['delivery_title']) . '<br />'
             . 'Адрес: ' . nl2br(h($order['address'])) . '<br />'
-            . 'Оплата: ' . h($order['payment_title']) . '</p>'
-            . '<table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;">'
+            . 'Оплата: ' . h($order['payment_title']);
+        $itemsTable = '<table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;">'
             . '<tr><th>Товар</th><th>Артикул</th><th>Цена</th><th>Кол-во</th><th>Итого</th></tr>';
         foreach ($items as $item) {
-            $body .= '<tr><td>' . h($item['product_title'])
+            $itemsTable .= '<tr><td>' . h($item['product_title'])
                 . ($item['variant_title'] !== '' ? '<br /><small>' . h($item['variant_title']) . '</small>' : '')
                 . '</td><td>' . h($item['sku']) . '</td><td>'
                 . h(self::formatPrice($item['price'], $order['currency_code'])) . '</td><td>'
                 . (int)$item['quantity'] . '</td><td>'
                 . h(self::formatPrice($item['total'], $order['currency_code'])) . '</td></tr>';
         }
-        $body .= '</table>'
-            . '<p>Товары: ' . h(self::formatPrice($order['subtotal'], $order['currency_code'])) . '<br />';
+        $itemsTable .= '</table>';
+        $totals = 'Товары: ' . h(self::formatPrice($order['subtotal'], $order['currency_code'])) . '<br />';
         if (!empty($order['discount'])) {
-            $body .= 'Скидка' . (!empty($order['promocode']) ? ' по промокоду ' . h($order['promocode']) : '')
+            $totals .= 'Скидка' . (!empty($order['promocode']) ? ' по промокоду ' . h($order['promocode']) : '')
                 . ': −' . h(self::formatPrice($order['discount'], $order['currency_code'])) . '<br />';
         }
-        $body .= 'Доставка: ' . h(self::formatPrice($order['delivery_price'], $order['currency_code'])) . '<br />'
-            . '<strong>Итого: ' . h(self::formatPrice($order['total'], $order['currency_code'])) . '</strong></p>';
-        if (!empty($order['comment'])) {
-            $body .= '<p>Комментарий: ' . nl2br(h($order['comment'])) . '</p>';
-        }
+        $totals .= 'Доставка: ' . h(self::formatPrice($order['delivery_price'], $order['currency_code'])) . '<br />'
+            . '<strong>Итого: ' . h(self::formatPrice($order['total'], $order['currency_code'])) . '</strong>';
+        $comment = !empty($order['comment'])
+            ? '<p>Комментарий: ' . nl2br(h($order['comment'])) . '</p>' : '';
 
-        $subject = 'Заказ №' . self::orderNumber($order['id']);
+        $mail = self::renderEmailTemplate('order', array(
+            'number' => self::orderNumber($order['id']),
+            'date' => self::formatDate($order['created_at']),
+            'status' => self::statusLabel($order['status']),
+            'link' => $link,
+            'tracking' => $tracking,
+            'customer' => $customer,
+            'delivery' => $delivery,
+            'items' => $itemsTable,
+            'totals' => $totals,
+            'comment' => $comment,
+        ));
+        $body = $mail['body'];
+        $subject = $mail['subject'];
         $templatePath = ROOT . '/sys/settings/email_templates/';
 
         $notify = trim((string)self::cfg('notify_email', ''));
@@ -2393,18 +2783,21 @@ class ShopHelper
             if ($notify === '') $notify = trim((string)Config::read('admin_email'));
             if ($notify === '') return true;
 
-            $body = '<h2>Товары заканчиваются</h2>'
-                . '<p>Порог остатка: ' . $threshold . ' шт.</p><ul>';
+            $itemsHtml = '<ul>';
             foreach ($rows as $row) {
-                $body .= '<li>' . h($row['product_title']) . ' — ' . h($row['title'])
+                $itemsHtml .= '<li>' . h($row['product_title']) . ' — ' . h($row['title'])
                     . ($row['sku'] !== '' ? ' (' . h($row['sku']) . ')' : '')
                     . ': <strong>' . (int)$row['stock'] . '</strong></li>';
             }
-            $body .= '</ul>';
+            $itemsHtml .= '</ul>';
+            $mail = self::renderEmailTemplate('low_stock', array(
+                'threshold' => (int)$threshold,
+                'items' => $itemsHtml,
+            ));
 
             $mailer = new AtmMail(ROOT . '/sys/settings/email_templates/');
-            $mailer->prepare($body);
-            if (!@$mailer->sendMail($notify, 'Товары заканчиваются', array())) return false;
+            $mailer->prepare($mail['body']);
+            if (!@$mailer->sendMail($notify, $mail['subject'], array())) return false;
 
             $ids = array_map('intval', array_column($rows, 'id'));
             self::db()->query("UPDATE `{$variants}` SET `low_stock_notified` = 1
@@ -2438,6 +2831,8 @@ class ShopHelper
                 `rating` TINYINT UNSIGNED NOT NULL DEFAULT 0,
                 `text` TEXT,
                 `active` TINYINT(1) NOT NULL DEFAULT 0,
+                `reply` TEXT,
+                `replied_at` DATETIME DEFAULT NULL,
                 `created_at` DATETIME DEFAULT NULL,
                 PRIMARY KEY (`id`),
                 KEY `product_active` (`product_id`, `active`)
@@ -2448,6 +2843,94 @@ class ShopHelper
 
         self::$reviewsTableReady = true;
         return true;
+    }
+
+    /** @var bool */
+    private static $reviewReplyReady = false;
+
+    /**
+     * Older installations have no reply columns: add them once.
+     */
+    public static function ensureReviewReplyColumns()
+    {
+        if (!self::ensureReviewsTable()) return false;
+        if (self::$reviewReplyReady) return true;
+
+        $table = self::table('reviews');
+        try {
+            self::db()->query("SELECT `reply` FROM `{$table}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$table}`
+                    ADD COLUMN `reply` TEXT NULL,
+                    ADD COLUMN `replied_at` DATETIME DEFAULT NULL");
+            } catch (Throwable $alterError) {
+                return false;
+            }
+        }
+
+        self::$reviewReplyReady = true;
+        return true;
+    }
+
+    public static function replyToReview($reviewId, $reply)
+    {
+        $reviewId = (int)$reviewId;
+        if ($reviewId < 1) return false;
+        if (!self::ensureReviewsTable() || !self::ensureReviewReplyColumns()) return false;
+
+        $reply = trim((string)$reply);
+        $reply = mb_substr($reply, 0, 5000);
+        try {
+            $table = self::table('reviews');
+            $repliedAt = $reply === '' ? 'NULL' : 'NOW()';
+            self::db()->query("UPDATE `{$table}` SET `reply` = '" . self::esc($reply) . "',
+                `replied_at` = {$repliedAt} WHERE `id` = {$reviewId}");
+        } catch (Throwable $e) {
+            error_log('Shop review reply save failed: ' . $e->getMessage());
+            return false;
+        }
+
+        if ($reply !== '') self::sendReviewReplyEmail($reviewId);
+        return true;
+    }
+
+    public static function sendReviewReplyEmail($reviewId)
+    {
+        $reviewId = (int)$reviewId;
+        if ($reviewId < 1 || !self::ensureReviewsTable()) return false;
+
+        $rows = self::db()->query("SELECT r.*, p.`title` AS product_title,
+                p.`clean_url_title` AS product_slug
+            FROM `" . self::table('reviews') . "` r
+            LEFT JOIN `" . self::table('products') . "` p ON p.`id` = r.`product_id`
+            WHERE r.`id` = {$reviewId} LIMIT 1");
+        $review = isset($rows[0]) ? $rows[0] : null;
+        if (!$review || trim((string)$review['reply']) === ''
+            || !filter_var($review['email'], FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        $productUrl = (int)$review['product_id'] > 0
+            ? self::absoluteUrl(self::productUrl(array(
+                'id' => (int)$review['product_id'],
+                'clean_url_title' => (string)$review['product_slug'],
+            ))) : '';
+        $mail = self::renderEmailTemplate('review_reply', array(
+            'name' => h($review['name']),
+            'product' => h($review['product_title']),
+            'review' => nl2br(h($review['text'])),
+            'reply' => nl2br(h($review['reply'])),
+            'product_url' => h($productUrl),
+        ));
+        try {
+            $mailer = new AtmMail(ROOT . '/sys/settings/email_templates/');
+            $mailer->prepare($mail['body']);
+            return @$mailer->sendMail($review['email'], $mail['subject'], array());
+        } catch (Throwable $e) {
+            error_log('Shop review reply email failed for review ' . $reviewId);
+            return false;
+        }
     }
 
     public static function ratingValid($rating)
@@ -2504,6 +2987,8 @@ class ShopHelper
             $row['created_at_formatted'] = self::formatDate($row['created_at']);
             $row['rating_stars'] = str_repeat('★', $row['rating']);
             $row['text_html'] = nl2br(h((string)$row['text']));
+            $row['reply'] = isset($row['reply']) ? (string)$row['reply'] : '';
+            $row['reply_html'] = $row['reply'] !== '' ? nl2br(h($row['reply'])) : '';
         }
         unset($row);
         return $rows;
@@ -2560,6 +3045,9 @@ class ShopHelper
             $row['rating'] = (int)$row['rating'];
             $row['rating_stars'] = str_repeat('★', $row['rating']);
             $row['created_at_formatted'] = self::formatDate($row['created_at']);
+            $row['reply'] = isset($row['reply']) ? (string)$row['reply'] : '';
+            $row['replied_at_formatted'] = !empty($row['replied_at'])
+                ? self::formatDate($row['replied_at']) : '';
             if ($row['product_id'] > 0) {
                 $row['product_url'] = self::productUrl(array(
                     'id' => $row['product_id'],
@@ -2676,10 +3164,12 @@ class ShopHelper
                 $productUrl = self::absoluteUrl(self::productUrl(array('id' => $productId, 'clean_url_title' => '')));
                 try {
                     $mailer = new AtmMail($templatePath);
-                    $mailer->prepare('<h2>Товар снова в наличии</h2>'
-                        . '<p>«' . h($row['title']) . '» снова доступен для заказа.</p>'
-                        . '<p><a href="' . h($productUrl) . '">Открыть товар на сайте</a></p>');
-                    if (@$mailer->sendMail($row['email'], 'Товар снова в наличии', array())) {
+                    $mail = self::renderEmailTemplate('stock_notification', array(
+                        'product' => '«' . h($row['title']) . '»',
+                        'product_url' => h($productUrl),
+                    ));
+                    $mailer->prepare($mail['body']);
+                    if (@$mailer->sendMail($row['email'], $mail['subject'], array())) {
                         self::db()->query("UPDATE `{$subscriptions}` SET `notified` = 1
                             WHERE `id` = " . (int)$row['id']);
                     }
@@ -2798,6 +3288,108 @@ class ShopHelper
     }
 
     const RECENT_KEY = 'shop_recently_viewed';
+
+    /* ---------------------------------------------------------------------
+     * Funnel analytics
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $funnelTableReady = false;
+
+    public static function ensureFunnelTable()
+    {
+        if (self::$funnelTableReady) return true;
+
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('funnel_events') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `event` VARCHAR(32) NOT NULL DEFAULT '',
+                `session_key` VARCHAR(64) NOT NULL DEFAULT '',
+                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `product_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `event_created` (`event`, `created_at`),
+                KEY `session_key` (`session_key`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$funnelTableReady = true;
+        return true;
+    }
+
+    /**
+     * Request-driven funnel counter. Failures never break a storefront page.
+     */
+    public static function recordFunnelEvent($event, $data = array())
+    {
+        $event = preg_replace('/[^a-z_]/', '', strtolower((string)$event));
+        if ($event === '' || !self::ensureFunnelTable()) return false;
+
+        $data = (array)$data;
+        $session = session_id();
+        if ($session === '') $session = 'anon';
+        try {
+            self::db()->save('shop_funnel_events', array(
+                'event' => $event,
+                'session_key' => substr($session, 0, 64),
+                'user_id' => (int)(isset($data['user_id']) ? $data['user_id'] : 0),
+                'product_id' => (int)(isset($data['product_id']) ? $data['product_id'] : 0),
+                'order_id' => (int)(isset($data['order_id']) ? $data['order_id'] : 0),
+                'created_at' => date('Y-m-d H:i:s'),
+            ));
+            if (mt_rand(1, 100) === 1) {
+                self::db()->query("DELETE FROM `" . self::table('funnel_events') . "`
+                    WHERE `created_at` < DATE_SUB(NOW(), INTERVAL 180 DAY)");
+            }
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop funnel event failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * @return array ordered funnel steps with unique sessions and rates.
+     */
+    public static function funnelReport($days = 30)
+    {
+        $days = max(1, min(365, (int)$days));
+        $steps = array(
+            'product_view' => 'Просмотры товаров',
+            'add_to_cart' => 'Добавили в корзину',
+            'checkout_start' => 'Начали оформление',
+            'order_created' => 'Оформили заказ',
+        );
+        $report = array();
+        foreach ($steps as $event => $title) {
+            $report[$event] = array('event' => $event, 'title' => $title, 'sessions' => 0, 'rate' => 0.0);
+        }
+        if (!self::ensureFunnelTable()) return $report;
+
+        $since = date('Y-m-d H:i:s', strtotime('-' . ($days - 1) . ' days'));
+        $rows = self::db()->query("SELECT `event`, COUNT(DISTINCT `session_key`) AS sessions
+            FROM `" . self::table('funnel_events') . "`
+            WHERE `created_at` >= '" . self::esc($since) . "'
+            GROUP BY `event`");
+        foreach ($rows as $row) {
+            $event = (string)$row['event'];
+            if (isset($report[$event])) $report[$event]['sessions'] = (int)$row['sessions'];
+        }
+
+        $first = $report['product_view']['sessions'];
+        $previous = 0;
+        foreach ($report as &$step) {
+            if ($first > 0) $step['rate'] = round($step['sessions'] / $first * 100, 1);
+            $step['step_rate'] = $previous > 0 ? round($step['sessions'] / $previous * 100, 1) : 0.0;
+            $previous = $step['sessions'];
+        }
+        unset($step);
+        return $report;
+    }
 
     public static function recordProductView($productId)
     {
@@ -2980,6 +3572,97 @@ class ShopHelper
     /* ---------------------------------------------------------------------
      * Product CSV import
      * ------------------------------------------------------------------ */
+
+    /**
+     * Product rows in the same column shape as importProductsCsv().
+     */
+    public static function exportProductsCsv()
+    {
+        $currency = self::activeCurrency();
+        $code = self::esc($currency['code']);
+        $products = self::table('products');
+        $categories = self::table('categories');
+        $variants = self::table('variants');
+        $prices = self::table('variant_prices');
+
+        $rows = self::db()->query("SELECT p.`id`, p.`title`, p.`clean_url_title`, p.`short_description`,
+                p.`description`, p.`active`, p.`featured`, p.`meta_title`, p.`meta_description`,
+                p.`meta_keywords`, c.`title` AS category_title,
+                (SELECT MIN(vp.`price`) FROM `{$variants}` v
+                    INNER JOIN `{$prices}` vp ON vp.`variant_id` = v.`id`
+                    WHERE v.`product_id` = p.`id` AND v.`active` = 1
+                        AND vp.`currency_code` = '{$code}' AND vp.`price` > 0) AS min_price,
+                (SELECT v.`sku` FROM `{$variants}` v
+                    INNER JOIN `{$prices}` vp ON vp.`variant_id` = v.`id`
+                    WHERE v.`product_id` = p.`id` AND v.`active` = 1
+                        AND vp.`currency_code` = '{$code}'
+                    ORDER BY vp.`price` ASC, v.`id` ASC LIMIT 1) AS sku,
+                (SELECT COALESCE(SUM(v.`stock`), 0) FROM `{$variants}` v
+                    WHERE v.`product_id` = p.`id` AND v.`active` = 1) AS stock_total
+            FROM `{$products}` p
+            LEFT JOIN `{$categories}` c ON c.`id` = p.`category_id`
+            ORDER BY p.`id` ASC");
+
+        $items = array();
+        foreach ($rows as $row) {
+            $items[] = array(
+                'title' => (string)$row['title'],
+                'slug' => (string)$row['clean_url_title'],
+                'category' => (string)$row['category_title'],
+                'short_description' => (string)$row['short_description'],
+                'description' => (string)$row['description'],
+                'sku' => (string)$row['sku'],
+                'price' => (float)$row['min_price'] > 0
+                    ? number_format((float)$row['min_price'], 2, '.', '') : '',
+                'stock' => (int)$row['stock_total'],
+                'active' => (int)!empty($row['active']),
+                'featured' => (int)!empty($row['featured']),
+                'meta_title' => (string)$row['meta_title'],
+                'meta_description' => (string)$row['meta_description'],
+                'meta_keywords' => (string)$row['meta_keywords'],
+            );
+        }
+        return $items;
+    }
+
+    /**
+     * One row per variant and currency. Unlike exportProductsCsv() it keeps
+     * every variant, so prices and stock can be edited in a spreadsheet.
+     */
+    public static function exportVariantsCsv()
+    {
+        $products = self::table('products');
+        $variants = self::table('variants');
+        $prices = self::table('variant_prices');
+
+        $rows = self::db()->query("SELECT p.`title` AS product_title, p.`clean_url_title` AS product_slug,
+                v.`id` AS variant_id, v.`title` AS variant_title, v.`sku`, v.`stock`,
+                v.`active` AS variant_active, v.`position` AS variant_position,
+                vp.`currency_code`, vp.`price`, vp.`compare_price`
+            FROM `{$variants}` v
+            INNER JOIN `{$products}` p ON p.`id` = v.`product_id`
+            INNER JOIN `{$prices}` vp ON vp.`variant_id` = v.`id`
+            ORDER BY p.`id` ASC, v.`position` ASC, v.`id` ASC, vp.`currency_code` ASC");
+
+        $items = array();
+        foreach ($rows as $row) {
+            $items[] = array(
+                'product_slug' => (string)$row['product_slug'],
+                'product_title' => (string)$row['product_title'],
+                'variant_id' => (int)$row['variant_id'],
+                'variant_title' => (string)$row['variant_title'],
+                'sku' => (string)$row['sku'],
+                'stock' => (int)$row['stock'],
+                'active' => (int)!empty($row['variant_active']),
+                'position' => (int)$row['variant_position'],
+                'currency' => (string)$row['currency_code'],
+                'price' => number_format((float)$row['price'], 2, '.', ''),
+                'compare_price' => (float)$row['compare_price'] > 0
+                    ? number_format((float)$row['compare_price'], 2, '.', '') : '',
+            );
+        }
+        return $items;
+    }
 
     private static function csvHeaderMap($header)
     {

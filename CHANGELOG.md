@@ -9,6 +9,35 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
 - Request-driven maintenance for newsletters and incremental search indexing,
   with retries and protected queue storage inside the site's writable directory.
   CLI access, cron and operating-system tasks are not required.
+- Shop product CSV export with the same columns as the CSV import, so a
+  catalogue can be exported, edited and imported back.
+- Administrators can create an order from the admin panel: customer details,
+  delivery and payment, up to five products, stock is reserved immediately and
+  the customer can be notified by e-mail.
+- Shop reviews can be answered from the admin panel. The reply is shown under
+  the review on the product page and e-mailed to the reviewer.
+- Catalogue filters for customers: minimum and maximum price and an
+  "in stock" switch, kept together with search and sorting on all pages.
+- Editable shop e-mails in the admin panel (order, cart reminder, stock
+  availability, low stock, review reply). Subjects and HTML bodies are stored in
+  `shop_email_templates` with `{placeholder}` substitution; clearing a field or
+  pressing "reset" restores the built-in letter.
+- Catalogue filters by product attributes: only values that occur in the current
+  category branch are shown, multi-select within an attribute and AND between
+  attributes, together with price, stock, search and sorting.
+- Variant CSV export: one row per variant and currency with SKU, stock, active
+  flag, price and old price, next to the existing product export.
+- Admin order composition editing: change quantities, remove lines, add up to
+  three new products, stock is adjusted by the difference and totals are
+  recalculated. Cancelled orders stay read-only.
+- "Copy product" in the admin product list duplicates the card, gallery files,
+  attributes, related products, variants, variant attributes and prices. The
+  copy is created hidden.
+- YML feed at `/shop/yml/` with categories, currencies and one offer per active
+  variant, including old price, picture, vendor code and availability.
+- Funnel analytics on the dashboard: unique sessions for product views, cart
+  additions, checkout starts and created orders, with conversion from views and
+  from the previous step. Events expire after 180 days.
 - Runtime and database regression checks for remembered login, search visibility,
   concurrent order cancellation, upload validation and background processing.
 - PHP 8.5 compatibility for the core, modules, admin panel and installer.

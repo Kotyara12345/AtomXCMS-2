@@ -56,14 +56,33 @@
 
             <form class="shop-toolbar" method="get" action="{{ search_action }}">
                 <input type="text" name="q" value="{{ search_query|escape }}" placeholder="Поиск по каталогу" />
-                <button type="submit" class="shop-btn">Найти</button>
+                <input class="shop-price-input" type="number" name="price_min" min="0" step="1" value="{{ filter_price_min }}" placeholder="Цена от" />
+                <input class="shop-price-input" type="number" name="price_max" min="0" step="1" value="{{ filter_price_max }}" placeholder="Цена до" />
+                <label class="shop-check"><input type="checkbox" name="in_stock" value="1"{% if filter_in_stock %} checked="checked"{% endif %} /> В наличии</label>
+                {% if attribute_filter_groups %}
+                <div class="shop-attr-filters">
+                    {% for group in attribute_filter_groups %}
+                    <div class="shop-attr-group">
+                        <div class="shop-attr-title">{{ group.title|escape }}</div>
+                        {% for value in group.values %}
+                        <label class="shop-check">
+                            <input type="checkbox" name="attr[{{ group.id }}][]" value="{{ value.id }}"{% if value.checked %} checked="checked"{% endif %} />
+                            {{ value.title|escape }}{% if value.count %} <span class="shop-muted">({{ value.count }})</span>{% endif %}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 {% if sort_options %}
-                <select name="sort" onchange="window.location.href=this.value;">
+                <select name="sort">
                     {% for option in sort_options %}
-                    <option value="{{ option.url }}"{% if option.selected %} selected="selected"{% endif %}>{{ option.title|escape }}</option>
+                    <option value="{{ option.value }}"{% if option.selected %} selected="selected"{% endif %}>{{ option.title|escape }}</option>
                     {% endfor %}
                 </select>
                 {% endif %}
+                <button type="submit" class="shop-btn">Применить</button>
+                {% if filter_active %}<a class="shop-filter-reset" href="{{ filter_reset_url }}">Сбросить</a>{% endif %}
             </form>
 
             {% if featured_products %}
