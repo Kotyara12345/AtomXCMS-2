@@ -12,6 +12,27 @@
         <h1>Мои заказы</h1>
     </div>
 
+    {% if flash %}
+    <div class="shop-alert {% if flash.type == 'error' %}shop-alert-error{% else %}shop-alert-success{% endif %}">{{ flash.message|escape }}</div>
+    {% endif %}
+
+    <div class="shop-panel shop-lookup">
+        <h2>Найти заказ</h2>
+        <p class="shop-muted">Введите номер заказа из письма и e-mail, указанный при оформлении.</p>
+        <form method="post" action="{{ lookup_action }}" class="shop-lookup-form">
+            <input type="hidden" name="csrf_token" value="{{ lookup_csrf_token }}" />
+            <div class="shop-form-row">
+                <label for="shop-order-number">Номер заказа</label>
+                <input id="shop-order-number" type="text" name="number" inputmode="numeric" required="required" />
+            </div>
+            <div class="shop-form-row">
+                <label for="shop-order-email">E-mail</label>
+                <input id="shop-order-email" type="email" name="email" required="required" />
+            </div>
+            <button class="shop-btn" type="submit">Найти заказ</button>
+        </form>
+    </div>
+
     {% if orders %}
     <div class="shop-table-wrap">
         <table class="shop-table">
@@ -39,7 +60,7 @@
     </div>
     {% else %}
     <div class="shop-empty">
-        <p>У вас пока нет заказов.</p>
+        <p>Заказов пока нет. Гостевой заказ можно найти по номеру и e-mail.</p>
         <a class="shop-btn" href="{{ shop_url }}">Перейти в каталог</a>
     </div>
     {% endif %}

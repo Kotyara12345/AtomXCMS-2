@@ -32,6 +32,7 @@ foreach (array(
 	'function expireUnpaidOrders',
 	'function getOrderStatusHistory',
 	'function logOrderStatus',
+	'function orderByNumberAndEmail',
 	'shop_order_status_history',
 	'$recipient = null, $force = false',
 	'Открыть заказ на сайте',
@@ -45,9 +46,26 @@ foreach (array(
 	'ShopHelper::phoneValid',
 	"logOrderStatus(\$orderId, 'new'",
 	"fpsCron('shopExpireOrders', 900)",
+	'function lookup_order',
+	'function repeat_order',
+	'function canViewOrder',
+	'ShopHelper::orderByNumberAndEmail',
+	'ShopHelper::getOrderStatusHistory($id)',
 ) as $needle) {
 	atm_test_assert(strpos($module, $needle) !== false,
 		'modules/shop/index.php is missing ' . $needle . '.');
+}
+
+$orderTemplate = (string)file_get_contents($root . '/modules/shop/install_template/html/order.html');
+foreach (array('shop-history', 'repeat_action', 'order_token') as $needle) {
+	atm_test_assert(strpos($orderTemplate, $needle) !== false,
+		'modules/shop/install_template/html/order.html is missing ' . $needle . '.');
+}
+
+$ordersTemplate = (string)file_get_contents($root . '/modules/shop/install_template/html/orders.html');
+foreach (array('lookup_action', 'lookup_csrf_token', 'name="number"') as $needle) {
+	atm_test_assert(strpos($ordersTemplate, $needle) !== false,
+		'modules/shop/install_template/html/orders.html is missing ' . $needle . '.');
 }
 
 if ($failures) {

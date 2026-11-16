@@ -1354,18 +1354,56 @@ class ShopModule extends Module
     {
         $this->ACL->turn(array('shop', 'view_catalog'));
         $user = ShopHelper::currentUser();
-        if (empty($user['id'])) {
-            ShopHelper::flash('error', 'Войдите, чтобы увидеть свои заказы.');
-            redirect('/users/login_form/');
-        }
-        $orders = ShopHelper::getUserOrders($user['id']);
+        $orders = empty($user['id']) ? array() : ShopHelper::getUserOrders($user['id']);
         $this->page_title = 'Мои заказы — ' . h(Config::read('title', 'shop'));
         $source = $this->render('orders.html', array(
             'orders' => $orders,
+            'flash' => ShopHelper::getFlash(),
+            'lookup_action' => get_url('/shop/lookup_order/'),
+            'lookup_csrf_token' => ShopHelper::csrfToken(),
             'shop_url' => get_url('/shop/'),
             'breadcrumbs' => $this->buildSimpleBreadcrumbs('Мои заказы'),
         ));
         return $this->_view($source);
+    }
+
+    /**
+     * E-mail links expire after 30 days, so guests can reopen an order with the
+     * number from the letter and the address they used at checkout.
+     */
+    public function lookup_order()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        header('Cache-Control: private, no-store');
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия устарела. Повторите попытку.');
+            redirect('/shop/orders/');
+        }
+
+        $now = time();
+        $attempts = isset($_SESSION['shop_order_lookup']) ? (array)$_SESSION['shop_order_lookup'] : array();
+        if (empty($attempts['until']) || (int)$attempts['until'] <= $now) {
+            $attempts = array('count' => 0, 'until' => $now + 600);
+        }
+        if ((int)$attempts['count'] >= 5) {
+            ShopHelper::flash('error', 'Слишком много попыток. Повторите через 10 минут.');
+            redirect('/shop/orders/');
+        }
+
+        $order = ShopHelper::orderByNumberAndEmail(
+            isset($_POST['number']) ? $_POST['number'] : '',
+            isset($_POST['email']) ? $_POST['email'] : ''
+        );
+        if (!$order) {
+            $attempts['count'] = (int)$attempts['count'] + 1;
+            $_SESSION['shop_order_lookup'] = $attempts;
+            ShopHelper::flash('error', 'Заказ не найден. Проверьте номер и e-mail.');
+            redirect('/shop/orders/');
+        }
+
+        unset($_SESSION['shop_order_lookup']);
+        $_SESSION['shop_last_order'] = array('id' => (int)$order['id'], 'token' => $order['access_token']);
+        redirect('/shop/order/' . (int)$order['id'] . '/');
     }
 
     public function order($id = null, $token = null)
@@ -1376,24 +1414,63 @@ class ShopModule extends Module
         header('Referrer-Policy: no-referrer');
         $order = $id > 0 ? ShopHelper::getOrder($id) : false;
         if (!$order) $this->Parser->showHttpError();
-
-        $user = ShopHelper::currentUser();
-        $isOwner = !empty($user['id']) && (int)$order['user_id'] === (int)$user['id'];
-        $token = (string)$token;
-        $isToken = ShopHelper::orderTokenValid($order, $token);
-        $isAdmin = $this->ACL->turn(array('shop', 'manage_orders'), false);
-        if (!$isOwner && !$isToken && !$isAdmin) $this->Parser->showHttpError();
+        if (!$this->canViewOrder($order, (string)$token)) $this->Parser->showHttpError();
+        $orderToken = ShopHelper::orderTokenValid($order, (string)$token) ? (string)$token : '';
 
         $items = ShopHelper::getOrderItems($id, $order['currency_code']);
         $this->page_title = 'Заказ №' . $order['number'] . ' — ' . h(Config::read('title', 'shop'));
         $source = $this->render('order.html', array(
             'order' => $order,
             'items' => $items,
+            'history' => ShopHelper::getOrderStatusHistory($id),
+            'repeat_action' => get_url('/shop/repeat_order/'),
+            'order_token' => $orderToken,
+            'csrf_token' => ShopHelper::csrfToken(),
             'shop_url' => get_url('/shop/'),
             'orders_url' => get_url('/shop/orders/'),
             'breadcrumbs' => $this->buildSimpleBreadcrumbs('Заказ №' . $order['number']),
         ));
         return $this->_view($source);
+    }
+
+    /**
+     * Copy the lines of an old order into the cart. addToCart() re-checks price,
+     * availability and stock, so removed variants are reported, not ordered.
+     */
+    public function repeat_order()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        $id = isset($_POST['order_id']) ? (int)$_POST['order_id'] : 0;
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия устарела. Повторите попытку.');
+            redirect($id > 0 ? '/shop/order/' . $id . '/' : '/shop/');
+        }
+
+        $order = $id > 0 ? ShopHelper::getOrder($id) : false;
+        if (!$order || !$this->canViewOrder($order, isset($_POST['token']) ? (string)$_POST['token'] : '')) {
+            $this->Parser->showHttpError();
+        }
+
+        $added = 0;
+        $skipped = 0;
+        foreach (ShopHelper::getOrderItems($order['id']) as $item) {
+            $variantId = (int)$item['variant_id'];
+            $result = ShopHelper::addToCart($variantId, (int)$item['quantity']);
+            if ($variantId > 0 && !empty($result['ok'])) {
+                $added++;
+            } else {
+                $skipped++;
+            }
+        }
+
+        if ($added > 0) {
+            ShopHelper::flash('success', $skipped > 0
+                ? 'В корзину добавлено позиций: ' . $added . '. Недоступно: ' . $skipped . '.'
+                : 'Товары из заказа добавлены в корзину.');
+        } else {
+            ShopHelper::flash('error', 'Товары из этого заказа сейчас недоступны.');
+        }
+        redirect('/shop/cart/');
     }
 
     /* ---------------------------------------------------------------------
@@ -1423,6 +1500,21 @@ class ShopModule extends Module
             $return = $fallback;
         }
         redirect($return);
+    }
+
+    private function canViewOrder($order, $token = '')
+    {
+        $user = ShopHelper::currentUser();
+        if (!empty($user['id']) && (int)$order['user_id'] === (int)$user['id']) return true;
+        if (ShopHelper::orderTokenValid($order, (string)$token)) return true;
+        if (!empty($_SESSION['shop_last_order'])) {
+            $last = (array)$_SESSION['shop_last_order'];
+            if ((int)(isset($last['id']) ? $last['id'] : 0) === (int)$order['id']
+                && hash_equals((string)$order['access_token'], (string)(isset($last['token']) ? $last['token'] : ''))) {
+                return true;
+            }
+        }
+        return (bool)$this->ACL->turn(array('shop', 'manage_orders'), false);
     }
 
     private function buildCategoriesHtml($currentId = 0)

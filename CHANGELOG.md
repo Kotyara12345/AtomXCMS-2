@@ -160,6 +160,14 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   material, and it stays visible to visitors while at least one of its
   sections is accessible. Deleting a material or a section removes the
   related bindings.
+- Guests can open their order without logging in: the "Мои заказы" page
+  accepts the order number from the e-mail letter plus the checkout
+  address, and five failed attempts per session lock the form for ten
+  minutes. This also covers links older than the 30-day token lifetime.
+- The customer order page shows the status history (status, time,
+  comment) that administrators already saw, and has a "Повторить заказ"
+  button that refills the cart; unavailable variants are skipped and
+  reported.
 
 ### Changed
 - Search checks current publication, category and forum permissions before returning

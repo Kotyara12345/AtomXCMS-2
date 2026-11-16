@@ -11,6 +11,12 @@
     <div class="shop-heading">
         <h1>Заказ №{{ order.number }}</h1>
         <p>от {{ order.created_at_formatted|escape }}</p>
+        <form method="post" action="{{ repeat_action }}" class="shop-repeat">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <input type="hidden" name="order_id" value="{{ order.id }}" />
+            {% if order_token %}<input type="hidden" name="token" value="{{ order_token }}" />{% endif %}
+            <button type="submit" class="shop-btn shop-btn-secondary">Повторить заказ</button>
+        </form>
     </div>
 
     <div class="shop-order-layout">
@@ -80,6 +86,21 @@
                 <h2>Статус</h2>
                 <p><span class="shop-status shop-status-{{ order.status }}">{{ order.status_label|escape }}</span></p>
             </div>
+
+            {% if history %}
+            <div class="shop-panel">
+                <h2>История заказа</h2>
+                <ul class="shop-history">
+                    {% for entry in history %}
+                    <li>
+                        <span class="shop-status shop-status-{{ entry.status }}">{{ entry.status_label|escape }}</span>
+                        <span class="shop-muted">{{ entry.created_at_formatted|escape }}</span>
+                        {% if entry.comment %}<div class="shop-muted">{{ entry.comment|escape }}</div>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
 
             <div class="shop-panel">
                 <h2>Покупатель</h2>

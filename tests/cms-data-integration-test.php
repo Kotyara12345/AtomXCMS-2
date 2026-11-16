@@ -120,6 +120,14 @@ try{
     cms_check($pdo->query("SELECT status FROM `{$prefix}shop_orders` WHERE id=2")->fetchColumn()==='cancelled','Unpaid order was not cancelled after its term');
     cms_check((int)$pdo->query("SELECT stock FROM `{$prefix}shop_variants` WHERE id=2")->fetchColumn()===7,'Expired order stock was not released');
 
+    $db->query("INSERT INTO `{$prefix}shop_orders` (`id`,`status`,`created_at`,`email`) VALUES(90,'new',NOW(),'Guest@Example.com')");
+    $found=ShopHelper::orderByNumberAndEmail('100090',' guest@example.com ');
+    cms_check(is_array($found) && (int)$found['id']===90,'Guest order lookup by printed number failed');
+    $found=ShopHelper::orderByNumberAndEmail('90','guest@example.com');
+    cms_check(is_array($found) && (int)$found['id']===90,'Guest order lookup by raw id failed');
+    cms_check(ShopHelper::orderByNumberAndEmail('100090','other@example.com')===false,'Guest order lookup ignored e-mail');
+    cms_check(ShopHelper::orderByNumberAndEmail('100091','guest@example.com')===false,'Guest order lookup found a wrong order');
+
     cms_check(ShopHelper::addReview(array('product_id'=>1,'name'=>'Иван','email'=>'ivan@example.com','rating'=>4,'text'=>'Хороший товар'))===true,'Review was not saved');
     $reviewId=(int)$pdo->query("SELECT id FROM `{$prefix}shop_reviews` ORDER BY id DESC LIMIT 1")->fetchColumn();
     cms_check($reviewId>0,'Review id was not generated');

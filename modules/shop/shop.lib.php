@@ -2345,6 +2345,26 @@ class ShopHelper
         return $rows;
     }
 
+    /**
+     * Guest order lookup. Customers see orderNumber(), the table keeps the raw
+     * id, so both forms are accepted, but only with the matching e-mail.
+     */
+    public static function orderByNumberAndEmail($number, $email)
+    {
+        $number = (int)preg_replace('/\D+/', '', (string)$number);
+        $email = strtolower(trim((string)$email));
+        if ($number < 1 || $email === '') return false;
+
+        $ids = array($number);
+        $offset = self::orderNumber(0);
+        if ($number > $offset) $ids[] = $number - $offset;
+        foreach ($ids as $id) {
+            $order = self::getOrder($id);
+            if ($order && strtolower((string)$order['email']) === $email) return $order;
+        }
+        return false;
+    }
+
     public static function releaseOrderStock($orderId)
     {
         return self::setOrderStatus($orderId, 'cancelled');
