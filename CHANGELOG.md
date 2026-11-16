@@ -15,7 +15,8 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   delivery and payment, up to five products, stock is reserved immediately and
   the customer can be notified by e-mail.
 - Shop reviews can be answered from the admin panel. The reply is shown under
-  the review on the product page and e-mailed to the reviewer.
+  the review on the product page and e-mailed to the reviewer. One session can
+  submit at most five reviews per hour.
 - Catalogue filters for customers: minimum and maximum price and an
   "in stock" switch, kept together with search and sorting on all pages.
 - Editable shop e-mails in the admin panel (order, cart reminder, stock
@@ -24,20 +25,49 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   pressing "reset" restores the built-in letter.
 - Catalogue filters by product attributes: only values that occur in the current
   category branch are shown, multi-select within an attribute and AND between
-  attributes, together with price, stock, search and sorting.
+  attributes, together with price, stock, search and sorting. Facet counts follow
+  the active price, stock and search filters.
+- Catalogue search also matches variant SKU, so a product can be found by its
+  article number.
 - Variant CSV export: one row per variant and currency with SKU, stock, active
-  flag, price and old price, next to the existing product export.
+  flag, price and old price, next to the existing product export. The same file
+  uploads back through "Импорт вариантов": rows match by `variant_id` and a
+  missing column leaves that field unchanged.
 - Admin order composition editing: change quantities, remove lines, add up to
-  three new products, stock is adjusted by the difference and totals are
-  recalculated. Cancelled orders stay read-only.
+  three new products, correct the delivery price and discount amount; stock is
+  adjusted by the difference and totals are recalculated. Cancelled orders stay
+  read-only.
 - "Copy product" in the admin product list duplicates the card, gallery files,
   attributes, related products, variants, variant attributes and prices. The
   copy is created hidden.
 - YML feed at `/shop/yml/` with categories, currencies and one offer per active
-  variant, including old price, picture, vendor code and availability.
+  variant, including old price, picture, vendor code, availability and product
+  attributes as `<param>` entries. Top-level categories omit `parentId`, and the
+  optional `yml_sales_notes` setting adds `<sales_notes>`. The feed is cached for
+  ten minutes and the cache is dropped after any admin write.
 - Funnel analytics on the dashboard: unique sessions for product views, cart
   additions, checkout starts and created orders, with conversion from views and
-  from the previous step. Events expire after 180 days.
+  from the previous step. The period switches between 7, 30 and 90 days, crawler
+  user agents are ignored and a per-product table shows views, cart additions and
+  conversion. Events expire after 180 days.
+- Catalogue filter, sorting, search and pagination URLs get `noindex, follow`.
+  The administrator can turn this off in the shop settings when those URLs
+  should be indexed.
+- Free delivery threshold per currency: above the configured goods total the
+  courier method becomes free, and the cart and checkout show how much is left
+  until it. Zero keeps the threshold disabled.
+- Order list filtering by creation date, from and to, applied to the CSV export
+  as well.
+- Bulk product actions in the admin list: show, hide or delete the selected
+  products in one request.
+- The YML feed answers `If-None-Match` and `If-Modified-Since` with
+  `304 Not Modified`, so marketplaces do not download an unchanged feed.
+- Dashboard average order value for the last 30 days and checkout conversion
+  from product views to created orders for the selected funnel period.
+- Promo codes can be limited to one use per customer, matched by account or
+  order e-mail.
+- Reviews from customers with a non-cancelled order for the product carry a
+  "Покупка подтверждена" badge.
 - Runtime and database regression checks for remembered login, search visibility,
   concurrent order cancellation, upload validation and background processing.
 - PHP 8.5 compatibility for the core, modules, admin panel and installer.

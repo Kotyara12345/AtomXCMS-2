@@ -84,6 +84,30 @@ $settingsInfo = array(
         'title' => 'Стоимость доставки, BYN',
         'default' => '0',
     ),
+    'free_delivery_from_rub' => array(
+        'type' => 'text',
+        'title' => 'Бесплатная доставка от суммы, RUB',
+        'description' => 'Если стоимость товаров не меньше этой суммы, курьерская доставка становится бесплатной. 0 — порог выключен.',
+        'default' => '0',
+    ),
+    'free_delivery_from_usd' => array(
+        'type' => 'text',
+        'title' => 'Бесплатная доставка от суммы, USD',
+        'description' => '0 — порог выключен.',
+        'default' => '0',
+    ),
+    'free_delivery_from_eur' => array(
+        'type' => 'text',
+        'title' => 'Бесплатная доставка от суммы, EUR',
+        'description' => '0 — порог выключен.',
+        'default' => '0',
+    ),
+    'free_delivery_from_byn' => array(
+        'type' => 'text',
+        'title' => 'Бесплатная доставка от суммы, BYN',
+        'description' => '0 — порог выключен.',
+        'default' => '0',
+    ),
 
     'Оплата',
     'payment_methods' => array(
@@ -159,6 +183,28 @@ $settingsInfo = array(
         'value' => '1',
         'checked' => '1',
         'default' => '1',
+    ),
+    'noindex_filters' => array(
+        'type' => 'checkbox',
+        'title' => 'Закрыть фильтры каталога от индексации',
+        'description' => 'Добавлять noindex на страницы с поиском, сортировкой, фильтрами и второй страницей каталога. Отключите, если хотите индексировать такие адреса.',
+        'value' => '1',
+        'checked' => '1',
+        'default' => '1',
+    ),
+    'yml_enabled' => array(
+        'type' => 'checkbox',
+        'title' => 'YML-фид для маркетплейсов',
+        'description' => 'Отдавать фид на адресе /shop/yml/.',
+        'value' => '1',
+        'checked' => '1',
+        'default' => '1',
+    ),
+    'yml_sales_notes' => array(
+        'type' => 'text',
+        'title' => 'Условия продажи в YML',
+        'description' => 'Необязательный текст для тега sales_notes, например «Без предоплаты».',
+        'default' => '',
     ),
 
     'Общие',

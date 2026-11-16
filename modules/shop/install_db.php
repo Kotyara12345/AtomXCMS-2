@@ -226,6 +226,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_promocodes
     `min_total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `max_uses` INT UNSIGNED NOT NULL DEFAULT 0,
     `used_count` INT UNSIGNED NOT NULL DEFAULT 0,
+    `once_per_customer` TINYINT(1) NOT NULL DEFAULT 0,
     `starts_at` DATETIME DEFAULT NULL,
     `ends_at` DATETIME DEFAULT NULL,
     `active` TINYINT(1) NOT NULL DEFAULT 1,

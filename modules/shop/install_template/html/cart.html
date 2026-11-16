@@ -81,6 +81,10 @@
     <div class="shop-alert shop-alert-error">{{ totals.promo_error|escape }}</div>
     {% endif %}
 
+    {% if free_delivery_hint %}
+    <div class="shop-free-delivery-hint">{{ free_delivery_hint|escape }}</div>
+    {% endif %}
+
     <div class="shop-cart-summary">
         <div class="shop-summary-row">
             <span>Товаров:</span>

@@ -87,14 +87,30 @@ class ShopModule extends Module
     }
 
     /**
-     * Internal catalogue search must not compete with category pages.
+     * Internal catalogue search, filters and sorting must not compete with
+     * category pages. The administrator can turn this off in the module
+     * settings when the shop wants those URLs indexed.
      */
     protected function getRobotsMeta()
     {
-        if (isset($_GET['q']) && trim((string)$_GET['q']) !== '') {
-            return 'noindex, follow';
+        if ((int)ShopHelper::cfg('noindex_filters', 1) !== 1) {
+            return parent::getRobotsMeta();
         }
-        return parent::getRobotsMeta();
+        if ($this->isProductPage) {
+            return parent::getRobotsMeta();
+        }
+
+        $filtered = false;
+        if (isset($_GET['q']) && trim((string)$_GET['q']) !== '') $filtered = true;
+        foreach (array('attr', 'price_min', 'price_max', 'in_stock', 'sort') as $key) {
+            if (isset($_GET[$key]) && !empty($_GET[$key])) {
+                $filtered = true;
+                break;
+            }
+        }
+        if (!$filtered && isset($_GET['page']) && (int)$_GET['page'] > 1) $filtered = true;
+
+        return $filtered ? 'noindex, follow' : parent::getRobotsMeta();
     }
 
     /**
@@ -167,6 +183,69 @@ class ShopModule extends Module
             $this->Parser->showHttpError();
         }
 
+        header('Content-Type: application/xml; charset=utf-8');
+        header('X-Content-Type-Options: nosniff');
+
+        // The feed scans the whole catalogue, so keep a short file cache.
+        // shortcut: stock changes from storefront orders appear after the TTL,
+        // upgrade to per-product tags if the marketplace needs live stock.
+        $cacheFile = ShopHelper::ymlCachePath();
+        if ($cacheFile !== '' && is_file($cacheFile) && (time() - (int)filemtime($cacheFile)) < 600) {
+            $mtime = (int)filemtime($cacheFile);
+            $etag = '"' . dechex($mtime) . '-' . dechex((int)filesize($cacheFile)) . '"';
+            header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
+            header('ETag: ' . $etag);
+            header('Cache-Control: public, max-age=600');
+
+            $ifNoneMatch = trim((string)(isset($_SERVER['HTTP_IF_NONE_MATCH']) ? $_SERVER['HTTP_IF_NONE_MATCH'] : ''));
+            $ifModifiedSince = trim((string)(isset($_SERVER['HTTP_IF_MODIFIED_SINCE']) ? $_SERVER['HTTP_IF_MODIFIED_SINCE'] : ''));
+            $etagValue = str_replace('"', '', $etag);
+            $notModified = false;
+            foreach (explode(',', $ifNoneMatch) as $candidate) {
+                $candidate = trim($candidate);
+                if (strpos($candidate, 'W/') === 0) $candidate = substr($candidate, 2);
+                if (str_replace('"', '', $candidate) === $etagValue) {
+                    $notModified = true;
+                    break;
+                }
+            }
+            if (!$notModified && $ifNoneMatch === '' && $ifModifiedSince !== '') {
+                $since = strtotime($ifModifiedSince);
+                $notModified = $since !== false && $since >= $mtime;
+            }
+            if ($notModified) {
+                http_response_code(304);
+                exit;
+            }
+
+            readfile($cacheFile);
+            exit;
+        }
+
+        $xml = $this->buildYmlFeed();
+        if ($cacheFile !== '') {
+            $tmp = $cacheFile . '.' . getmypid() . '.tmp';
+            if (@file_put_contents($tmp, $xml) !== false) {
+                @rename($tmp, $cacheFile);
+            } else {
+                @unlink($tmp);
+            }
+        }
+
+        $mtime = $cacheFile !== '' && is_file($cacheFile) ? (int)filemtime($cacheFile) : time();
+        $etag = $cacheFile !== '' && is_file($cacheFile)
+            ? '"' . dechex($mtime) . '-' . dechex((int)filesize($cacheFile)) . '"'
+            : '"' . md5($xml) . '"';
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
+        header('ETag: ' . $etag);
+        header('Cache-Control: public, max-age=600');
+
+        echo $xml;
+        exit;
+    }
+
+    private function buildYmlFeed()
+    {
         $currency = ShopHelper::activeCurrency();
         $code = $currency['code'];
         $rootUrl = rtrim(ShopHelper::absoluteUrl('/'), '/');
@@ -175,6 +254,7 @@ class ShopModule extends Module
             $siteName = trim((string)Config::read('title', 'shop'));
         }
         if ($siteName === '' || strpos($siteName, '{{') !== false) $siteName = 'Магазин';
+        $salesNotes = trim((string)ShopHelper::cfg('yml_sales_notes', ''));
 
         $categories = ShopHelper::db()->query("SELECT `id`, `parent_id`, `title`
             FROM `" . ShopHelper::table('categories') . "` ORDER BY `position` ASC, `id` ASC");
@@ -191,9 +271,23 @@ class ShopModule extends Module
                 ON vp.`variant_id` = v.`id` AND vp.`currency_code` = '" . ShopHelper::esc($code) . "'
             WHERE v.`active` = 1 AND vp.`price` > 0
             ORDER BY v.`product_id` ASC, v.`position` ASC, v.`id` ASC");
+        $attributeRows = ShopHelper::db()->query("SELECT pav.`product_id`,
+                a.`title` AS attribute_title, av.`title` AS value_title
+            FROM `" . ShopHelper::table('product_attribute_values') . "` pav
+            INNER JOIN `" . ShopHelper::table('attribute_values') . "` av ON av.`id` = pav.`attribute_value_id`
+            INNER JOIN `" . ShopHelper::table('attributes') . "` a ON a.`id` = av.`attribute_id`
+            WHERE av.`active` = 1 AND a.`active` = 1
+            ORDER BY a.`position` ASC, a.`id` ASC, av.`position` ASC, av.`id` ASC");
 
         $byProduct = array();
         foreach ($products as $product) $byProduct[(int)$product['id']] = $product;
+        $params = array();
+        foreach ($attributeRows as $row) {
+            $params[(int)$row['product_id']][] = array(
+                'name' => (string)$row['attribute_title'],
+                'value' => (string)$row['value_title'],
+            );
+        }
 
         $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
             . '<!DOCTYPE yml_catalog SYSTEM "shops.dtd">' . "\n"
@@ -201,10 +295,13 @@ class ShopModule extends Module
             . '<name>' . h($siteName) . '</name>' . "\n"
             . '<company>' . h($siteName) . '</company>' . "\n"
             . '<url>' . h($rootUrl . '/') . '</url>' . "\n"
+            . ($salesNotes !== '' ? '<sales_notes>' . h($salesNotes) . "</sales_notes>\n" : '')
             . '<currencies><currency id="' . h($code) . '" rate="1"/></currencies>' . "\n"
             . "<categories>\n";
         foreach ($categories as $category) {
-            $xml .= '<category id="' . (int)$category['id'] . '" parentId="' . (int)$category['parent_id'] . '">'
+            $parent = (int)$category['parent_id'];
+            $xml .= '<category id="' . (int)$category['id'] . '"'
+                . ($parent > 0 ? ' parentId="' . $parent . '"' : '') . '>'
                 . h((string)$category['title']) . "</category>\n";
         }
         $xml .= "</categories>\n<offers>\n";
@@ -246,15 +343,16 @@ class ShopModule extends Module
                 $xml .= '<vendorCode>' . h((string)$offer['sku']) . '</vendorCode>' . "\n";
             }
             if ($description !== '') $xml .= '<description>' . h($description) . '</description>' . "\n";
+            if (!empty($params[(int)$product['id']])) {
+                foreach ($params[(int)$product['id']] as $param) {
+                    $xml .= '<param name="' . h($param['name']) . '">' . h($param['value']) . "</param>\n";
+                }
+            }
             $xml .= "</offer>\n";
         }
 
         $xml .= "</offers>\n</shop>\n</yml_catalog>\n";
-
-        header('Content-Type: application/xml; charset=utf-8');
-        header('X-Content-Type-Options: nosniff');
-        echo $xml;
-        exit;
+        return $xml;
     }
 
     private function renderCatalog($category, $categoryId, $pageTitle, $landing = null)
@@ -289,8 +387,15 @@ class ShopModule extends Module
             $categoryIds = ShopHelper::categoryDescendantIds($categoryId);
         }
 
-        // Attribute checkboxes: only values that occur in this catalogue branch.
-        $attributeGroups = $landing ? array() : ShopHelper::getCatalogAttributeGroups($categoryIds);
+        // Attribute checkboxes: values from this catalogue branch, counts
+        // respect the other active filters.
+        $attributeGroups = $landing ? array() : ShopHelper::getCatalogAttributeGroups($categoryIds, array(
+            'q' => $q,
+            'price_min' => $priceMin,
+            'price_max' => $priceMax,
+            'in_stock' => $inStock,
+            'currency' => $currency['code'],
+        ));
         $selectedByAttribute = array();
         $selectedAttributeValues = array();
         $postedAttributes = isset($_GET['attr']) && is_array($_GET['attr']) ? $_GET['attr'] : array();
@@ -577,6 +682,7 @@ class ShopModule extends Module
         $source = $this->render('cart.html', array(
             'items' => $items,
             'totals' => $totals,
+            'free_delivery_hint' => ShopHelper::freeDeliveryHint($totals['subtotal'], $currency['code']),
             'currency' => $currency,
             'update_action' => get_url('/shop/update_cart/'),
             'remove_action' => get_url('/shop/remove_from_cart/'),
@@ -761,6 +867,18 @@ class ShopModule extends Module
         if ($name === '' && $user['name'] !== '') $name = $user['name'];
         if ($email === '' && $user['email'] !== '') $email = $user['email'];
 
+        // Pre-moderation queues can still be flooded; cap one session at five
+        // reviews per hour. Failed submissions are not counted.
+        $now = time();
+        $reviewTimes = isset($_SESSION['shop_review_times']) && is_array($_SESSION['shop_review_times'])
+            ? array_values(array_filter(array_map('intval', $_SESSION['shop_review_times']),
+                function ($time) use ($now) { return $time > $now - 3600; }))
+            : array();
+        if (count($reviewTimes) >= 5) {
+            ShopHelper::flash('error', 'Слишком много отзывов за час. Попробуйте позже.');
+            $this->redirectBack($product['url']);
+        }
+
         $saved = ShopHelper::addReview(array(
             'product_id' => $productId,
             'user_id' => (int)$user['id'],
@@ -769,6 +887,11 @@ class ShopModule extends Module
             'rating' => isset($_POST['rating']) ? (int)$_POST['rating'] : 0,
             'text' => isset($_POST['text']) ? (string)$_POST['text'] : '',
         ));
+
+        if ($saved) {
+            $reviewTimes[] = $now;
+            $_SESSION['shop_review_times'] = $reviewTimes;
+        }
 
         if (!$saved) {
             ShopHelper::flash('error', 'Заполните имя, e-mail, оценку и текст отзыва.');
@@ -941,8 +1064,10 @@ class ShopModule extends Module
         }
 
         $items = ShopHelper::cartItems($currency['code'], false);
-        $deliveryPrice = $deliveryMethods[$old['delivery_method']]['price'];
         $totals = ShopHelper::cartTotals($items, $currency['code']);
+        $subtotal = $totals['subtotal'];
+        $deliveryMethods = ShopHelper::deliveryMethods($currency['code'], $subtotal);
+        $deliveryPrice = $deliveryMethods[$old['delivery_method']]['price'];
         $promoCode = $totals['promo_code'];
         $discount = $totals['discount'];
         if ($promoCode !== '' && $totals['promo_error'] !== '') {
@@ -1011,7 +1136,8 @@ class ShopModule extends Module
             }
 
             if ($promoCode !== '') {
-                $lockedPromo = ShopHelper::promoCheck($promoCode, $subtotal, $currency['code'], true);
+                $lockedPromo = ShopHelper::promoCheck($promoCode, $subtotal, $currency['code'], true,
+                    $old['email'], (int)$user['id']);
                 if (!$lockedPromo['valid'] || abs($lockedPromo['discount'] - $discount) > 0.005) {
                     $change = 'Изменились условия промокода. Проверьте заказ и подтвердите его ещё раз.';
                     throw new RuntimeException($change);
@@ -1119,17 +1245,17 @@ class ShopModule extends Module
             redirect('/shop/cart/');
         }
 
-        $deliveryMethods = ShopHelper::deliveryMethods($currency['code']);
+        $totals = ShopHelper::cartTotals($items, $currency['code']);
+        $subtotal = $totals['subtotal'];
+        $deliveryMethods = ShopHelper::deliveryMethods($currency['code'], $subtotal);
         $paymentMethods = ShopHelper::paymentMethods();
         $deliveryMethod = isset($deliveryMethods[$old['delivery_method']])
             ? $old['delivery_method'] : key($deliveryMethods);
         $paymentMethod = isset($paymentMethods[$old['payment_method']])
             ? $old['payment_method'] : key($paymentMethods);
-        $totals = ShopHelper::cartTotals($items, $currency['code']);
-        $subtotal = $totals['subtotal'];
         $promoCode = $totals['promo_code'];
         $discount = $totals['discount'];
-        $deliveryPrice = ShopHelper::deliveryPrice($deliveryMethod, $currency['code']);
+        $deliveryPrice = ShopHelper::deliveryPrice($deliveryMethod, $currency['code'], $subtotal);
         $total = $subtotal - $discount + $deliveryPrice;
         if ($totals['promo_error'] !== '') {
             $errors[] = $totals['promo_error'] . ' Измените или уберите промокод.';
@@ -1181,6 +1307,7 @@ class ShopModule extends Module
             'discount_formatted' => ShopHelper::formatPrice($discount, $currency['code']),
             'delivery_price_formatted' => ShopHelper::formatPrice($deliveryPrice, $currency['code']),
             'total_formatted' => ShopHelper::formatPrice($total, $currency['code']),
+            'free_delivery_hint' => ShopHelper::freeDeliveryHint($subtotal, $currency['code']),
             'apply_promo_action' => get_url('/shop/apply_promo/'),
             'remove_promo_action' => get_url('/shop/remove_promo/'),
             'delivery_method' => $deliveryMethod,

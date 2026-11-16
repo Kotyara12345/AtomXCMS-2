@@ -30,4 +30,11 @@ $FpsInstallSettings = array(
     'similar_enabled' => 1,
     'related_enabled' => 1,
     'structured_data' => 1,
+    'noindex_filters' => 1,
+    'yml_enabled' => 1,
+    'yml_sales_notes' => '',
+    'free_delivery_from_rub' => 0,
+    'free_delivery_from_usd' => 0,
+    'free_delivery_from_eur' => 0,
+    'free_delivery_from_byn' => 0,
 );

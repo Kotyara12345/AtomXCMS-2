@@ -237,6 +237,7 @@
                         <div class="shop-review-head">
                             <strong>{{ review.name|escape }}</strong>
                             <span class="shop-stars">{{ review.rating_stars }}</span>
+                            {% if review.verified %}<span class="shop-review-verified">Покупка подтверждена</span>{% endif %}
                             <span class="shop-muted">{{ review.created_at_formatted }}</span>
                         </div>
                         <div class="shop-review-text">{{ review.text_html }}</div>

@@ -253,6 +253,23 @@ class ShopHelper
         return $path;
     }
 
+    /**
+     * File cache for the YML feed. Marketplaces poll it often and the feed
+     * touches the whole catalogue.
+     */
+    public static function ymlCachePath()
+    {
+        $dir = ROOT . '/sys/cache';
+        if (!is_dir($dir) || !is_writable($dir)) return '';
+        return $dir . '/shop_yml.xml';
+    }
+
+    public static function clearYmlCache()
+    {
+        $file = self::ymlCachePath();
+        if ($file !== '' && is_file($file)) @unlink($file);
+    }
+
     /* ---------------------------------------------------------------------
      * Cart
      * ------------------------------------------------------------------ */
@@ -315,6 +332,7 @@ class ShopHelper
                 `min_total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
                 `max_uses` INT UNSIGNED NOT NULL DEFAULT 0,
                 `used_count` INT UNSIGNED NOT NULL DEFAULT 0,
+                `once_per_customer` TINYINT(1) NOT NULL DEFAULT 0,
                 `starts_at` DATETIME DEFAULT NULL,
                 `ends_at` DATETIME DEFAULT NULL,
                 `active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -344,6 +362,15 @@ class ShopHelper
             try {
                 self::db()->query("ALTER TABLE `{$orders}`
                     ADD COLUMN `promocode` VARCHAR(64) NOT NULL DEFAULT ''");
+            } catch (Throwable $alterError) {
+            }
+        }
+        try {
+            self::db()->query("SELECT `once_per_customer` FROM `" . self::table('promocodes') . "` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `" . self::table('promocodes') . "`
+                    ADD COLUMN `once_per_customer` TINYINT(1) NOT NULL DEFAULT 0");
             } catch (Throwable $alterError) {
             }
         }
@@ -401,7 +428,8 @@ class ShopHelper
      * With $forUpdate the promo row is locked by the caller's transaction, so
      * the usage limit cannot be exceeded by two orders checked at once.
      */
-    public static function promoCheck($code, $subtotal, $currencyCode = null, $forUpdate = false)
+    public static function promoCheck($code, $subtotal, $currencyCode = null, $forUpdate = false,
+        $customerEmail = '', $customerUserId = 0)
     {
         $result = array('valid' => false, 'error' => '', 'promocode' => null, 'discount' => 0.0);
         $code = self::promoNormalize($code);
@@ -413,6 +441,7 @@ class ShopHelper
         // Never run DDL inside the order transaction; the caller migrates earlier.
         if (!$forUpdate) self::ensurePromoTables();
         $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
+        $orders = self::table('orders');
         $subtotal = round((float)$subtotal, 2);
         try {
             $rows = self::db()->query("SELECT * FROM `" . self::table('promocodes') . "`
@@ -444,6 +473,33 @@ class ShopHelper
         if ((int)$promo['max_uses'] > 0 && (int)$promo['used_count'] >= (int)$promo['max_uses']) {
             $result['error'] = 'Промокод больше не действует: исчерпан лимит применений.';
             return $result;
+        }
+        if (!empty($promo['once_per_customer'])) {
+            $email = trim((string)$customerEmail);
+            $userId = (int)$customerUserId;
+            if ($email === '' || $userId < 1) {
+                $current = self::currentUser();
+                if ($email === '') $email = (string)$current['email'];
+                if ($userId < 1) $userId = (int)$current['id'];
+            }
+            $owners = array();
+            if ($userId > 0) $owners[] = "`user_id` = {$userId}";
+            if ($email !== '') {
+                $owners[] = "LOWER(`email`) = '" . self::esc(mb_strtolower($email)) . "'";
+            }
+            if ($owners) {
+                try {
+                    $used = self::db()->query("SELECT `id` FROM `{$orders}`
+                        WHERE `promocode` = '" . self::esc($code) . "'
+                            AND `status` <> 'cancelled' AND (" . implode(' OR ', $owners) . ") LIMIT 1");
+                } catch (Throwable $e) {
+                    $used = array();
+                }
+                if (!empty($used)) {
+                    $result['error'] = 'Этот промокод можно использовать только один раз.';
+                    return $result;
+                }
+            }
         }
         if ((float)$promo['min_total'] > 0 && $subtotal < (float)$promo['min_total']) {
             $result['error'] = 'Промокод действует при заказе от '
@@ -917,7 +973,11 @@ class ShopHelper
         return $methods;
     }
 
-    public static function deliveryMethods($currencyCode = null)
+    /**
+     * @param float|null $subtotal cart goods total; enables the free delivery
+     *                             threshold when the courier method is shown
+     */
+    public static function deliveryMethods($currencyCode = null, $subtotal = null)
     {
         $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
         $methods = array();
@@ -932,13 +992,18 @@ class ShopHelper
         }
 
         if ((int)self::cfg('courier_enabled', 1) === 1) {
-            $key = 'delivery_price_' . strtolower($currency['code']);
-            $price = max(0, (float)self::cfg($key, 0));
+            $lower = strtolower($currency['code']);
+            $price = max(0, (float)self::cfg('delivery_price_' . $lower, 0));
+            $freeFrom = max(0, (float)self::cfg('free_delivery_from_' . $lower, 0));
+            $qualified = $freeFrom > 0 && $subtotal !== null && (float)$subtotal >= $freeFrom;
+            if ($qualified) $price = 0.0;
             $methods['courier'] = array(
                 'code' => 'courier',
                 'title' => 'Доставка',
                 'price' => $price,
                 'price_formatted' => $price > 0 ? self::formatPrice($price, $currency['code']) : 'Бесплатно',
+                'free_from' => $freeFrom,
+                'free_from_formatted' => $freeFrom > 0 ? self::formatPrice($freeFrom, $currency['code']) : '',
             );
         }
 
@@ -954,10 +1019,24 @@ class ShopHelper
         return $methods;
     }
 
-    public static function deliveryPrice($method, $currencyCode = null)
+    public static function deliveryPrice($method, $currencyCode = null, $subtotal = null)
     {
-        $methods = self::deliveryMethods($currencyCode);
+        $methods = self::deliveryMethods($currencyCode, $subtotal);
         return isset($methods[$method]) ? (float)$methods[$method]['price'] : 0.0;
+    }
+
+    /**
+     * One-line hint above the cart summary, empty when there is no threshold.
+     */
+    public static function freeDeliveryHint($subtotal, $currencyCode = null)
+    {
+        if ((int)self::cfg('courier_enabled', 1) !== 1) return '';
+        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
+        $freeFrom = max(0, (float)self::cfg('free_delivery_from_' . strtolower($currency['code']), 0));
+        if ($freeFrom <= 0) return '';
+        $subtotal = round((float)$subtotal, 2);
+        if ($subtotal >= $freeFrom) return 'Доставка бесплатно.';
+        return 'До бесплатной доставки осталось ' . self::formatPrice($freeFrom - $subtotal, $currency['code']) . '.';
     }
 
     public static function statuses()
@@ -1043,39 +1122,28 @@ class ShopHelper
         return $rows;
     }
 
-    public static function getProducts($filters = array())
+    private static function minPriceSql($code)
     {
-        self::ensurePromoTables();
-        $products = self::table('products');
-        $categories = self::table('categories');
-        $pav = self::table('product_attribute_values');
-        $attributeValues = self::table('attribute_values');
-        $currency = isset($filters['currency']) ? self::currency($filters['currency']) : self::activeCurrency();
-        $code = self::esc($currency['code']);
-        $variants = self::table('variants');
-
-        $minSql = "(SELECT MIN(vp.`price`) FROM `" . self::table('variants') . "` v
+        return "(SELECT MIN(vp.`price`) FROM `" . self::table('variants') . "` v
             INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
             WHERE v.`product_id` = p.`id` AND v.`active` = 1
                 AND vp.`currency_code` = '{$code}' AND vp.`price` > 0)";
-        $compareSql = "(SELECT NULLIF(vp.`compare_price`, 0) FROM `" . self::table('variants') . "` v
-            INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
-            WHERE v.`product_id` = p.`id` AND v.`active` = 1
-                AND vp.`currency_code` = '{$code}' AND vp.`price` > 0
-            ORDER BY vp.`price` ASC, v.`id` ASC LIMIT 1)";
-        $gallerySql = "(SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
-            WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1)";
+    }
 
+    /**
+     * WHERE conditions shared by the catalogue listing and the facet counts.
+     *
+     * @return array SQL condition strings, alias p for the product table
+     */
+    private static function productFilterWhere($filters, $minSql, $pav, $attributeValues)
+    {
         $where = array();
         if (!isset($filters['active_only']) || !empty($filters['active_only'])) {
             $where[] = 'p.`active` = 1';
         }
         if (!empty($filters['ids'])) {
             $ids = array_values(array_unique(array_filter(array_map('intval', (array)$filters['ids']))));
-            if (!$ids) {
-                return array('items' => array(), 'total' => 0, 'page' => 1, 'pages' => 0, 'limit' => 0, 'sort' => 'default');
-            }
-            $where[] = 'p.`id` IN (' . implode(',', $ids) . ')';
+            $where[] = $ids ? 'p.`id` IN (' . implode(',', $ids) . ')' : '1 = 0';
         }
         if (!empty($filters['category_ids'])) {
             $ids = array_map('intval', (array)$filters['category_ids']);
@@ -1098,7 +1166,11 @@ class ShopHelper
         if (!empty($filters['q'])) {
             $q = self::esc(trim((string)$filters['q']));
             if ($q !== '') {
-                $where[] = "(p.`title` LIKE '%{$q}%' OR p.`short_description` LIKE '%{$q}%' OR p.`description` LIKE '%{$q}%')";
+                $variants = self::table('variants');
+                $where[] = "(p.`title` LIKE '%{$q}%' OR p.`short_description` LIKE '%{$q}%'
+                    OR p.`description` LIKE '%{$q}%'
+                    OR EXISTS (SELECT 1 FROM `{$variants}` vs
+                        WHERE vs.`product_id` = p.`id` AND vs.`sku` LIKE '%{$q}%'))";
             }
         }
         if (!empty($filters['featured'])) {
@@ -1109,9 +1181,33 @@ class ShopHelper
         if ($priceMin > 0) $where[] = "{$minSql} >= " . number_format($priceMin, 2, '.', '');
         if ($priceMax > 0) $where[] = "{$minSql} <= " . number_format($priceMax, 2, '.', '');
         if (!empty($filters['in_stock'])) {
-            $where[] = "EXISTS (SELECT 1 FROM `{$variants}` v2
+            $where[] = "EXISTS (SELECT 1 FROM `" . self::table('variants') . "` v2
                 WHERE v2.`product_id` = p.`id` AND v2.`active` = 1 AND v2.`stock` > 0)";
         }
+        return $where;
+    }
+
+    public static function getProducts($filters = array())
+    {
+        self::ensurePromoTables();
+        $products = self::table('products');
+        $categories = self::table('categories');
+        $pav = self::table('product_attribute_values');
+        $attributeValues = self::table('attribute_values');
+        $currency = isset($filters['currency']) ? self::currency($filters['currency']) : self::activeCurrency();
+        $code = self::esc($currency['code']);
+        $variants = self::table('variants');
+
+        $minSql = self::minPriceSql($code);
+        $compareSql = "(SELECT NULLIF(vp.`compare_price`, 0) FROM `" . self::table('variants') . "` v
+            INNER JOIN `" . self::table('variant_prices') . "` vp ON vp.`variant_id` = v.`id`
+            WHERE v.`product_id` = p.`id` AND v.`active` = 1
+                AND vp.`currency_code` = '{$code}' AND vp.`price` > 0
+            ORDER BY vp.`price` ASC, v.`id` ASC LIMIT 1)";
+        $gallerySql = "(SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
+            WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1)";
+
+        $where = self::productFilterWhere($filters, $minSql, $pav, $attributeValues);
         $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
         $page = max(1, (int)(isset($filters['page']) ? $filters['page'] : 1));
@@ -1773,33 +1869,35 @@ class ShopHelper
     /**
      * Attribute values that actually occur in the products of the given
      * categories. Used by the catalogue sidebar filters.
+     *
+     * @param array $filters current catalogue filters; attribute selections are
+     *                       ignored so every value of a group keeps its count
      */
-    public static function getCatalogAttributeGroups($categoryIds = array())
+    public static function getCatalogAttributeGroups($categoryIds = array(), $filters = array())
     {
         $pav = self::table('product_attribute_values');
         $values = self::table('attribute_values');
         $attributes = self::table('attributes');
         $products = self::table('products');
 
-        $where = "p.`active` = 1 AND av.`active` = 1 AND a.`active` = 1";
-        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$categoryIds))));
-        if ($ids) $where .= ' AND p.`category_id` IN (' . implode(',', $ids) . ')';
-
-        $rows = self::db()->query("SELECT av.`id` AS value_id, av.`attribute_id`,
+        $categoryIds = array_values(array_unique(array_filter(array_map('intval', (array)$categoryIds))));
+        $baseWhere = 'p.`active` = 1 AND av.`active` = 1 AND a.`active` = 1';
+        if ($categoryIds) {
+            $baseWhere .= ' AND p.`category_id` IN (' . implode(',', $categoryIds) . ')';
+        }
+        $baseRows = self::db()->query("SELECT DISTINCT av.`id` AS value_id, av.`attribute_id`,
                 av.`title` AS value_title, a.`title` AS attribute_title,
-                a.`position` AS attribute_position, av.`position` AS value_position,
-                COUNT(DISTINCT p.`id`) AS product_count
+                a.`position` AS attribute_position, av.`position` AS value_position
             FROM `{$pav}` pav
             INNER JOIN `{$values}` av ON av.`id` = pav.`attribute_value_id`
             INNER JOIN `{$attributes}` a ON a.`id` = av.`attribute_id`
             INNER JOIN `{$products}` p ON p.`id` = pav.`product_id`
-            WHERE {$where}
-            GROUP BY av.`id`, av.`attribute_id`, av.`title`, a.`title`,
-                a.`position`, av.`position`
-            ORDER BY a.`position` ASC, a.`id` ASC, av.`position` ASC, av.`id` ASC");
+            WHERE {$baseWhere}
+            ORDER BY a.`position` ASC, a.`title` ASC, av.`position` ASC, av.`id` ASC");
 
         $groups = array();
-        foreach ($rows as $row) {
+        $groupByValue = array();
+        foreach ($baseRows as $row) {
             $attributeId = (int)$row['attribute_id'];
             if (!isset($groups[$attributeId])) {
                 $groups[$attributeId] = array(
@@ -1808,11 +1906,40 @@ class ShopHelper
                     'values' => array(),
                 );
             }
+            $valueId = (int)$row['value_id'];
             $groups[$attributeId]['values'][] = array(
-                'id' => (int)$row['value_id'],
+                'id' => $valueId,
                 'title' => $row['value_title'],
-                'count' => (int)$row['product_count'],
+                'count' => 0,
             );
+            $groupByValue[$valueId] = array($attributeId, count($groups[$attributeId]['values']) - 1);
+        }
+
+        // Counts respect price, stock and search filters; attribute selections
+        // are ignored so every value of a group keeps its own count.
+        $currency = isset($filters['currency']) ? self::currency($filters['currency']) : self::activeCurrency();
+        $minSql = self::minPriceSql(self::esc($currency['code']));
+        $filters = (array)$filters;
+        $filters['category_ids'] = $categoryIds;
+        $filters['active_only'] = true;
+        unset($filters['attribute_value_ids']);
+        $where = self::productFilterWhere($filters, $minSql, $pav, $values);
+        $where[] = 'av.`active` = 1 AND a.`active` = 1';
+        $whereSql = ' WHERE ' . implode(' AND ', $where);
+
+        $countRows = self::db()->query("SELECT pav.`attribute_value_id` AS value_id,
+                COUNT(DISTINCT p.`id`) AS product_count
+            FROM `{$pav}` pav
+            INNER JOIN `{$values}` av ON av.`id` = pav.`attribute_value_id`
+            INNER JOIN `{$attributes}` a ON a.`id` = av.`attribute_id`
+            INNER JOIN `{$products}` p ON p.`id` = pav.`product_id`
+            {$whereSql}
+            GROUP BY pav.`attribute_value_id`");
+        foreach ($countRows as $row) {
+            $valueId = (int)$row['value_id'];
+            if (!isset($groupByValue[$valueId])) continue;
+            list($attributeId, $index) = $groupByValue[$valueId];
+            $groups[$attributeId]['values'][$index]['count'] = (int)$row['product_count'];
         }
         return $groups;
     }
@@ -2048,11 +2175,15 @@ class ShopHelper
 
     /**
      * Replace the order lines and keep the warehouse in sync. Existing lines
-     * keep their captured price, new lines use the current price.
+     * keep their captured price, new lines use the current price. Shipping and
+     * discount can be corrected in the same call.
      *
      * @param array $quantities variant_id => quantity (0 removes the line)
+     * @param float|null $deliveryPrice new shipping cost, null keeps the current
+     * @param float|null $discountAmount new absolute discount, null keeps the current
      */
-    public static function updateOrderItems($orderId, $quantities, &$error = null)
+    public static function updateOrderItems($orderId, $quantities, &$error = null,
+        $deliveryPrice = null, $discountAmount = null)
     {
         $orderId = (int)$orderId;
         $error = '';
@@ -2171,13 +2302,18 @@ class ShopHelper
             }
             if ($lines < 1) throw new RuntimeException('В заказе должна остаться хотя бы одна позиция.');
 
-            $discount = isset($order['discount']) ? (float)$order['discount'] : 0.0;
+            $discount = $discountAmount === null
+                ? (isset($order['discount']) ? (float)$order['discount'] : 0.0)
+                : max(0.0, (float)$discountAmount);
             if ($discount > $subtotal) $discount = $subtotal;
-            $delivery = (float)$order['delivery_price'];
+            $delivery = $deliveryPrice === null
+                ? (float)$order['delivery_price']
+                : max(0.0, (float)$deliveryPrice);
             $total = $subtotal - $discount + $delivery;
             $now = date('Y-m-d H:i:s');
             self::db()->query("UPDATE `{$orders}` SET `subtotal` = " . number_format($subtotal, 2, '.', '')
                 . ", `discount` = " . number_format($discount, 2, '.', '')
+                . ", `delivery_price` = " . number_format($delivery, 2, '.', '')
                 . ", `total` = " . number_format($total, 2, '.', '')
                 . ", `updated_at` = '" . self::esc($now) . "' WHERE `id` = {$orderId}");
 
@@ -2981,6 +3117,42 @@ class ShopHelper
         $where = '`product_id` = ' . (int)$productId;
         if ($onlyActive) $where .= ' AND `active` = 1';
         $rows = self::db()->query("SELECT * FROM `{$table}` WHERE {$where} ORDER BY `id` DESC LIMIT 100");
+
+        // Mark reviews written by a customer who has a non-cancelled order
+        // containing this product. One batch query for the whole list.
+        $verifiedEmails = array();
+        $verifiedUsers = array();
+        try {
+            $emails = array();
+            $userIds = array();
+            foreach ($rows as $row) {
+                $email = mb_strtolower(trim((string)$row['email']));
+                if ($email !== '') $emails[$email] = true;
+                if ((int)$row['user_id'] > 0) $userIds[(int)$row['user_id']] = true;
+            }
+            $owners = array();
+            if ($emails) {
+                $owners[] = "LOWER(o.`email`) IN ('" . implode("','", array_map(array(self::class, 'esc'), array_keys($emails))) . "')";
+            }
+            if ($userIds) {
+                $owners[] = 'o.`user_id` IN (' . implode(',', array_keys($userIds)) . ')';
+            }
+            if ($owners) {
+                $bought = self::db()->query("SELECT DISTINCT o.`email`, o.`user_id`
+                    FROM `" . self::table('order_items') . "` oi
+                    INNER JOIN `" . self::table('orders') . "` o ON o.`id` = oi.`order_id`
+                    WHERE oi.`product_id` = " . (int)$productId . "
+                        AND o.`status` <> 'cancelled' AND (" . implode(' OR ', $owners) . ")");
+                foreach ($bought as $orderRow) {
+                    $email = mb_strtolower(trim((string)$orderRow['email']));
+                    if ($email !== '') $verifiedEmails[$email] = true;
+                    if ((int)$orderRow['user_id'] > 0) $verifiedUsers[(int)$orderRow['user_id']] = true;
+                }
+            }
+        } catch (Throwable $e) {
+            // Reviews still render without the badge if the order tables are missing.
+        }
+
         foreach ($rows as &$row) {
             $row['id'] = (int)$row['id'];
             $row['rating'] = (int)$row['rating'];
@@ -2989,6 +3161,8 @@ class ShopHelper
             $row['text_html'] = nl2br(h((string)$row['text']));
             $row['reply'] = isset($row['reply']) ? (string)$row['reply'] : '';
             $row['reply_html'] = $row['reply'] !== '' ? nl2br(h($row['reply'])) : '';
+            $row['verified'] = isset($verifiedEmails[mb_strtolower(trim((string)$row['email']))])
+                || ((int)$row['user_id'] > 0 && isset($verifiedUsers[(int)$row['user_id']]));
         }
         unset($row);
         return $rows;
@@ -3329,6 +3503,15 @@ class ShopHelper
         $event = preg_replace('/[^a-z_]/', '', strtolower((string)$event));
         if ($event === '' || !self::ensureFunnelTable()) return false;
 
+        // Crawlers would inflate the funnel and never convert.
+        $ua = isset($_SERVER['HTTP_USER_AGENT']) ? strtolower((string)$_SERVER['HTTP_USER_AGENT']) : '';
+        if ($ua !== '') {
+            foreach (array('bot', 'crawler', 'spider', 'slurp', 'headlesschrome', 'phantomjs',
+                'python-requests', 'curl/', 'wget', 'go-http-client', 'okhttp') as $needle) {
+                if (strpos($ua, $needle) !== false) return false;
+            }
+        }
+
         $data = (array)$data;
         $session = session_id();
         if ($session === '') $session = 'anon';
@@ -3389,6 +3572,45 @@ class ShopHelper
         }
         unset($step);
         return $report;
+    }
+
+    /**
+     * Best viewed products with their cart conversion for the same period.
+     */
+    public static function funnelProducts($days = 30, $limit = 8)
+    {
+        $days = max(1, min(365, (int)$days));
+        $limit = max(1, min(50, (int)$limit));
+        if (!self::ensureFunnelTable()) return array();
+
+        $events = self::table('funnel_events');
+        $products = self::table('products');
+        $since = date('Y-m-d H:i:s', strtotime('-' . ($days - 1) . ' days'));
+        $rows = self::db()->query("SELECT e.`product_id`,
+                COALESCE(p.`title`, CONCAT('#', e.`product_id`)) AS product_title,
+                COUNT(DISTINCT CASE WHEN e.`event` = 'product_view' THEN e.`session_key` END) AS views,
+                COUNT(DISTINCT CASE WHEN e.`event` = 'add_to_cart' THEN e.`session_key` END) AS carts
+            FROM `{$events}` e
+            LEFT JOIN `{$products}` p ON p.`id` = e.`product_id`
+            WHERE e.`created_at` >= '" . self::esc($since) . "' AND e.`product_id` > 0
+            GROUP BY e.`product_id`, p.`title`
+            HAVING views > 0 OR carts > 0
+            ORDER BY views DESC, carts DESC
+            LIMIT {$limit}");
+
+        $items = array();
+        foreach ($rows as $row) {
+            $views = (int)$row['views'];
+            $carts = (int)$row['carts'];
+            $items[] = array(
+                'product_id' => (int)$row['product_id'],
+                'product_title' => (string)$row['product_title'],
+                'views' => $views,
+                'carts' => $carts,
+                'rate' => $views > 0 ? round($carts / $views * 100, 1) : 0.0,
+            );
+        }
+        return $items;
     }
 
     public static function recordProductView($productId)
@@ -3662,6 +3884,125 @@ class ShopHelper
             );
         }
         return $items;
+    }
+
+    private static function variantCsvHeaderMap($header)
+    {
+        $aliases = array(
+            'variant_id' => array('variant_id', 'id', 'идентификатор варианта'),
+            'currency' => array('currency', 'currency_code', 'валюта'),
+            'sku' => array('sku', 'артикул'),
+            'stock' => array('stock', 'остаток', 'количество'),
+            'active' => array('active', 'активен', 'активность'),
+            'price' => array('price', 'цена'),
+            'compare_price' => array('compare_price', 'old_price', 'старая цена', 'цена до скидки'),
+        );
+        $map = array();
+        foreach ((array)$header as $index => $name) {
+            $name = preg_replace('/^\xEF\xBB\xBF/', '', (string)$name);
+            $name = mb_strtolower(trim($name));
+            foreach ($aliases as $field => $names) {
+                if (isset($map[$field])) continue;
+                if (in_array($name, $names, true)) {
+                    $map[$field] = (int)$index;
+                    break;
+                }
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Apply the variant export back. Rows are matched by variant_id; a column
+     * missing from the header leaves that variant field untouched.
+     */
+    public static function importVariantsCsv($path)
+    {
+        $result = array('updated' => 0, 'skipped' => 0, 'errors' => array());
+        $handle = @fopen((string)$path, 'rb');
+        if (!$handle) {
+            $result['errors'][] = 'Не удалось открыть файл.';
+            return $result;
+        }
+
+        $firstLine = (string)fgets($handle);
+        $delimiter = substr_count($firstLine, ';') >= substr_count($firstLine, ',') ? ';' : ',';
+        rewind($handle);
+
+        $variants = self::table('variants');
+        $prices = self::table('variant_prices');
+        $currencies = self::currencies(false);
+        $fallback = self::activeCurrency();
+        $now = date('Y-m-d H:i:s');
+
+        $known = array();
+        foreach (self::db()->query("SELECT `id` FROM `{$variants}`") as $row) {
+            $known[(int)$row['id']] = true;
+        }
+
+        $map = null;
+        $lines = 0;
+        while (($row = fgetcsv($handle, 0, $delimiter, '"', '')) !== false) {
+            if ($map === null) {
+                $map = self::variantCsvHeaderMap($row);
+                if (!isset($map['variant_id'])) {
+                    $result['errors'][] = 'В первой строке нет колонки variant_id.';
+                    break;
+                }
+                continue;
+            }
+
+            $lines++;
+            if ($lines > 5000) {
+                $result['errors'][] = 'Обработаны первые 5000 строк.';
+                break;
+            }
+
+            $cell = function ($field) use ($row, $map) {
+                return isset($map[$field], $row[$map[$field]]) ? trim((string)$row[$map[$field]]) : null;
+            };
+
+            $variantId = (int)$cell('variant_id');
+            if ($variantId < 1 || !isset($known[$variantId])) {
+                $result['skipped']++;
+                continue;
+            }
+
+            $update = array();
+            $sku = $cell('sku');
+            if ($sku !== null) $update['sku'] = mb_substr($sku, 0, 64);
+            $stock = $cell('stock');
+            if ($stock !== null) $update['stock'] = max(0, (int)$stock);
+            $active = $cell('active');
+            if ($active !== null && $active !== '') $update['active'] = self::csvFlag($active);
+            if ($update) {
+                $update['updated_at'] = $now;
+                self::db()->save('shop_variants', $update, array('id' => $variantId));
+            }
+
+            $priceValue = $cell('price');
+            if ($priceValue !== null && $priceValue !== '') {
+                $code = strtoupper(trim((string)$cell('currency')));
+                if ($code === '' || !isset($currencies[$code])) $code = $fallback['code'];
+                $price = (float)str_replace(',', '.', $priceValue);
+                if ($price < 0) $price = 0;
+                $hasCompare = isset($map['compare_price']);
+                $compare = $hasCompare ? (float)str_replace(',', '.', (string)$cell('compare_price')) : 0.0;
+                if ($compare <= $price) $compare = 0;
+                $priceSql = number_format($price, 2, '.', '');
+                $compareSql = number_format($compare, 2, '.', '');
+                $updateCompare = $hasCompare
+                    ? ", `compare_price` = VALUES(`compare_price`)"
+                    : '';
+                self::db()->query("INSERT INTO `{$prices}` (`variant_id`, `currency_code`, `price`, `compare_price`)
+                    VALUES ({$variantId}, '" . self::esc($code) . "', {$priceSql}, {$compareSql})
+                    ON DUPLICATE KEY UPDATE `price` = VALUES(`price`){$updateCompare}");
+            }
+
+            $result['updated']++;
+        }
+        fclose($handle);
+        return $result;
     }
 
     private static function csvHeaderMap($header)

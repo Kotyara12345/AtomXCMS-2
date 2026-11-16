@@ -219,6 +219,18 @@
     min-width: 240px;
 }
 
+.shop-admin-date-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: #4a5a68;
+}
+
+.shop-admin-bulk {
+    justify-content: flex-start;
+}
+
 .shop-admin input[type="text"],
 .shop-admin input[type="email"],
 .shop-admin input[type="number"],
@@ -1040,4 +1052,10 @@
 
 .shop-admin-funnel td:first-child {
     font-weight: 600;
+}
+
+.shop-admin-funnel-periods {
+    display: inline-flex;
+    gap: 6px;
+    flex-wrap: wrap;
 }

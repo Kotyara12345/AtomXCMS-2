@@ -62,7 +62,7 @@ $module = (string)file_get_contents($root . '/modules/shop/index.php');
 foreach (array(
     'public function apply_promo',
     'public function remove_promo',
-    "promoCheck(\$promoCode, \$subtotal, \$currency['code'], true)",
+    "promoCheck(\$promoCode, \$subtotal, \$currency['code'], true",
     "'promocode' => \$promoCode",
     "'discount' => \$discount",
     '`used_count` = `used_count` + 1',
