@@ -4,6 +4,7 @@ $dsn=getenv('ATM_TEST_DSN');
 if(!$dsn){if(getenv('ATM_TEST_REQUIRED')==='1')exit(1);echo "SKIP: ATM_TEST_DSN is not set\n";exit;}
 try{$pdo=new PDO($dsn,getenv('ATM_TEST_USER'),getenv('ATM_TEST_PASS'),array(PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION));}
 catch(Throwable $e){if(getenv('ATM_TEST_REQUIRED')==='1')throw $e;echo "SKIP: test database unavailable\n";exit;}
+if(!defined('ROOT'))define('ROOT',dirname(__DIR__));
 class Register extends ArrayObject {private static $instance;public static function getInstance(){return self::$instance ?: (self::$instance=new self);}}
 class Config {public static $shop=array();public static function read($key,$module=null){if(isset(self::$shop[$key]))return self::$shop[$key];return $key==='active'?1:null;}}
 function h($value){return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');}
@@ -135,6 +136,21 @@ try{
     cms_check(ShopHelper::setReviewActive($reviewId,true)===true,'Review was not approved');
     $rating=ShopHelper::productRating(1);
     cms_check($rating['count']===1 && abs($rating['avg']-4.0)<0.01,'Approved review rating is wrong');
+
+    cms_check(ShopHelper::addReview(array('product_id'=>1,'name'=>'Пётр','email'=>'petr@example.com','rating'=>5,
+        'text'=>'С фотографией','photos'=>array('review_test.jpg')))===true,'Review with a photo was not saved');
+    $photoReviewId=(int)$pdo->query("SELECT id FROM `{$prefix}shop_reviews` WHERE `name`='Пётр' ORDER BY id DESC LIMIT 1")->fetchColumn();
+    ShopHelper::setReviewActive($photoReviewId,true);
+    $photoReviews=ShopHelper::getProductReviews(1,true);
+    $photoFound=false;
+    foreach($photoReviews as$row){if((int)$row['id']===$photoReviewId&&!empty($row['photo_urls']))$photoFound=true;}
+    cms_check($photoFound,'Review photo is not exposed to the storefront');
+    cms_check(ShopHelper::markReviewHelpful($photoReviewId,'voter-a')===1,'First helpful vote was not counted');
+    cms_check(ShopHelper::markReviewHelpful($photoReviewId,'voter-a')===1,'Duplicate helpful vote was counted twice');
+    cms_check(ShopHelper::markReviewHelpful($photoReviewId,'voter-b')===2,'Second helpful vote was not counted');
+    ShopHelper::deleteReview($photoReviewId);
+    cms_check((int)$pdo->query("SELECT COUNT(*) FROM `{$prefix}shop_review_votes` WHERE `review_id`=".$photoReviewId)->fetchColumn()===0,
+        'Review votes were not removed with the review');
     cms_check(ShopHelper::addStockSubscription(1,'wait@example.com')===true,'Stock subscription was not saved');
     cms_check(ShopHelper::addStockSubscription(1,'wait@example.com')===true,'Duplicate stock subscription failed');
     cms_check((int)$pdo->query("SELECT COUNT(*) FROM `{$prefix}shop_stock_subscriptions`")->fetchColumn()===1,'Duplicate stock subscription was stored');
@@ -203,6 +219,28 @@ try{
     cms_check(!ShopHelper::promoCheck('OLD',800,'RUB')['valid'],'Expired promo was accepted');
     cms_check(!ShopHelper::promoCheck('LIMIT',800,'RUB')['valid'],'Exhausted promo was accepted');
     cms_check(!ShopHelper::promoCheck('OFF',800,'RUB')['valid'],'Inactive promo was accepted');
+
+    $db->query("INSERT INTO `{$prefix}shop_promocodes` (`id`,`code`,`discount_type`,`value`,`currency_code`,`min_total`,`max_uses`,`used_count`,`starts_at`,`ends_at`,`active`,`created_at`,`updated_at`) VALUES
+        (8,'PART','percent',10,'RUB',0,0,0,NULL,NULL,1,NOW(),NOW())");
+    ShopHelper::ensurePromoTables();
+    $db->query("UPDATE `{$prefix}shop_promocodes` SET `restrict_products`='2', `restrict_categories`='5' WHERE `id`=8");
+    $lines=array(
+        array('product_id'=>1,'category_id'=>5,'total'=>400.0),
+        array('product_id'=>2,'category_id'=>9,'total'=>600.0),
+        array('product_id'=>3,'category_id'=>9,'total'=>1000.0),
+    );
+    $promo=ShopHelper::promoCheck('PART',2000,'RUB',false,'',0,$lines);
+    cms_check($promo['valid'] && abs($promo['discount']-100.0)<0.01,'Restricted promo discounted ineligible lines');
+    $promo=ShopHelper::promoCheck('PART',1700,'RUB',false,'',0,array($lines[2]));
+    cms_check(!$promo['valid'],'Restricted promo was accepted without matching items');
+
+    Config::$shop['min_order_total_rub']=500;
+    cms_check(abs(ShopHelper::minOrderTotal('RUB')-500.0)<0.01,'Minimum order total was not read');
+    cms_check(abs(ShopHelper::minOrderShortfall(300,'RUB')-200.0)<0.01,'Minimum order shortfall is wrong');
+    cms_check(ShopHelper::minOrderShortfall(500,'RUB')===0.0 || abs(ShopHelper::minOrderShortfall(500,'RUB'))<0.01,'Minimum order shortfall must be zero when met');
+    cms_check(ShopHelper::minOrderHint(300,'RUB')!=='','Minimum order hint is missing');
+    Config::$shop['min_order_total_rub']=0;
+    cms_check(ShopHelper::minOrderHint(10,'RUB')==='','Disabled minimum order still shows a hint');
 
     $db->query("INSERT INTO `{$prefix}shop_promocodes` (`id`,`code`,`discount_type`,`value`,`currency_code`,`min_total`,`max_uses`,`used_count`,`once_per_customer`,`starts_at`,`ends_at`,`active`,`created_at`,`updated_at`) VALUES
         (7,'ONCE','percent',10,'RUB',0,0,0,1,NULL,NULL,1,NOW(),NOW())");

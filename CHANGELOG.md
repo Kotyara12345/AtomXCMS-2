@@ -168,6 +168,24 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   comment) that administrators already saw, and has a "Повторить заказ"
   button that refills the cart; unavailable variants are skipped and
   reported.
+- Promo codes can be limited to selected categories and products. Only the
+  matching cart lines receive the discount; an empty list keeps the code
+  valid for the whole cart. The admin form has category checkboxes and a
+  multi-select of products.
+- Per-currency minimum order total (`min_order_total_rub|usd|eur|byn`,
+  default `0` disables): the checkout refuses a smaller order and the cart
+  and checkout show how much is missing.
+- Customers can cancel a new or confirmed unpaid order from the order page;
+  stock is returned through the normal status-change path and the history
+  records "Отменён покупателем".
+- Review photos and "Полезно" votes. Customers can attach up to three JPG,
+  PNG, GIF or WEBP images when the `review_photos` setting is on, and mark a
+  review as helpful once per session. The admin review list shows the photos
+  and the vote counter; photos are removed with the review.
+- The admin shop panel has a "Покупатели" tab aggregating customers from
+  orders by e-mail, with order count, last order date and a link to their
+  orders. The order list accepts an `email` filter that the CSV export
+  honours.
 
 ### Changed
 - Search checks current publication, category and forum permissions before returning
@@ -205,6 +223,10 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   Redactor.
 
 ### Fixed
+- Shop images were served from `sys/files/shop/`, which Apache closes with
+  `.htaccess`, so product and review pictures returned 403. Image URLs now go
+  through the shared `/img.php` endpoint, which validates the path and serves
+  WebP when the browser supports it.
 - Shop status changes now roll back when the status history row cannot be
   written, instead of silently committing a change without an audit entry.
   The concurrent order test worker now provides the database `save()` method

@@ -27,6 +27,7 @@ $FpsInstallSettings = array(
     'abandoned_cart_hours' => 24,
     'reviews_enabled' => 1,
     'reviews_moderate' => 1,
+    'review_photos' => 1,
     'similar_enabled' => 1,
     'related_enabled' => 1,
     'structured_data' => 1,
@@ -37,4 +38,8 @@ $FpsInstallSettings = array(
     'free_delivery_from_usd' => 0,
     'free_delivery_from_eur' => 0,
     'free_delivery_from_byn' => 0,
+    'min_order_total_rub' => 0,
+    'min_order_total_usd' => 0,
+    'min_order_total_eur' => 0,
+    'min_order_total_byn' => 0,
 );

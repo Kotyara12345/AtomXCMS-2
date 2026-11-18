@@ -241,12 +241,26 @@
                             <span class="shop-muted">{{ review.created_at_formatted }}</span>
                         </div>
                         <div class="shop-review-text">{{ review.text_html }}</div>
+                        {% if review.photo_urls %}
+                        <div class="shop-review-photos">
+                            {% for photo in review.photo_urls %}
+                            <a href="{{ photo }}" target="_blank" rel="nofollow noopener"><img src="{{ photo }}" alt="Фото к отзыву" loading="lazy" /></a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                         {% if review.reply_html %}
                         <div class="shop-review-reply">
                             <strong>Ответ магазина</strong>
                             <div>{{ review.reply_html }}</div>
                         </div>
                         {% endif %}
+                        <form class="shop-review-helpful" method="post" action="{{ review_helpful_action }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                            <input type="hidden" name="product_id" value="{{ product.id }}" />
+                            <input type="hidden" name="review_id" value="{{ review.id }}" />
+                            <input type="hidden" name="return" value="{{ return_url }}" />
+                            <button type="submit" class="shop-link">Полезно{% if review.helpful_count %} ({{ review.helpful_count }}){% endif %}</button>
+                        </form>
                     </article>
                     {% endfor %}
                 </div>
@@ -254,7 +268,7 @@
                 <p class="shop-muted">Отзывов пока нет. Будьте первым.</p>
                 {% endif %}
 
-                <form class="shop-review-form" method="post" action="{{ review_action }}">
+                <form class="shop-review-form" method="post" action="{{ review_action }}"{% if review_photos_enabled %} enctype="multipart/form-data"{% endif %}>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                     <input type="hidden" name="product_id" value="{{ product.id }}" />
                     <input type="hidden" name="return" value="{{ return_url }}" />
@@ -277,6 +291,12 @@
                     <label>Отзыв
                         <textarea name="text" rows="4" maxlength="5000" required="required"></textarea>
                     </label>
+                    {% if review_photos_enabled %}
+                    <label>Фотографии
+                        <input type="file" name="photos[]" accept="image/*" multiple="multiple" />
+                    </label>
+                    <div class="shop-muted">До трёх изображений JPG, PNG, GIF или WEBP.</div>
+                    {% endif %}
                     <button type="submit" class="shop-btn">Отправить отзыв</button>
                 </form>
             </div>

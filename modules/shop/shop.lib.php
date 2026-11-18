@@ -333,6 +333,8 @@ class ShopHelper
                 `max_uses` INT UNSIGNED NOT NULL DEFAULT 0,
                 `used_count` INT UNSIGNED NOT NULL DEFAULT 0,
                 `once_per_customer` TINYINT(1) NOT NULL DEFAULT 0,
+                `restrict_products` TEXT,
+                `restrict_categories` TEXT,
                 `starts_at` DATETIME DEFAULT NULL,
                 `ends_at` DATETIME DEFAULT NULL,
                 `active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -375,6 +377,18 @@ class ShopHelper
             }
         }
 
+        foreach (array('restrict_products', 'restrict_categories') as $column) {
+            try {
+                self::db()->query("SELECT `{$column}` FROM `" . self::table('promocodes') . "` LIMIT 1");
+            } catch (Throwable $e) {
+                try {
+                    self::db()->query("ALTER TABLE `" . self::table('promocodes') . "`
+                        ADD COLUMN `{$column}` TEXT");
+                } catch (Throwable $alterError) {
+                }
+            }
+        }
+
         $prices = self::table('variant_prices');
         try {
             self::db()->query("SELECT `compare_price` FROM `{$prices}` LIMIT 1");
@@ -394,6 +408,21 @@ class ShopHelper
      * Promo codes are stored and compared in upper case ASCII. Anything else
      * is usually a copy-paste artefact, so it is dropped instead of rejected.
      */
+    /**
+     * Comma-separated ids from the admin form as an id => id map, so callers
+     * can test membership with isset(). Zero, negatives and junk are dropped.
+     */
+    public static function promoIdSet($value)
+    {
+        $ids = array();
+        foreach (preg_split('/[,\s]+/', (string)$value) as $id) {
+            if ($id === '' || !ctype_digit($id)) continue;
+            $id = (int)$id;
+            if ($id > 0) $ids[$id] = $id;
+        }
+        return $ids;
+    }
+
     public static function promoNormalize($code)
     {
         $code = strtoupper(trim((string)$code));
@@ -429,7 +458,7 @@ class ShopHelper
      * the usage limit cannot be exceeded by two orders checked at once.
      */
     public static function promoCheck($code, $subtotal, $currencyCode = null, $forUpdate = false,
-        $customerEmail = '', $customerUserId = 0)
+        $customerEmail = '', $customerUserId = 0, $items = null)
     {
         $result = array('valid' => false, 'error' => '', 'promocode' => null, 'discount' => 0.0);
         $code = self::promoNormalize($code);
@@ -509,18 +538,39 @@ class ShopHelper
 
         $type = (string)$promo['discount_type'];
         $value = (float)$promo['value'];
+
+        // A restricted promo discounts only the matching cart lines. Callers
+        // without lines (older code, tests) fall back to the whole subtotal.
+        $products = self::promoIdSet(isset($promo['restrict_products']) ? $promo['restrict_products'] : '');
+        $categories = self::promoIdSet(isset($promo['restrict_categories']) ? $promo['restrict_categories'] : '');
+        $eligible = $subtotal;
+        if (($products || $categories) && is_array($items)) {
+            $eligible = 0.0;
+            foreach ($items as $item) {
+                $productId = (int)(isset($item['product_id']) ? $item['product_id'] : 0);
+                $categoryId = (int)(isset($item['category_id']) ? $item['category_id'] : 0);
+                if (isset($products[$productId]) || isset($categories[$categoryId])) {
+                    $eligible += (float)(isset($item['total']) ? $item['total'] : 0);
+                }
+            }
+            if ($eligible <= 0) {
+                $result['error'] = 'Промокод не действует на товары в корзине.';
+                return $result;
+            }
+        }
+
         if ($type === 'percent') {
             if ($value <= 0 || $value > 100) {
                 $result['error'] = 'Промокод настроен некорректно.';
                 return $result;
             }
-            $discount = round($subtotal * $value / 100, 2);
+            $discount = round($eligible * $value / 100, 2);
         } else {
             if (strtoupper((string)$promo['currency_code']) !== strtoupper((string)$currency['code'])) {
                 $result['error'] = 'Промокод действует только в валюте ' . $promo['currency_code'] . '.';
                 return $result;
             }
-            $discount = round($value, 2);
+            $discount = round(min($value, $eligible), 2);
         }
         if ($discount <= 0) {
             $result['error'] = 'Промокод не даёт скидку для этого заказа.';
@@ -843,7 +893,7 @@ class ShopHelper
 
         $rows = self::db()->query("SELECT v.`id` AS variant_id, v.`product_id`, v.`title` AS variant_title,
                 v.`sku`, v.`stock`, v.`image` AS variant_image, v.`active` AS variant_active,
-                p.`title` AS product_title, p.`clean_url_title`,
+                p.`title` AS product_title, p.`clean_url_title`, p.`category_id`,
                 COALESCE(NULLIF(p.`image`, ''), (
                     SELECT pi.`image` FROM `" . self::table('product_images') . "` pi
                     WHERE pi.`product_id` = p.`id` ORDER BY pi.`position` ASC, pi.`id` ASC LIMIT 1
@@ -890,6 +940,7 @@ class ShopHelper
             $items[$variantId] = array(
                 'variant_id' => (int)$variantId,
                 'product_id' => (int)$row['product_id'],
+                'category_id' => (int)$row['category_id'],
                 'product_title' => $row['product_title'],
                 'variant_title' => !empty($row['variant_title']) ? $row['variant_title'] : 'Вариант #' . $variantId,
                 'sku' => $row['sku'],
@@ -924,7 +975,7 @@ class ShopHelper
         $promoError = '';
         $discount = 0.0;
         if ($promoCode !== '') {
-            $promo = self::promoCheck($promoCode, $subtotal, $currency['code']);
+            $promo = self::promoCheck($promoCode, $subtotal, $currency['code'], false, '', 0, $items);
             if ($promo['valid']) {
                 $discount = $promo['discount'];
             } else {
@@ -1037,6 +1088,44 @@ class ShopHelper
         $subtotal = round((float)$subtotal, 2);
         if ($subtotal >= $freeFrom) return 'Доставка бесплатно.';
         return 'До бесплатной доставки осталось ' . self::formatPrice($freeFrom - $subtotal, $currency['code']) . '.';
+    }
+
+    /**
+     * Per-currency minimum order total. 0 disables the check.
+     */
+    public static function minOrderTotal($currencyCode = null)
+    {
+        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
+        return max(0, (float)self::cfg('min_order_total_' . strtolower($currency['code']), 0));
+    }
+
+    public static function minOrderShortfall($subtotal, $currencyCode = null)
+    {
+        $min = self::minOrderTotal($currencyCode);
+        if ($min <= 0) return 0.0;
+        return max(0, round($min - (float)$subtotal, 2));
+    }
+
+    /**
+     * One-line hint above the cart summary, empty when the minimum is met.
+     */
+    public static function minOrderHint($subtotal, $currencyCode = null)
+    {
+        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
+        $shortfall = self::minOrderShortfall($subtotal, $currency['code']);
+        if ($shortfall <= 0) return '';
+        return 'Минимальная сумма заказа — ' . self::formatPrice(self::minOrderTotal($currency['code']), $currency['code'])
+            . '. Добавьте товаров на ' . self::formatPrice($shortfall, $currency['code']) . '.';
+    }
+
+    /**
+     * A customer may cancel only an order that is not paid or shipped yet.
+     */
+    public static function customerCanCancel($order)
+    {
+        if (empty($order)) return false;
+        if ((int)(isset($order['stock_released']) ? $order['stock_released'] : 0) !== 0) return false;
+        return in_array((string)$order['status'], array('new', 'confirmed'), true);
     }
 
     public static function statuses()
@@ -1744,7 +1833,9 @@ class ShopHelper
         if (preg_match('#^https?://#i', $filename)) return $filename;
         $filename = basename($filename);
         $folder = $preview ? 'preview' : 'full';
-        return get_url('/sys/files/shop/' . $folder . '/' . rawurlencode($filename));
+        // sys/files is closed by .htaccess on Apache, so images go through the
+        // shared image endpoint which also negotiates WebP.
+        return get_url('/img.php?src=' . rawurlencode('/sys/files/shop/' . $folder . '/' . $filename), false, false);
     }
 
     public static function slugify($text)
@@ -3004,6 +3095,9 @@ class ShopHelper
     /** @var bool */
     private static $reviewReplyReady = false;
 
+    /** @var bool */
+    private static $reviewExtrasReady = false;
+
     /**
      * Older installations have no reply columns: add them once.
      */
@@ -3027,6 +3121,147 @@ class ShopHelper
 
         self::$reviewReplyReady = true;
         return true;
+    }
+
+    /**
+     * Photos and "helpful" votes are optional, so the column and the vote table
+     * are created on first use. An updated site needs no manual migration.
+     */
+    public static function ensureReviewExtras()
+    {
+        if (self::$reviewExtrasReady) return true;
+        if (!self::ensureReviewsTable()) return false;
+
+        $table = self::table('reviews');
+        try {
+            self::db()->query("SELECT `photos` FROM `{$table}` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `{$table}` ADD COLUMN `photos` TEXT NULL");
+            } catch (Throwable $alterError) {
+                return false;
+            }
+        }
+
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('review_votes') . "` (
+                `review_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `voter` VARCHAR(64) NOT NULL DEFAULT '',
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`review_id`, `voter`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$reviewExtrasReady = true;
+        return true;
+    }
+
+    /**
+     * Store a customer review photo. Mirrors the product image rules: the real
+     * image type decides the extension, the file is re-encoded through the
+     * thumbnail helper, and the name is random.
+     *
+     * @return string stored file name, empty string on failure
+     */
+    public static function saveReviewPhoto($tmp, &$error = null)
+    {
+        $error = '';
+        $info = @getimagesize($tmp);
+        if (!$info) {
+            $error = 'Файл не является изображением.';
+            return '';
+        }
+        $typeMap = array(
+            IMAGETYPE_JPEG => 'jpg',
+            IMAGETYPE_PNG => 'png',
+            IMAGETYPE_GIF => 'gif',
+            IMAGETYPE_WEBP => 'webp',
+        );
+        $type = isset($info[2]) ? (int)$info[2] : 0;
+        if (!isset($typeMap[$type])) {
+            $error = 'Допустимы только изображения JPG, PNG, GIF или WEBP.';
+            return '';
+        }
+        if (function_exists('atm_validate_upload')
+            && atm_validate_upload(array('name' => 'photo.' . $typeMap[$type], 'tmp_name' => $tmp), true) === false) {
+            $error = 'Недопустимое изображение или превышен размер файла.';
+            return '';
+        }
+
+        $dir = ROOT . '/sys/files/shop/reviews';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true)) {
+            $error = 'Не удалось создать папку для фотографий.';
+            return '';
+        }
+
+        $filename = '';
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $candidate = 'review_' . date('YmdHis') . '_' . mt_rand(100000, 999999) . '.' . $typeMap[$type];
+            if (!file_exists($dir . '/' . $candidate)) {
+                $filename = $candidate;
+                break;
+            }
+        }
+        if ($filename === '') {
+            $error = 'Не удалось подобрать имя для фотографии.';
+            return '';
+        }
+
+        $path = $dir . '/' . $filename;
+        if (!@move_uploaded_file($tmp, $path)) {
+            $error = 'Не удалось сохранить фотографию.';
+            return '';
+        }
+
+        if (!function_exists('resampleImage')) include_once ROOT . '/sys/fnc/thumb.php';
+        if (function_exists('resampleImage')) {
+            // Downscale huge phone photos; keep the original on failure.
+            @resampleImage($path, $path, 1200, 1200);
+        }
+        return $filename;
+    }
+
+    public static function reviewPhotoUrl($filename)
+    {
+        $filename = basename(trim((string)$filename));
+        if ($filename === '') return '';
+        return get_url('/img.php?src=' . rawurlencode('/sys/files/shop/reviews/' . $filename), false, false);
+    }
+
+    /**
+     * One session, one vote per review. Returns the new counter value.
+     */
+    public static function markReviewHelpful($reviewId, $voter = '', $productId = 0)
+    {
+        $reviewId = (int)$reviewId;
+        if ($reviewId < 1 || !self::ensureReviewExtras()) return false;
+
+        try {
+            $reviewWhere = "`id` = {$reviewId}";
+            if ((int)$productId > 0) $reviewWhere .= " AND `product_id` = " . (int)$productId;
+            $review = self::db()->query("SELECT `id` FROM `" . self::table('reviews') . "`
+                WHERE {$reviewWhere} LIMIT 1");
+        } catch (Throwable $e) {
+            return false;
+        }
+        if (empty($review)) return false;
+
+        $voter = trim((string)$voter);
+        if ($voter === '') {
+            $voter = substr(hash('sha256', session_id() . '|review'), 0, 64);
+        }
+        try {
+            self::db()->query("INSERT IGNORE INTO `" . self::table('review_votes') . "`
+                (`review_id`, `voter`, `created_at`) VALUES ({$reviewId}, '" . self::esc($voter) . "',
+                '" . self::esc(date('Y-m-d H:i:s')) . "')");
+            $rows = self::db()->query("SELECT COUNT(*) AS cnt FROM `" . self::table('review_votes') . "`
+                WHERE `review_id` = {$reviewId}");
+        } catch (Throwable $e) {
+            return false;
+        }
+        return !empty($rows[0]['cnt']) ? (int)$rows[0]['cnt'] : 0;
     }
 
     public static function replyToReview($reviewId, $reply)
@@ -3112,7 +3347,13 @@ class ShopHelper
         }
 
         try {
-            self::db()->save('shop_reviews', array(
+            $photos = array();
+            foreach ((array)(isset($data['photos']) ? $data['photos'] : array()) as $photo) {
+                $photo = basename(trim((string)$photo));
+                if ($photo !== '' && preg_match('/^[A-Za-z0-9._-]+$/', $photo)) $photos[] = $photo;
+                if (count($photos) >= 3) break;
+            }
+            $row = array(
                 'product_id' => $productId,
                 'user_id' => (int)(isset($data['user_id']) ? $data['user_id'] : 0),
                 'name' => mb_substr($name, 0, 255),
@@ -3121,7 +3362,11 @@ class ShopHelper
                 'text' => mb_substr($text, 0, 5000),
                 'active' => (int)self::cfg('reviews_moderate', 1) === 1 ? 0 : 1,
                 'created_at' => date('Y-m-d H:i:s'),
-            ));
+            );
+            if ($photos && self::ensureReviewExtras()) {
+                $row['photos'] = json_encode($photos, JSON_UNESCAPED_SLASHES);
+            }
+            self::db()->save('shop_reviews', $row);
             return true;
         } catch (Throwable $e) {
             error_log('Shop review save failed: ' . $e->getMessage());
@@ -3173,6 +3418,19 @@ class ShopHelper
             // Reviews still render without the badge if the order tables are missing.
         }
 
+        $helpful = array();
+        if ($rows && self::ensureReviewExtras()) {
+            try {
+                $ids = implode(',', array_map('intval', array_column($rows, 'id')));
+                $votes = self::db()->query("SELECT `review_id`, COUNT(*) AS cnt
+                    FROM `" . self::table('review_votes') . "`
+                    WHERE `review_id` IN ({$ids}) GROUP BY `review_id`");
+                foreach ($votes as $vote) $helpful[(int)$vote['review_id']] = (int)$vote['cnt'];
+            } catch (Throwable $e) {
+                // Counters are optional; reviews still render without them.
+            }
+        }
+
         foreach ($rows as &$row) {
             $row['id'] = (int)$row['id'];
             $row['rating'] = (int)$row['rating'];
@@ -3181,6 +3439,12 @@ class ShopHelper
             $row['text_html'] = nl2br(h((string)$row['text']));
             $row['reply'] = isset($row['reply']) ? (string)$row['reply'] : '';
             $row['reply_html'] = $row['reply'] !== '' ? nl2br(h($row['reply'])) : '';
+            $row['photo_urls'] = array();
+            foreach ((array)json_decode(isset($row['photos']) ? (string)$row['photos'] : '', true) as $photo) {
+                $url = self::reviewPhotoUrl($photo);
+                if ($url !== '') $row['photo_urls'][] = $url;
+            }
+            $row['helpful_count'] = isset($helpful[$row['id']]) ? $helpful[$row['id']] : 0;
             $row['verified'] = isset($verifiedEmails[mb_strtolower(trim((string)$row['email']))])
                 || ((int)$row['user_id'] > 0 && isset($verifiedUsers[(int)$row['user_id']]));
         }
@@ -3242,6 +3506,11 @@ class ShopHelper
             $row['reply'] = isset($row['reply']) ? (string)$row['reply'] : '';
             $row['replied_at_formatted'] = !empty($row['replied_at'])
                 ? self::formatDate($row['replied_at']) : '';
+            $row['photo_urls'] = array();
+            foreach ((array)json_decode(isset($row['photos']) ? (string)$row['photos'] : '', true) as $photo) {
+                $url = self::reviewPhotoUrl($photo);
+                if ($url !== '') $row['photo_urls'][] = $url;
+            }
             if ($row['product_id'] > 0) {
                 $row['product_url'] = self::productUrl(array(
                     'id' => $row['product_id'],
@@ -3268,8 +3537,28 @@ class ShopHelper
     public static function deleteReview($reviewId)
     {
         if (!self::ensureReviewsTable()) return false;
+        $reviewId = (int)$reviewId;
+
+        $photos = array();
+        if (self::ensureReviewExtras()) {
+            try {
+                $rows = self::db()->query("SELECT `photos` FROM `" . self::table('reviews') . "`
+                    WHERE `id` = {$reviewId} LIMIT 1");
+                $photos = (array)json_decode(isset($rows[0]['photos']) ? (string)$rows[0]['photos'] : '', true);
+            } catch (Throwable $e) {
+                $photos = array();
+            }
+        }
+
         try {
-            self::db()->delete('shop_reviews', array('id' => (int)$reviewId));
+            self::db()->delete('shop_reviews', array('id' => $reviewId));
+            foreach ($photos as $photo) {
+                $photo = basename((string)$photo);
+                if ($photo !== '') @unlink(ROOT . '/sys/files/shop/reviews/' . $photo);
+            }
+            if (self::$reviewExtrasReady) {
+                self::db()->query("DELETE FROM `" . self::table('review_votes') . "` WHERE `review_id` = {$reviewId}");
+            }
             return true;
         } catch (Throwable $e) {
             return false;

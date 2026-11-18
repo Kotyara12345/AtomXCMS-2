@@ -227,6 +227,8 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_promocodes
     `max_uses` INT UNSIGNED NOT NULL DEFAULT 0,
     `used_count` INT UNSIGNED NOT NULL DEFAULT 0,
     `once_per_customer` TINYINT(1) NOT NULL DEFAULT 0,
+    `restrict_products` TEXT,
+    `restrict_categories` TEXT,
     `starts_at` DATETIME DEFAULT NULL,
     `ends_at` DATETIME DEFAULT NULL,
     `active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -267,12 +269,20 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_reviews` (
     `email` VARCHAR(255) NOT NULL DEFAULT '',
     `rating` TINYINT UNSIGNED NOT NULL DEFAULT 0,
     `text` TEXT,
+    `photos` TEXT,
     `active` TINYINT(1) NOT NULL DEFAULT 0,
     `reply` TEXT,
     `replied_at` DATETIME DEFAULT NULL,
     `created_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `product_active` (`product_id`, `active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_review_votes` (
+    `review_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `voter` VARCHAR(64) NOT NULL DEFAULT '',
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`review_id`, `voter`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
 $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_email_templates` (

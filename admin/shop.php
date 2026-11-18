@@ -33,7 +33,7 @@ if (!$canProducts && !$canOrders) {
 
 $tab = isset($_GET['tab']) ? preg_replace('/[^a-z_]/', '', (string)$_GET['tab']) : 'dashboard';
 $productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing', 'reviews', 'emails', 'promocodes', 'promocode');
-$orderTabs = array('orders', 'order', 'order_create');
+$orderTabs = array('orders', 'order', 'order_create', 'customers');
 if (!in_array($tab, array_merge($productTabs, $orderTabs), true)) $tab = 'dashboard';
 if (in_array($tab, $productTabs, true) && !$canProducts) $tab = 'orders';
 if (in_array($tab, $orderTabs, true) && !$canOrders) $tab = 'dashboard';
@@ -702,6 +702,12 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         if ($minTotal < 0) $minTotal = 0;
         $maxUses = max(0, (int)(isset($_POST['max_uses']) ? $_POST['max_uses'] : 0));
         $oncePerCustomer = !empty($_POST['once_per_customer']) ? 1 : 0;
+        $restrictProducts = implode(',', array_keys(ShopHelper::promoIdSet(
+            isset($_POST['restrict_products']) ? implode(',', (array)$_POST['restrict_products']) : ''
+        )));
+        $restrictCategories = implode(',', array_keys(ShopHelper::promoIdSet(
+            isset($_POST['restrict_categories']) ? implode(',', (array)$_POST['restrict_categories']) : ''
+        )));
         $startsAt = shop_admin_datetime(isset($_POST['starts_at']) ? $_POST['starts_at'] : '');
         $endsAt = shop_admin_datetime(isset($_POST['ends_at']) ? $_POST['ends_at'] : '');
         if ($startsAt === false || $endsAt === false) {
@@ -729,16 +735,20 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
                 `code` = '{$codeSql}', `discount_type` = '{$typeSql}', `value` = {$valueSql},
                 `currency_code` = '{$currencySql}', `min_total` = {$minSql}, `max_uses` = {$maxUses},
                 `once_per_customer` = {$oncePerCustomer},
+                `restrict_products` = '" . ShopHelper::esc($restrictProducts) . "',
+                `restrict_categories` = '" . ShopHelper::esc($restrictCategories) . "',
                 `starts_at` = {$startsSql}, `ends_at` = {$endsSql}, `active` = {$active},
                 `updated_at` = '" . ShopHelper::esc($now) . "'
                 WHERE `id` = {$id}");
         } else {
             $DB->query("INSERT INTO `{$table}`
                 (`code`, `discount_type`, `value`, `currency_code`, `min_total`, `max_uses`,
-                    `used_count`, `once_per_customer`, `starts_at`, `ends_at`, `active`, `created_at`, `updated_at`)
+                    `used_count`, `once_per_customer`, `restrict_products`, `restrict_categories`,
+                    `starts_at`, `ends_at`, `active`, `created_at`, `updated_at`)
                 VALUES ('{$codeSql}', '{$typeSql}', {$valueSql}, '{$currencySql}', {$minSql}, {$maxUses},
-                    0, {$oncePerCustomer}, {$startsSql}, {$endsSql}, {$active}, '" . ShopHelper::esc($now) . "',
-                    '" . ShopHelper::esc($now) . "')");
+                    0, {$oncePerCustomer}, '" . ShopHelper::esc($restrictProducts) . "',
+                    '" . ShopHelper::esc($restrictCategories) . "', {$startsSql}, {$endsSql}, {$active},
+                    '" . ShopHelper::esc($now) . "', '" . ShopHelper::esc($now) . "')");
         }
 
         $_SESSION['message'] = 'Промокод сохранён.';
@@ -1171,6 +1181,8 @@ if ($tab === 'dashboard') {
     $output .= shop_admin_promocode_form();
 } elseif ($tab === 'orders') {
     $output .= shop_admin_orders();
+} elseif ($tab === 'customers') {
+    $output .= shop_admin_customers();
 } elseif ($tab === 'order') {
     $output .= shop_admin_order();
 } elseif ($tab === 'order_create') {
@@ -1197,11 +1209,13 @@ function shop_admin_orders_where()
     $statuses = ShopHelper::statuses();
     if ($status !== '' && !isset($statuses[$status])) $status = '';
     $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+    $email = isset($_GET['email']) ? trim((string)$_GET['email']) : '';
     $dateFrom = shop_admin_orders_date(isset($_GET['date_from']) ? $_GET['date_from'] : '');
     $dateTo = shop_admin_orders_date(isset($_GET['date_to']) ? $_GET['date_to'] : '');
 
     $where = array();
     if ($status !== '') $where[] = "`status` = '" . ShopHelper::esc($status) . "'";
+    if ($email !== '') $where[] = "`email` = '" . ShopHelper::esc($email) . "'";
     if ($q !== '') {
         $escaped = ShopHelper::esc($q);
         $where[] = "(`customer_name` LIKE '%{$escaped}%' OR `email` LIKE '%{$escaped}%'
@@ -1214,7 +1228,7 @@ function shop_admin_orders_where()
         $nextDay = date('Y-m-d', strtotime($dateTo . ' +1 day'));
         $where[] = "`created_at` < '" . ShopHelper::esc($nextDay) . " 00:00:00'";
     }
-    return array($where ? ' WHERE ' . implode(' AND ', $where) : '', $status, $q, $dateFrom, $dateTo);
+    return array($where ? ' WHERE ' . implode(' AND ', $where) : '', $status, $q, $dateFrom, $dateTo, $email);
 }
 
 /** Empty string means "no date"; malformed input is ignored. */
@@ -1671,7 +1685,7 @@ function shop_admin_category_options($selected, $excludeIds = array(), $includeR
     return $html . $walk(0, 0);
 }
 
-function shop_admin_category_checkboxes($selectedIds = array())
+function shop_admin_category_checkboxes($selectedIds = array(), $name = 'category_ids')
 {
     $selectedIds = array_values(array_unique(array_filter(array_map('intval', (array)$selectedIds))));
     $categories = ShopHelper::getCategories(false);
@@ -1690,7 +1704,7 @@ function shop_admin_category_checkboxes($selectedIds = array())
             $category = $byId[$id];
             $checked = in_array($id, $selectedIds, true) ? ' checked="checked"' : '';
             $out .= '<label class="shop-admin-check-line" style="padding-left:' . ($level * 18) . 'px">'
-                . '<input type="checkbox" name="category_ids[]" value="' . $id . '"' . $checked . ' /> '
+                . '<input type="checkbox" name="' . h($name) . '[]" value="' . $id . '"' . $checked . ' /> '
                 . h($category['title'])
                 . (empty($category['active']) ? ' <span class="shop-admin-muted">(скрыта)</span>' : '')
                 . '</label>';
@@ -1700,6 +1714,24 @@ function shop_admin_category_checkboxes($selectedIds = array())
     };
 
     return $walk(0, 0);
+}
+
+/**
+ * Product picker for the promo restrictions. Capped at 500 rows so a huge
+ * catalogue does not render a multi-megabyte select on every edit.
+ */
+function shop_admin_promo_product_options($selectedIds = array())
+{
+    $selectedIds = ShopHelper::promoIdSet(implode(',', (array)$selectedIds));
+    $products = ShopHelper::db()->query("SELECT `id`, `title` FROM `" . ShopHelper::table('products') . "`
+        ORDER BY `title` ASC LIMIT 500");
+    $html = '';
+    foreach ($products as $product) {
+        $id = (int)$product['id'];
+        $html .= '<option value="' . $id . '"' . (isset($selectedIds[$id]) ? ' selected="selected"' : '') . '>'
+            . h($product['title']) . ' (#' . $id . ')</option>';
+    }
+    return $html;
 }
 
 function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
@@ -1715,7 +1747,10 @@ function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
         $tabs['emails'] = 'Письма';
         $tabs['promocodes'] = 'Промокоды';
     }
-    if ($canOrders) $tabs['orders'] = 'Заказы';
+    if ($canOrders) {
+        $tabs['orders'] = 'Заказы';
+        $tabs['customers'] = 'Покупатели';
+    }
 
     $html = '<div class="shop-admin-tabs">';
     foreach ($tabs as $key => $title) {
@@ -3090,6 +3125,7 @@ function shop_admin_landing_form()
 function shop_admin_reviews()
 {
     ShopHelper::ensureReviewReplyColumns();
+    ShopHelper::ensureReviewExtras();
     $reviews = ShopHelper::getReviews(null, 300);
     $pending = 0;
     foreach ($reviews as $review) {
@@ -3120,6 +3156,16 @@ function shop_admin_reviews()
                     <td><?php echo h($review['rating_stars']); ?></td>
                     <td>
                         <?php echo h($review['text']); ?>
+                        <?php if (!empty($review['photo_urls'])): ?>
+                        <div class="shop-admin-review-photos">
+                            <?php foreach ($review['photo_urls'] as $photoUrl): ?>
+                            <a href="<?php echo h($photoUrl); ?>" target="_blank" rel="noopener"><img src="<?php echo h($photoUrl); ?>" alt="Фото к отзыву" loading="lazy" /></a>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                        <?php if (!empty($review['helpful_count'])): ?>
+                        <div class="shop-admin-muted">Полезно: <?php echo (int)$review['helpful_count']; ?></div>
+                        <?php endif; ?>
                         <?php if (!empty($review['reply'])): ?>
                         <div class="shop-admin-review-reply">
                             <strong>Ответ магазина<?php echo $review['replied_at_formatted'] !== '' ? ' от ' . h($review['replied_at_formatted']) : ''; ?>:</strong>
@@ -3332,7 +3378,7 @@ function shop_admin_promocodes()
     <div class="shop-admin-empty">Промокодов пока нет.</div>
     <?php else: ?>
     <table class="grid shop-admin-table">
-        <thead><tr><th>Код</th><th>Скидка</th><th>Мин. сумма</th><th>Применений</th><th>На покупателя</th><th>Период</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>Код</th><th>Скидка</th><th>Мин. сумма</th><th>Условия</th><th>Применений</th><th>На покупателя</th><th>Период</th><th>Статус</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($rows as $row): ?>
             <?php
@@ -3348,6 +3394,16 @@ function shop_admin_promocodes()
                 <td><strong><?php echo h($row['code']); ?></strong></td>
                 <td><?php echo h($discountLabel); ?></td>
                 <td><?php echo (float)$row['min_total'] > 0 ? h(ShopHelper::formatPrice($row['min_total'], $row['currency_code'])) : '—'; ?></td>
+                <td>
+                    <?php
+                    $conditionParts = array();
+                    $restrictProducts = ShopHelper::promoIdSet(isset($row['restrict_products']) ? $row['restrict_products'] : '');
+                    $restrictCategories = ShopHelper::promoIdSet(isset($row['restrict_categories']) ? $row['restrict_categories'] : '');
+                    if ($restrictCategories) $conditionParts[] = 'категорий: ' . count($restrictCategories);
+                    if ($restrictProducts) $conditionParts[] = 'товаров: ' . count($restrictProducts);
+                    echo $conditionParts ? h(implode(', ', $conditionParts)) : '—';
+                    ?>
+                </td>
                 <td><?php echo (int)$row['used_count']; ?><?php echo (int)$row['max_uses'] > 0 ? ' / ' . (int)$row['max_uses'] : ''; ?></td>
                 <td><?php echo !empty($row['once_per_customer']) ? 'Один раз' : '—'; ?></td>
                 <td><?php echo $period ? h(implode(' ', $period)) : '—'; ?></td>
@@ -3385,6 +3441,8 @@ function shop_admin_promocode_form()
         'max_uses' => 0,
         'used_count' => 0,
         'once_per_customer' => 0,
+        'restrict_products' => '',
+        'restrict_categories' => '',
         'starts_at' => null,
         'ends_at' => null,
         'active' => 1,
@@ -3459,6 +3517,27 @@ function shop_admin_promocode_form()
         <p class="shop-admin-muted">Повторное применение блокируется по аккаунту или e-mail из оформленных заказов с этим промокодом.</p>
 
         <div class="shop-admin-form-row">
+            <label>Категории товаров</label>
+            <div class="shop-admin-checklist">
+                <?php echo shop_admin_category_checkboxes(
+                    array_keys(ShopHelper::promoIdSet($promo['restrict_categories'])),
+                    'restrict_categories'
+                ); ?>
+            </div>
+            <div class="shop-admin-muted">Скидка действует только на товары выбранных категорий. Ничего не выбрано — без ограничения.</div>
+        </div>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-products">Отдельные товары</label>
+            <select id="shop-promo-products" name="restrict_products[]" multiple="multiple" size="8">
+                <?php echo shop_admin_promo_product_options(
+                    array_keys(ShopHelper::promoIdSet($promo['restrict_products']))
+                ); ?>
+            </select>
+            <div class="shop-admin-muted">Ctrl или Cmd — выбрать несколько. Показаны первые 500 товаров по названию.</div>
+        </div>
+
+        <div class="shop-admin-form-row">
             <label for="shop-promo-start">Действует с</label>
             <input id="shop-promo-start" type="datetime-local" name="starts_at"
                 value="<?php echo !empty($promo['starts_at']) ? h(date('Y-m-d\TH:i', strtotime($promo['starts_at']))) : ''; ?>" />
@@ -3486,7 +3565,7 @@ function shop_admin_promocode_form()
 
 function shop_admin_orders()
 {
-    list($whereSql, $status, $q, $dateFrom, $dateTo) = shop_admin_orders_where();
+    list($whereSql, $status, $q, $dateFrom, $dateTo, $email) = shop_admin_orders_where();
     $page = max(1, (int)(isset($_GET['page']) ? $_GET['page'] : 1));
     $limit = 30;
 
@@ -3501,6 +3580,7 @@ function shop_admin_orders()
     if ($q !== '') $query['q'] = $q;
     if ($dateFrom !== '') $query['date_from'] = $dateFrom;
     if ($dateTo !== '') $query['date_to'] = $dateTo;
+    if ($email !== '') $query['email'] = $email;
     $base = '/admin/shop.php?' . http_build_query($query);
     list($pagination, $currentPage) = pagination($total, $limit, $base);
 
@@ -3512,6 +3592,7 @@ function shop_admin_orders()
     <div class="shop-admin-toolbar">
         <form method="get" action="<?php echo h(get_url('/admin/shop.php')); ?>">
             <input type="hidden" name="tab" value="orders" />
+            <?php if ($email !== ''): ?><input type="hidden" name="email" value="<?php echo h($email); ?>" /><?php endif; ?>
             <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="Номер, имя, e-mail, телефон" />
             <label class="shop-admin-date-filter">С
                 <input type="date" name="date_from" value="<?php echo h($dateFrom); ?>" />
@@ -3527,9 +3608,14 @@ function shop_admin_orders()
             </select>
             <button type="submit" class="shop-admin-btn">Фильтр</button>
         </form>
-        <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'orders', 'status' => $status, 'q' => $q, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'export' => 'csv'))); ?>">Экспорт CSV</a>
+        <a class="shop-admin-btn" href="<?php echo h(shop_admin_url(array('tab' => 'orders', 'status' => $status, 'q' => $q, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'email' => $email, 'export' => 'csv'))); ?>">Экспорт CSV</a>
         <a class="shop-admin-btn shop-admin-btn-primary" href="<?php echo h(shop_admin_url(array('tab' => 'order_create'))); ?>">Создать заказ</a>
     </div>
+
+    <?php if ($email !== ''): ?>
+    <p class="shop-admin-muted">Заказы покупателя <strong><?php echo h($email); ?></strong>.
+        <a href="<?php echo h(shop_admin_url(array('tab' => 'orders'))); ?>">Сбросить фильтр</a></p>
+    <?php endif; ?>
 
     <?php if ($orders): ?>
     <table class="grid shop-admin-table">
@@ -3553,6 +3639,69 @@ function shop_admin_orders()
     <?php endif; ?>
 
     <?php if ($pagination): ?><div class="shop-admin-pagination"><?php echo $pagination; ?></div><?php endif; ?>
+    <?php
+    return ob_get_clean();
+}
+
+function shop_admin_customers()
+{
+    $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+    $where = "`email` <> ''";
+    if ($q !== '') {
+        $escaped = ShopHelper::esc($q);
+        $where .= " AND (`email` LIKE '%{$escaped}%' OR `customer_name` LIKE '%{$escaped}%'
+            OR `phone` LIKE '%{$escaped}%')";
+    }
+
+    $rows = ShopHelper::db()->query("SELECT `email`, COUNT(*) AS orders_count,
+            MAX(`created_at`) AS last_order_at, MAX(`id`) AS last_order_id
+        FROM `" . ShopHelper::table('orders') . "`
+        WHERE {$where}
+        GROUP BY `email` ORDER BY last_order_id DESC LIMIT 200");
+
+    $lastIds = array_map('intval', array_column($rows, 'last_order_id'));
+    $lastOrders = array();
+    if ($lastIds) {
+        $fetched = ShopHelper::db()->query("SELECT `id`, `customer_name`, `phone` FROM `"
+            . ShopHelper::table('orders') . "` WHERE `id` IN (" . implode(',', $lastIds) . ")");
+        foreach ($fetched as $order) $lastOrders[(int)$order['id']] = $order;
+    }
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1>Покупатели</h1>
+    </div>
+
+    <div class="shop-admin-toolbar">
+        <form method="get" action="<?php echo h(get_url('/admin/shop.php')); ?>">
+            <input type="hidden" name="tab" value="customers" />
+            <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="E-mail, имя или телефон" />
+            <button type="submit" class="shop-admin-btn">Найти</button>
+        </form>
+    </div>
+
+    <p class="shop-admin-muted">Список собран из оформленных заказов. Один покупатель — один e-mail. Сумма не складывается, потому что заказы могут быть в разных валютах.</p>
+
+    <?php if (!$rows): ?>
+    <div class="shop-admin-empty">Покупатели не найдены.</div>
+    <?php else: ?>
+    <table class="grid shop-admin-table">
+        <thead><tr><th>Покупатель</th><th>E-mail</th><th>Телефон</th><th>Заказов</th><th>Последний заказ</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($rows as $row): ?>
+            <?php $last = isset($lastOrders[(int)$row['last_order_id']]) ? $lastOrders[(int)$row['last_order_id']] : array(); ?>
+            <tr>
+                <td><?php echo h(isset($last['customer_name']) ? $last['customer_name'] : '—'); ?></td>
+                <td><?php echo h($row['email']); ?></td>
+                <td><?php echo h(isset($last['phone']) ? $last['phone'] : '—'); ?></td>
+                <td><?php echo (int)$row['orders_count']; ?></td>
+                <td><?php echo h(ShopHelper::formatDate($row['last_order_at'])); ?></td>
+                <td><a href="<?php echo h(shop_admin_url(array('tab' => 'orders', 'email' => $row['email']))); ?>">Заказы</a></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
     <?php
     return ob_get_clean();
 }

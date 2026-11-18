@@ -36,10 +36,30 @@ foreach (array(
 	'shop_order_status_history',
 	'$recipient = null, $force = false',
 	'Открыть заказ на сайте',
+	'function promoIdSet',
+	'function minOrderHint',
+	'function customerCanCancel',
+	'function saveReviewPhoto',
+	'function markReviewHelpful',
+	'function ensureReviewExtras',
+	'review_votes',
+	'restrict_products',
+	'restrict_categories',
+	'/img.php?src=',
 ) as $needle) {
 	atm_test_assert(strpos($library, $needle) !== false,
 		'modules/shop/shop.lib.php is missing ' . $needle . '.');
 }
+
+atm_test_assert(ShopHelper::promoIdSet('3, 7,,x,-2,7') === array(3 => 3, 7 => 7),
+	'promoIdSet must keep positive unique ids only.');
+atm_test_assert(ShopHelper::promoIdSet('') === array(), 'promoIdSet must accept an empty list.');
+atm_test_assert(ShopHelper::customerCanCancel(array('status' => 'new', 'stock_released' => 0)),
+	'A new order must be cancellable by the customer.');
+atm_test_assert(!ShopHelper::customerCanCancel(array('status' => 'shipped', 'stock_released' => 0)),
+	'A shipped order must not be cancellable by the customer.');
+atm_test_assert(!ShopHelper::customerCanCancel(array('status' => 'new', 'stock_released' => 1)),
+	'An order with released stock must not be cancelled twice.');
 
 $module = (string)file_get_contents($root . '/modules/shop/index.php');
 foreach (array(
@@ -51,15 +71,37 @@ foreach (array(
 	'function canViewOrder',
 	'ShopHelper::orderByNumberAndEmail',
 	'ShopHelper::getOrderStatusHistory($id)',
+	'function cancel_order',
+	'function review_helpful',
+	'function collectReviewPhotos',
+	'ShopHelper::minOrderShortfall',
 ) as $needle) {
 	atm_test_assert(strpos($module, $needle) !== false,
 		'modules/shop/index.php is missing ' . $needle . '.');
 }
 
 $orderTemplate = (string)file_get_contents($root . '/modules/shop/install_template/html/order.html');
-foreach (array('shop-history', 'repeat_action', 'order_token') as $needle) {
+foreach (array('shop-history', 'repeat_action', 'order_token', 'cancel_allowed', 'cancel_action') as $needle) {
 	atm_test_assert(strpos($orderTemplate, $needle) !== false,
 		'modules/shop/install_template/html/order.html is missing ' . $needle . '.');
+}
+
+$productTemplate = (string)file_get_contents($root . '/modules/shop/install_template/html/product.html');
+foreach (array('multipart/form-data', 'photos[]', 'review.photo_urls', 'review_helpful_action', 'review.helpful_count') as $needle) {
+	atm_test_assert(strpos($productTemplate, $needle) !== false,
+		'modules/shop/install_template/html/product.html is missing ' . $needle . '.');
+}
+
+foreach (array('cart.html', 'checkout.html') as $templateName) {
+	$template = (string)file_get_contents($root . '/modules/shop/install_template/html/' . $templateName);
+	atm_test_assert(strpos($template, 'min_order_hint') !== false,
+		$templateName . ' is missing min_order_hint.');
+}
+
+$settings = (string)file_get_contents($root . '/modules/shop/install_settings.php');
+foreach (array('review_photos', 'min_order_total_rub', 'min_order_total_byn') as $needle) {
+	atm_test_assert(strpos($settings, $needle) !== false,
+		'modules/shop/install_settings.php is missing ' . $needle . '.');
 }
 
 $ordersTemplate = (string)file_get_contents($root . '/modules/shop/install_template/html/orders.html');

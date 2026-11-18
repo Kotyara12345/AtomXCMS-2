@@ -91,6 +91,9 @@
             {% if free_delivery_hint %}
             <div class="shop-free-delivery-hint">{{ free_delivery_hint|escape }}</div>
             {% endif %}
+            {% if min_order_hint %}
+            <div class="shop-alert shop-alert-error">{{ min_order_hint|escape }}</div>
+            {% endif %}
 
             <form class="shop-promo" method="post" action="{{ apply_promo_action }}">
                 <input type="hidden" name="csrf_token" value="{{ promo_csrf_token }}" />

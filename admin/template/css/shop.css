@@ -1041,6 +1041,31 @@
     box-sizing: border-box;
 }
 
+.shop-admin-checklist {
+    max-height: 240px;
+    overflow: auto;
+    padding: 6px 10px;
+    border: 1px solid #d6dde4;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.shop-admin-review-photos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.shop-admin-review-photos img {
+    display: block;
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border: 1px solid #d6dde4;
+    border-radius: 4px;
+}
+
 .shop-admin-order-edit {
     margin-top: 12px;
 }

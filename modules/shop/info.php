@@ -109,6 +109,32 @@ $settingsInfo = array(
         'default' => '0',
     ),
 
+    'Ограничения заказа',
+    'min_order_total_rub' => array(
+        'type' => 'text',
+        'title' => 'Минимальная сумма заказа, RUB',
+        'description' => 'Заказ нельзя оформить, пока стоимость товаров меньше этой суммы. 0 — без ограничения.',
+        'default' => '0',
+    ),
+    'min_order_total_usd' => array(
+        'type' => 'text',
+        'title' => 'Минимальная сумма заказа, USD',
+        'description' => '0 — без ограничения.',
+        'default' => '0',
+    ),
+    'min_order_total_eur' => array(
+        'type' => 'text',
+        'title' => 'Минимальная сумма заказа, EUR',
+        'description' => '0 — без ограничения.',
+        'default' => '0',
+    ),
+    'min_order_total_byn' => array(
+        'type' => 'text',
+        'title' => 'Минимальная сумма заказа, BYN',
+        'description' => '0 — без ограничения.',
+        'default' => '0',
+    ),
+
     'Оплата',
     'payment_methods' => array(
         'type' => 'textarea',
@@ -153,6 +179,14 @@ $settingsInfo = array(
         'type' => 'checkbox',
         'title' => 'Проверка отзывов',
         'description' => 'Публиковать отзывы только после одобрения в админке.',
+        'value' => '1',
+        'checked' => '1',
+        'default' => '1',
+    ),
+    'review_photos' => array(
+        'type' => 'checkbox',
+        'title' => 'Фотографии в отзывах',
+        'description' => 'Разрешить покупателям прикладывать до трёх изображений к отзыву. Отключите, чтобы форма содержала только текст.',
         'value' => '1',
         'checked' => '1',
         'default' => '1',

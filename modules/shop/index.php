@@ -656,6 +656,8 @@ class ShopModule extends Module
                 ? number_format($this->productRating['avg'], 1, ',', '') : '',
             'reviews_enabled' => (int)ShopHelper::cfg('reviews_enabled', 1) === 1,
             'review_action' => get_url('/shop/add_review/'),
+            'review_helpful_action' => get_url('/shop/review_helpful/'),
+            'review_photos_enabled' => (int)ShopHelper::cfg('review_photos', 1) === 1,
             'stock_notify_action' => get_url('/shop/notify_stock/'),
             'can_notify_stock' => !$inStock,
             'user_name' => $user['name'],
@@ -683,6 +685,7 @@ class ShopModule extends Module
             'items' => $items,
             'totals' => $totals,
             'free_delivery_hint' => ShopHelper::freeDeliveryHint($totals['subtotal'], $currency['code']),
+            'min_order_hint' => ShopHelper::minOrderHint($totals['subtotal'], $currency['code']),
             'currency' => $currency,
             'update_action' => get_url('/shop/update_cart/'),
             'remove_action' => get_url('/shop/remove_from_cart/'),
@@ -720,8 +723,9 @@ class ShopModule extends Module
         }
 
         $currency = ShopHelper::activeCurrency();
-        $totals = ShopHelper::cartTotals(ShopHelper::cartItems($currency['code']), $currency['code']);
-        $check = ShopHelper::promoCheck($code, $totals['subtotal'], $currency['code']);
+        $items = ShopHelper::cartItems($currency['code']);
+        $totals = ShopHelper::cartTotals($items, $currency['code']);
+        $check = ShopHelper::promoCheck($code, $totals['subtotal'], $currency['code'], false, '', 0, $items);
         if (!$check['valid']) {
             ShopHelper::clearPromoCode();
             ShopHelper::flash('error', $check['error']);
@@ -886,6 +890,7 @@ class ShopModule extends Module
             'email' => $email,
             'rating' => isset($_POST['rating']) ? (int)$_POST['rating'] : 0,
             'text' => isset($_POST['text']) ? (string)$_POST['text'] : '',
+            'photos' => $this->collectReviewPhotos(),
         ));
 
         if ($saved) {
@@ -901,6 +906,54 @@ class ShopModule extends Module
             ShopHelper::flash('success', 'Спасибо за отзыв!');
         }
         $this->redirectBack($product['url']);
+    }
+
+    public function review_helpful()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+            redirect('/shop/');
+        }
+
+        $productId = isset($_POST['product_id']) ? (int)$_POST['product_id'] : 0;
+        $product = $productId > 0 ? ShopHelper::getProduct($productId, true) : false;
+        if (!$product) {
+            ShopHelper::flash('error', 'Товар не найден.');
+            redirect('/shop/');
+        }
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
+            $this->redirectBack($product['url']);
+        }
+
+        $count = ShopHelper::markReviewHelpful(
+            isset($_POST['review_id']) ? (int)$_POST['review_id'] : 0,
+            '',
+            $productId
+        );
+        ShopHelper::flash($count === false ? 'error' : 'success',
+            $count === false ? 'Не удалось сохранить голос.' : 'Спасибо, голос учтён.');
+        $this->redirectBack($product['url']);
+    }
+
+    /**
+     * Store up to three review photos when the administrator allows them.
+     */
+    private function collectReviewPhotos()
+    {
+        if ((int)ShopHelper::cfg('review_photos', 1) !== 1 || empty($_FILES['photos'])) return array();
+
+        $photos = array();
+        $names = isset($_FILES['photos']['name']) ? (array)$_FILES['photos']['name'] : array();
+        $tmps = isset($_FILES['photos']['tmp_name']) ? (array)$_FILES['photos']['tmp_name'] : array();
+        foreach ($names as $index => $name) {
+            if (count($photos) >= 3) break;
+            $tmp = isset($tmps[$index]) ? $tmps[$index] : '';
+            if ($tmp === '' || !is_uploaded_file($tmp)) continue;
+            $stored = ShopHelper::saveReviewPhoto($tmp);
+            if ($stored !== '') $photos[] = $stored;
+        }
+        return $photos;
     }
 
     public function notify_stock()
@@ -1073,6 +1126,10 @@ class ShopModule extends Module
         if ($promoCode !== '' && $totals['promo_error'] !== '') {
             return $this->renderCheckout($old, array());
         }
+        $shortfall = ShopHelper::minOrderShortfall($subtotal, $currency['code']);
+        if ($shortfall > 0.005) {
+            return $this->renderCheckout($old, array(ShopHelper::minOrderHint($subtotal, $currency['code'])));
+        }
         $changes = array();
         foreach ($quote['items'] as $id => $previous) {
             if (!isset($items[$id])) {
@@ -1137,7 +1194,7 @@ class ShopModule extends Module
 
             if ($promoCode !== '') {
                 $lockedPromo = ShopHelper::promoCheck($promoCode, $subtotal, $currency['code'], true,
-                    $old['email'], (int)$user['id']);
+                    $old['email'], (int)$user['id'], $items);
                 if (!$lockedPromo['valid'] || abs($lockedPromo['discount'] - $discount) > 0.005) {
                     $change = 'Изменились условия промокода. Проверьте заказ и подтвердите его ещё раз.';
                     throw new RuntimeException($change);
@@ -1308,6 +1365,7 @@ class ShopModule extends Module
             'delivery_price_formatted' => ShopHelper::formatPrice($deliveryPrice, $currency['code']),
             'total_formatted' => ShopHelper::formatPrice($total, $currency['code']),
             'free_delivery_hint' => ShopHelper::freeDeliveryHint($subtotal, $currency['code']),
+            'min_order_hint' => ShopHelper::minOrderHint($subtotal, $currency['code']),
             'apply_promo_action' => get_url('/shop/apply_promo/'),
             'remove_promo_action' => get_url('/shop/remove_promo/'),
             'delivery_method' => $deliveryMethod,
@@ -1424,6 +1482,9 @@ class ShopModule extends Module
             'items' => $items,
             'history' => ShopHelper::getOrderStatusHistory($id),
             'repeat_action' => get_url('/shop/repeat_order/'),
+            'cancel_action' => get_url('/shop/cancel_order/'),
+            'cancel_allowed' => ShopHelper::customerCanCancel($order),
+            'flash' => ShopHelper::getFlash(),
             'order_token' => $orderToken,
             'csrf_token' => ShopHelper::csrfToken(),
             'shop_url' => get_url('/shop/'),
@@ -1471,6 +1532,37 @@ class ShopModule extends Module
             ShopHelper::flash('error', 'Товары из этого заказа сейчас недоступны.');
         }
         redirect('/shop/cart/');
+    }
+
+    /**
+     * The customer cancels an unpaid order. Stock returns through
+     * setOrderStatus(), the same path the admin panel and the expiry cron use.
+     */
+    public function cancel_order()
+    {
+        $this->ACL->turn(array('shop', 'view_catalog'));
+        $id = isset($_POST['order_id']) ? (int)$_POST['order_id'] : 0;
+        $token = isset($_POST['token']) ? (string)$_POST['token'] : '';
+        if (!ShopHelper::csrfCheck(isset($_POST['csrf_token']) ? $_POST['csrf_token'] : '')) {
+            ShopHelper::flash('error', 'Сессия устарела. Повторите попытку.');
+            redirect($id > 0 ? '/shop/order/' . $id . '/' : '/shop/');
+        }
+
+        $order = $id > 0 ? ShopHelper::getOrder($id) : false;
+        if (!$order || !$this->canViewOrder($order, $token)) $this->Parser->showHttpError();
+
+        $return = ShopHelper::orderTokenValid($order, $token)
+            ? '/shop/order/' . $id . '/' . $token . '/' : '/shop/order/' . $id . '/';
+        if (!ShopHelper::customerCanCancel($order)) {
+            ShopHelper::flash('error', 'Заказ уже нельзя отменить. Свяжитесь с магазином.');
+            redirect($return);
+        }
+
+        $ok = ShopHelper::setOrderStatus($id, 'cancelled', 'Отменён покупателем', 0, 'Покупатель');
+        ShopHelper::flash($ok ? 'success' : 'error', $ok
+            ? 'Заказ отменён. Если вы его оплатили, свяжитесь с магазином для возврата.'
+            : 'Не удалось отменить заказ. Свяжитесь с магазином.');
+        redirect($return);
     }
 
     /* ---------------------------------------------------------------------

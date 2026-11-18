@@ -1167,6 +1167,39 @@
     margin-bottom: 4px;
 }
 
+.shop-review-photos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.shop-review-photos img {
+    display: block;
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border: 1px solid #dfe5ea;
+    border-radius: 6px;
+}
+
+.shop-review-helpful {
+    margin-top: 8px;
+}
+
+.shop-review-helpful .shop-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #1f5f9e;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.shop-review-helpful .shop-link:hover {
+    text-decoration: underline;
+}
+
 .shop-price-input {
     width: 110px;
 }

@@ -8,6 +8,10 @@
 
     {% if breadcrumbs %}{{ breadcrumbs }}{% endif %}
 
+    {% if flash %}
+    <div class="shop-alert {% if flash.type == 'error' %}shop-alert-error{% else %}shop-alert-success{% endif %}">{{ flash.message|escape }}</div>
+    {% endif %}
+
     <div class="shop-heading">
         <h1>Заказ №{{ order.number }}</h1>
         <p>от {{ order.created_at_formatted|escape }}</p>
@@ -17,6 +21,14 @@
             {% if order_token %}<input type="hidden" name="token" value="{{ order_token }}" />{% endif %}
             <button type="submit" class="shop-btn shop-btn-secondary">Повторить заказ</button>
         </form>
+        {% if cancel_allowed %}
+        <form method="post" action="{{ cancel_action }}" class="shop-repeat" onsubmit="return confirm('Отменить заказ? Это действие нельзя отменить.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <input type="hidden" name="order_id" value="{{ order.id }}" />
+            {% if order_token %}<input type="hidden" name="token" value="{{ order_token }}" />{% endif %}
+            <button type="submit" class="shop-btn shop-btn-secondary">Отменить заказ</button>
+        </form>
+        {% endif %}
     </div>
 
     <div class="shop-order-layout">
