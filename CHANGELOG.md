@@ -223,6 +223,12 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   Redactor.
 
 ### Fixed
+- Deleting an item in the admin menu editor did not remove it from the site
+  menu. The item list was wrapped in a `<div>`/`<li>` pair, so the browser
+  closed the `<ul id="sort">` early and the save script saw no direct `<li>`
+  children, posted nothing and left `menu.dat` unchanged. Menu items are now
+  rendered directly inside the sort list, delete removes the whole `<li>`, and
+  field lookup stays inside the current item so submenu fields are not mixed up.
 - Searching with the cache turned off logged `Undefined property:
   SearchModule::$cacheKey`. The property exists only when caching is enabled;
   the search cache key is now built only in that case.

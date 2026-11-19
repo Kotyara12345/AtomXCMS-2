@@ -103,6 +103,22 @@ try {
     check(strpos($searchModule, '$this->cached ? $this->cacheKey :') !== false,
         'Search cache key is built without checking whether caching is enabled');
 
+    // The menu editor saves the whole list through sortList(). Its items must
+    // stay direct children of #sort: a wrapper <div>/<li> makes the browser
+    // close the list early, so sortList() posts nothing and deletions are lost.
+    $menuEditor = file_get_contents($sourceRoot . '/admin/menu_editor.php');
+    $sortStart = strpos($menuEditor, 'id="sort"');
+    check($sortStart !== false, 'Menu editor sort container not found');
+    $sortBlock = substr($menuEditor, $sortStart, 400);
+    check(strpos($sortBlock, 'buildMenu($menu)') !== false, 'Menu items are not rendered into #sort');
+    check(!preg_match('/<ul id="sort"[^>]*>\s*<(?:div|li)\b/', $sortBlock),
+        'Menu items are wrapped, so sortList() sees no direct <li> children');
+    check(strpos($menuEditor, 'closest("li")') !== false,
+        'deletePoint() removes only the fields and leaves an empty list item');
+    check(strpos($menuEditor, 'point.children("div.item")') !== false
+        && strpos($menuEditor, 'point.children("ul")') !== false,
+        'sortList() reads fields from nested submenus');
+
     echo "Core regression checks passed.\n";
 } finally {
     foreach(glob(ROOT.'/sys/cache/sql/*.dat') as $file) unlink($file);

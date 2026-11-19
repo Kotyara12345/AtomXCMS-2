@@ -315,7 +315,7 @@ $(function(){
 });
 
 function deletePoint(obj) {
-	var node = $(obj).parent("div").parent("div");
+	var node = $(obj).closest("li");
 	node.remove();
 	return true;
 }
@@ -329,16 +329,17 @@ function sortList(id, mlist) {
 	points.each(function(key){
 		var point = points[key];
 		point = $(point);
+		var item = point.children("div.item");
 		mlist[key] = {};
-		mlist[key]['url'] = point.find("div").find("input[name=url]").val();
-		mlist[key]['title'] = point.find("div").find("input[name=ankor]").val();
-		mlist[key]['prefix'] = point.find("div").find("input[name=prefix]").val();
-		mlist[key]['sufix'] = point.find("div").find("input[name=sufix]").val();
-		mlist[key]['newwin'] = point.find("div").find("input[name=newwin]").val();
-		mlist[key]['id'] = point.find("div").find("input[name=id]").val();
+		mlist[key]['url'] = item.find("input[name=url]").val();
+		mlist[key]['title'] = item.find("input[name=ankor]").val();
+		mlist[key]['prefix'] = item.find("input[name=prefix]").val();
+		mlist[key]['sufix'] = item.find("input[name=sufix]").val();
+		mlist[key]['newwin'] = item.find("input[name=newwin]").val();
+		mlist[key]['id'] = item.find("input[name=id]").val();
 		
 		mlist[key]['sub'] = {};
-		mlist[key]['sub'] = sortList(point.find("ul"), mlist[key]['sub']);
+		mlist[key]['sub'] = sortList(point.children("ul"), mlist[key]['sub']);
 	});
 	return mlist;
 }
@@ -371,13 +372,7 @@ function form1() {
 				</div>
 			</div>
 			<ul id="sort" class="ui-sortable">	
-			<div class="">
-				<li>
-					<div class="title">
-						<?php  echo buildMenu($menu); ?>
-					</div>
-				</li>
-			</div>
+				<?php echo buildMenu($menu); ?>
 			</ul>
 
 			<div class="level2">
