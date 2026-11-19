@@ -327,7 +327,7 @@ class SearchModule extends Module {
 		sort($modules);
 		$access = array_intersect_key($_SESSION, array_flip(array_filter(array_keys($_SESSION), function ($key) { return strpos($key, 'access_forum_') === 0; })));
 		$meta = @file_get_contents($this->getTmpPath('meta.dat'));
-		$key = $this->cacheKey . '_' . hash('sha256', serialize(array('search-v4', $string, $modules, $limit,
+		$key = ($this->cached ? $this->cacheKey : '') . '_' . hash('sha256', serialize(array('search-v4', $string, $modules, $limit,
 			isset($_SESSION['user']) ? $_SESSION['user'] : array(), $access, Config::read('language'), $meta)));
 		if ($this->cached && $this->Cache->check($key)) {
 			$rows = @unserialize($this->Cache->read($key), array('allowed_classes'=>false));

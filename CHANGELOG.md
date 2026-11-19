@@ -223,6 +223,15 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   Redactor.
 
 ### Fixed
+- Searching with the cache turned off logged `Undefined property:
+  SearchModule::$cacheKey`. The property exists only when caching is enabled;
+  the search cache key is now built only in that case.
+- Materials disappeared from the home page after their first render: the
+  latest-materials query returned a partial record, and the URL helper saved it
+  back with `Entity::save()`, resetting `available`, `view_on_home`, `premoder`
+  and other columns it had not loaded. This hid the default news of a fresh
+  installation and every material added from the admin panel. The query now
+  selects the whole record.
 - Shop images were served from `sys/files/shop/`, which Apache closes with
   `.htaccess`, so product and review pictures returned 403. Image URLs now go
   through the shared `/img.php` endpoint, which validates the path and serves

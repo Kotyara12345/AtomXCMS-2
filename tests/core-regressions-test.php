@@ -88,6 +88,21 @@ try {
     check(!atm_admin_2fa_verify_code(7,'ABCD-1234'), 'Failed write accepted code');
     $backup->failWrite=false;$backup->consumed=1;
     check(atm_admin_2fa_verify_code(7,'ABCD-1234',$used,$remaining) && $used && $remaining===0, 'Successful atomic consumption failed');
+
+    // The home page renders entities that the URL helper may save. A partial
+    // row made that save reset available, view_on_home and premoder.
+    $pagesModel = file_get_contents($sourceRoot . '/sys/inc/ORM/Models/Pages.php');
+    $methodStart = strpos($pagesModel, 'function getEntitiesByHomePage');
+    check($methodStart !== false, 'Home page query not found');
+    $method = substr($pagesModel, $methodStart, 4000);
+    foreach (array('`clean_url_title`','`available`','`view_on_home`','`premoder`','`commented`','`tags`','`description`') as $column) {
+        check(strpos($method, $column) !== false, 'Home page query misses ' . $column . ' and Entity::save() would reset it');
+    }
+
+    $searchModule = file_get_contents($sourceRoot . '/modules/search/index.php');
+    check(strpos($searchModule, '$this->cached ? $this->cacheKey :') !== false,
+        'Search cache key is built without checking whether caching is enabled');
+
     echo "Core regression checks passed.\n";
 } finally {
     foreach(glob(ROOT.'/sys/cache/sql/*.dat') as $file) unlink($file);
