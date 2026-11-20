@@ -223,6 +223,13 @@ Notable changes of this fork of **AtomX CMS 2.8**, maintained by
   Redactor.
 
 ### Fixed
+- A file added through the public "Каталог файлов" form never appeared in the
+  catalogue, on the home page or in search results. The add handler did not set
+  `premoder`, so `LoadsEntity` fell back to `nochecked`; the catalogue, home
+  page and search index only show `confirmed` records. New files are now
+  confirmed unless the author's group requires pre-moderation.
+  Records already stored as `nochecked` stay hidden until a moderator confirms
+  them in the admin panel.
 - Deleting an item in the admin menu editor did not remove it from the site
   menu. The item list was wrapped in a `<div>`/`<li>` pair, so the browser
   closed the `<ul id="sort">` early and the save script saw no direct `<li>`

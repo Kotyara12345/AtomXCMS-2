@@ -11,9 +11,10 @@ class Config {
 class Register implements ArrayAccess {
     private static $instance;
     public $db;
+    public $url;
     public static function getInstance() { return self::$instance ?: (self::$instance = new self); }
     public function offsetExists($offset): bool { return $offset === 'DB' && $this->db !== null; }
-    public function offsetGet($offset): mixed { return $this->db; }
+    public function offsetGet($offset): mixed { return $offset === 'URL' ? $this->url : $this->db; }
     public function offsetSet($offset, $value): void { $this->db = $value; }
     public function offsetUnset($offset): void { $this->db = null; }
 }
@@ -102,6 +103,38 @@ try {
     $searchModule = file_get_contents($sourceRoot . '/modules/search/index.php');
     check(strpos($searchModule, '$this->cached ? $this->cacheKey :') !== false,
         'Search cache key is built without checking whether caching is enabled');
+
+    // LoadsEntity defaults a missing premoder to 'nochecked'. The public add()
+    // form must set it explicitly, or every new file is hidden from the
+    // catalog, the home page and the search index.
+    class CapturingDB {
+        public $saved = array();
+        public function save($table, $params) { $this->saved = array('table' => $table, 'params' => $params); return 1; }
+    }
+    require $sourceRoot . '/sys/inc/fpsentity.class.php';
+    require $sourceRoot . '/sys/inc/ORM/Entities/Loads.php';
+    $capture = new CapturingDB;
+    $registry = Register::getInstance();
+    $registry->db = $capture;
+    $registry->url = new class {
+        public function getUrlByTitle($title, $dir = false) { return $title; }
+        public function saveOldEntryUrl($entity, $module, $title) {}
+    };
+    $loads = new LoadsEntity(array('title' => 'x', 'main' => 'y', 'category_id' => 1, 'author_id' => 1));
+    $loads->save();
+    check($capture->saved['params']['premoder'] === 'nochecked',
+        'LoadsEntity no longer defaults a missing premoder to nochecked');
+    $capture->saved = array();
+    $loads = new LoadsEntity(array('title' => 'x', 'main' => 'y', 'category_id' => 1, 'author_id' => 1, 'premoder' => 'confirmed'));
+    $loads->save();
+    check($capture->saved['params']['premoder'] === 'confirmed',
+        'LoadsEntity ignores an explicit confirmed premoder');
+    $loadsModule = file_get_contents($sourceRoot . '/modules/loads/index.php');
+    $addStart = strpos($loadsModule, 'public function add()');
+    $addBlock = substr($loadsModule, $addStart, 6000);
+    check(strpos($addBlock, "'premoder'      => 'confirmed'") !== false
+        && strpos($addBlock, "materials_require_premoder") !== false,
+        'Loads add() must mark new records confirmed unless they need moderation');
 
     // The menu editor saves the whole list through sortList(). Its items must
     // stay direct children of #sort: a wrapper <div>/<li> makes the browser

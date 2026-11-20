@@ -742,7 +742,11 @@ Class LoadsModule extends Module {
             'commented'     => $commented,
             'available'     => $available,
             'view_on_home' 	=> $section->getView_on_home(),
+            'premoder'      => 'confirmed',
         );
+        if ($this->ACL->turn(array($this->module, 'materials_require_premoder'), false)) {
+            $data['premoder'] = 'nochecked';
+        }
         $entity = new LoadsEntity($data);
         $last_id = $entity->save();
 		
