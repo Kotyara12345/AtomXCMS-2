@@ -63,8 +63,20 @@ Class StatisticsModule
 		
 		
 		//visits from other sites
-		if (!empty($_SERVER['HTTP_REFERER']) 
-		&& !preg_match('#^http://' . $_SERVER['SERVER_NAME'] . '#', $_SERVER['HTTP_REFERER'])) {
+		$referer_host = '';
+		if (!empty($_SERVER['HTTP_REFERER'])) {
+			$referer_host = parse_url($_SERVER['HTTP_REFERER'], PHP_URL_HOST);
+		}
+		$self_host = !empty($_SERVER['HTTP_HOST'])
+			? $_SERVER['HTTP_HOST']
+			: (!empty($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : '');
+		$normalize_host = function ($host) {
+			$host = strtolower(trim((string)$host));
+			$host = preg_replace('/:\d+$/', '', $host);
+			return preg_replace('/^www\./', '', $host);
+		};
+		$referer_host = $normalize_host($referer_host);
+		if ($referer_host !== '' && $referer_host !== $normalize_host($self_host)) {
 			$other_site_view = 1;
 		} else {
 			$other_site_view = 0;
@@ -112,7 +124,9 @@ Class StatisticsModule
 			$curdate = date("n,j,Y");
 			$curdate = explode(',', $curdate);
 			$timestamp = mktime(23, 59, 59, $curdate[0], $curdate[1], $curdate[2]);
-			setcookie( 'counter', md5($ip), $timestamp, '/' );
+			if (!headers_sent()) {
+				setcookie( 'counter', md5($ip), $timestamp, '/' );
+			}
 		}
 		$view = (!empty($other_bot) || !empty($yandex_bot) || !empty($google_bot)) ? 0 : 1;
 		
