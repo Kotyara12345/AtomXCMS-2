@@ -1,5 +1,22 @@
 <?php
 
+require_once __DIR__ . '/ShopRateLimiter.class.php';
+require_once __DIR__ . '/ShopDescriptionFormatter.class.php';
+require_once __DIR__ . '/ShopOrderStatus.class.php';
+require_once __DIR__ . '/ShopCartCalculator.class.php';
+require_once __DIR__ . '/ShopCheckoutRules.class.php';
+require_once __DIR__ . '/ShopPaymentMethods.class.php';
+require_once __DIR__ . '/ShopDeliveryMethods.class.php';
+require_once __DIR__ . '/ShopPromoCode.class.php';
+require_once __DIR__ . '/ShopFavorites.class.php';
+require_once __DIR__ . '/ShopCategoryTree.class.php';
+require_once __DIR__ . '/ShopPhoneValidator.class.php';
+require_once __DIR__ . '/ShopCsvParser.class.php';
+require_once __DIR__ . '/ShopTrackingValidator.class.php';
+require_once __DIR__ . '/ShopReturnStatus.class.php';
+require_once __DIR__ . '/ShopReviewRatings.class.php';
+require_once __DIR__ . '/ShopOrderFormatter.class.php';
+
 /**
  * Shared shop helpers.
  *
@@ -79,28 +96,7 @@ class ShopHelper
      */
     public static function formatDescription($text)
     {
-        $text = (string)$text;
-        if (trim($text) === '') return '';
-
-        // Legacy descriptions saved by the Redactor-based editor.
-        if (preg_match('/<\/?[a-z][^>]*>/i', $text)) {
-            return self::sanitizeDescriptionHtml($text);
-        }
-
-        return self::parseBbcodeDescription($text);
-    }
-
-    private static function parseBbcodeDescription($text)
-    {
-        $register = self::register();
-        if (!empty($register['PrintText'])) {
-            return $register['PrintText']->parseBBCodes($text);
-        }
-        if (class_exists('PrintText')) {
-            $parser = new PrintText();
-            return $parser->parseBBCodes($text);
-        }
-        return nl2br(h($text));
+        return ShopDescriptionFormatter::format($text);
     }
 
     private static function sanitizeDescriptionHtml($html)
@@ -142,13 +138,7 @@ class ShopHelper
 
     public static function descriptionText($text)
     {
-        $html = self::formatDescription($text);
-        $html = preg_replace('#<br\s*/?>#i', ' ', $html);
-        $html = preg_replace('#</?(?:p|div|li|h[1-6]|blockquote|tr|pre|ul|ol|table)\b[^>]*>#i', ' ', $html);
-        $text = trim(strip_tags($html));
-        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $text = preg_replace('/\s+/u', ' ', $text);
-        return trim((string)$text);
+        return ShopDescriptionFormatter::text($text);
     }
 
     public static function currencies($onlyEnabled = true)
@@ -222,20 +212,17 @@ class ShopHelper
 
     public static function formatDate($value)
     {
-        if (empty($value) || $value === '0000-00-00 00:00:00') return '';
-        $timestamp = strtotime($value);
-        return $timestamp ? date('d.m.Y H:i', $timestamp) : (string)$value;
+        return ShopOrderFormatter::date($value);
     }
 
     public static function orderNumber($id)
     {
-        return 100000 + (int)$id;
+        return ShopOrderFormatter::number($id);
     }
 
     public static function phoneValid($phone)
     {
-        $digits = preg_replace('/\D+/', '', (string)$phone);
-        return strlen($digits) >= 7 && strlen($digits) <= 15;
+        return ShopPhoneValidator::valid($phone);
     }
 
     /**
@@ -434,9 +421,7 @@ class ShopHelper
 
     public static function promoNormalize($code)
     {
-        $code = strtoupper(trim((string)$code));
-        $code = preg_replace('/[^A-Z0-9_-]/', '', $code);
-        return strlen($code) >= 2 && strlen($code) <= 64 ? $code : '';
+        return ShopPromoCode::normalize($code);
     }
 
     public static function promoCode()
@@ -982,12 +967,9 @@ class ShopHelper
     {
         if ($items === null) $items = self::cartItems();
         $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
-        $subtotal = 0.0;
-        $quantity = 0;
-        foreach ($items as $item) {
-            $subtotal += (float)$item['total'];
-            $quantity += (int)$item['quantity'];
-        }
+        $summary = ShopCartCalculator::summarize($items);
+        $subtotal = $summary['subtotal'];
+        $quantity = $summary['quantity'];
 
         $promoCode = self::promoCode();
         $promoError = '';
@@ -1021,25 +1003,7 @@ class ShopHelper
 
     public static function paymentMethods()
     {
-        $raw = (string)self::cfg('payment_methods', '');
-        $lines = preg_split('/\r\n|\r|\n/', $raw);
-        $methods = array();
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '') continue;
-            $parts = explode('|', $line, 2);
-            $code = strtolower(trim($parts[0]));
-            if (!preg_match('/^[a-z0-9_\-]+$/', $code)) continue;
-            $title = isset($parts[1]) && trim($parts[1]) !== '' ? trim($parts[1]) : $code;
-            $methods[$code] = array('code' => $code, 'title' => $title);
-        }
-        if (empty($methods)) {
-            $methods = array(
-                'cash' => array('code' => 'cash', 'title' => 'Наличными при получении'),
-                'transfer' => array('code' => 'transfer', 'title' => 'Банковский перевод'),
-            );
-        }
-        return $methods;
+        return ShopPaymentMethods::all((string)self::cfg('payment_methods', ''));
     }
 
     /**
@@ -1048,44 +1012,7 @@ class ShopHelper
      */
     public static function deliveryMethods($currencyCode = null, $subtotal = null)
     {
-        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
-        $methods = array();
-
-        if ((int)self::cfg('pickup_enabled', 1) === 1) {
-            $methods['pickup'] = array(
-                'code' => 'pickup',
-                'title' => 'Самовывоз',
-                'price' => 0.0,
-                'price_formatted' => 'Бесплатно',
-            );
-        }
-
-        if ((int)self::cfg('courier_enabled', 1) === 1) {
-            $lower = strtolower($currency['code']);
-            $price = max(0, (float)self::cfg('delivery_price_' . $lower, 0));
-            $freeFrom = max(0, (float)self::cfg('free_delivery_from_' . $lower, 0));
-            $qualified = $freeFrom > 0 && $subtotal !== null && (float)$subtotal >= $freeFrom;
-            if ($qualified) $price = 0.0;
-            $methods['courier'] = array(
-                'code' => 'courier',
-                'title' => 'Доставка',
-                'price' => $price,
-                'price_formatted' => $price > 0 ? self::formatPrice($price, $currency['code']) : 'Бесплатно',
-                'free_from' => $freeFrom,
-                'free_from_formatted' => $freeFrom > 0 ? self::formatPrice($freeFrom, $currency['code']) : '',
-            );
-        }
-
-        if (empty($methods)) {
-            $methods['pickup'] = array(
-                'code' => 'pickup',
-                'title' => 'Самовывоз',
-                'price' => 0.0,
-                'price_formatted' => 'Бесплатно',
-            );
-        }
-
-        return $methods;
+        return ShopDeliveryMethods::all($currencyCode, $subtotal);
     }
 
     public static function deliveryPrice($method, $currencyCode = null, $subtotal = null)
@@ -1099,13 +1026,7 @@ class ShopHelper
      */
     public static function freeDeliveryHint($subtotal, $currencyCode = null)
     {
-        if ((int)self::cfg('courier_enabled', 1) !== 1) return '';
-        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
-        $freeFrom = max(0, (float)self::cfg('free_delivery_from_' . strtolower($currency['code']), 0));
-        if ($freeFrom <= 0) return '';
-        $subtotal = round((float)$subtotal, 2);
-        if ($subtotal >= $freeFrom) return 'Доставка бесплатно.';
-        return 'До бесплатной доставки осталось ' . self::formatPrice($freeFrom - $subtotal, $currency['code']) . '.';
+        return ShopCheckoutRules::freeDeliveryHint($subtotal, $currencyCode);
     }
 
     /**
@@ -1113,15 +1034,12 @@ class ShopHelper
      */
     public static function minOrderTotal($currencyCode = null)
     {
-        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
-        return max(0, (float)self::cfg('min_order_total_' . strtolower($currency['code']), 0));
+        return ShopCheckoutRules::minOrderTotal($currencyCode);
     }
 
     public static function minOrderShortfall($subtotal, $currencyCode = null)
     {
-        $min = self::minOrderTotal($currencyCode);
-        if ($min <= 0) return 0.0;
-        return max(0, round($min - (float)$subtotal, 2));
+        return ShopCheckoutRules::minOrderShortfall($subtotal, $currencyCode);
     }
 
     /**
@@ -1129,11 +1047,7 @@ class ShopHelper
      */
     public static function minOrderHint($subtotal, $currencyCode = null)
     {
-        $currency = $currencyCode ? self::currency($currencyCode) : self::activeCurrency();
-        $shortfall = self::minOrderShortfall($subtotal, $currency['code']);
-        if ($shortfall <= 0) return '';
-        return 'Минимальная сумма заказа — ' . self::formatPrice(self::minOrderTotal($currency['code']), $currency['code'])
-            . '. Добавьте товаров на ' . self::formatPrice($shortfall, $currency['code']) . '.';
+        return ShopCheckoutRules::minOrderHint($subtotal, $currencyCode);
     }
 
     /**
@@ -1141,29 +1055,17 @@ class ShopHelper
      */
     public static function customerCanCancel($order)
     {
-        if (empty($order)) return false;
-        if ((int)(isset($order['stock_released']) ? $order['stock_released'] : 0) !== 0) return false;
-        return in_array((string)$order['status'], array('new', 'confirmed'), true);
+        return ShopOrderStatus::customerCanCancel($order);
     }
 
     public static function statuses()
     {
-        return array(
-            'new' => 'Новый',
-            'confirmed' => 'Подтверждён',
-            'paid' => 'Оплачен',
-            'shipped' => 'Отправлен',
-            'completed' => 'Выполнен',
-            'returned' => 'Возврат принят',
-            'refunded' => 'Возвращены деньги',
-            'cancelled' => 'Отменён',
-        );
+        return ShopOrderStatus::all();
     }
 
     public static function statusLabel($status)
     {
-        $statuses = self::statuses();
-        return isset($statuses[$status]) ? $statuses[$status] : $status;
+        return ShopOrderStatus::label($status);
     }
 
     /* ---------------------------------------------------------------------
@@ -1534,81 +1436,22 @@ class ShopHelper
     public static function categoryTree($categories = null, $parentId = 0)
     {
         if ($categories === null) $categories = self::getCategories(true);
-        $byParent = array();
-        foreach ($categories as $category) {
-            $pid = (int)$category['parent_id'];
-            if (!isset($byParent[$pid])) $byParent[$pid] = array();
-            $byParent[$pid][] = $category;
-        }
-        return self::buildCategoryBranch($byParent, (int)$parentId);
-    }
-
-    private static function buildCategoryBranch($byParent, $parentId)
-    {
-        $branch = array();
-        if (empty($byParent[$parentId])) return $branch;
-        foreach ($byParent[$parentId] as $category) {
-            $category['children'] = self::buildCategoryBranch($byParent, (int)$category['id']);
-            $branch[] = $category;
-        }
-        return $branch;
+        return ShopCategoryTree::build($categories, $parentId);
     }
 
     public static function categoryTreeHtml($tree, $currentId = 0, $level = 0)
     {
-        if (empty($tree)) return '';
-        $html = $level === 0 ? '<ul class="shop-cats">' : '<ul>';
-        foreach ($tree as $category) {
-            $active = (int)$category['id'] === (int)$currentId ? ' class="active"' : '';
-            $html .= '<li' . $active . '><a href="' . h($category['url']) . '">'
-                . h($category['title']) . '</a>';
-            if (!empty($category['children'])) {
-                $html .= self::categoryTreeHtml($category['children'], $currentId, $level + 1);
-            }
-            $html .= '</li>';
-        }
-        $html .= '</ul>';
-        return $html;
+        return ShopCategoryTree::html($tree, $currentId, $level);
     }
 
     public static function categoryDescendantIds($categoryId)
     {
-        $categoryId = (int)$categoryId;
-        if ($categoryId < 1) return array();
-        $categories = self::getCategories(false);
-        $children = array();
-        foreach ($categories as $category) {
-            $children[(int)$category['parent_id']][] = (int)$category['id'];
-        }
-        $ids = array($categoryId);
-        $queue = array($categoryId);
-        while ($queue) {
-            $current = array_shift($queue);
-            if (empty($children[$current])) continue;
-            foreach ($children[$current] as $childId) {
-                if (!in_array($childId, $ids, true)) {
-                    $ids[] = $childId;
-                    $queue[] = $childId;
-                }
-            }
-        }
-        return $ids;
+        return ShopCategoryTree::descendantIds(self::getCategories(false), $categoryId);
     }
 
     public static function categoryBreadcrumbs($categoryId)
     {
-        $categoryId = (int)$categoryId;
-        $categories = self::getCategories(false);
-        $byId = array();
-        foreach ($categories as $category) $byId[(int)$category['id']] = $category;
-        $crumbs = array();
-        $guard = 0;
-        while ($categoryId > 0 && isset($byId[$categoryId]) && $guard < 20) {
-            array_unshift($crumbs, $byId[$categoryId]);
-            $categoryId = (int)$byId[$categoryId]['parent_id'];
-            $guard++;
-        }
-        return $crumbs;
+        return ShopCategoryTree::breadcrumbs(self::getCategories(false), $categoryId);
     }
 
     public static function productUrl($product)
@@ -2980,16 +2823,12 @@ class ShopHelper
 
     public static function cleanTrackingNumber($value)
     {
-        $value = preg_replace('/[\x00-\x1F\x7F]+/', ' ', (string)$value);
-        return mb_substr(trim((string)$value), 0, 128);
+        return ShopTrackingValidator::number($value);
     }
 
     public static function trackingUrlValid($url)
     {
-        $url = trim((string)$url);
-        if ($url === '') return true;
-        if (!preg_match('#^https?://#i', $url)) return false;
-        return filter_var($url, FILTER_VALIDATE_URL) !== false;
+        return ShopTrackingValidator::url($url);
     }
 
     public static function setOrderTracking($orderId, $number, $url)
@@ -3498,28 +3337,12 @@ class ShopHelper
      */
     public static function productRatings($productIds)
     {
-        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$productIds))));
-        if (!$ids || !self::ensureReviewsTable()) return array();
-
-        $table = self::table('reviews');
-        $rows = self::db()->query("SELECT `product_id`, AVG(`rating`) AS avg_rating, COUNT(*) AS cnt
-            FROM `{$table}` WHERE `active` = 1 AND `product_id` IN (" . implode(',', $ids) . ")
-            GROUP BY `product_id`");
-        $result = array();
-        foreach ($rows as $row) {
-            $result[(int)$row['product_id']] = array(
-                'avg' => round((float)$row['avg_rating'], 1),
-                'count' => (int)$row['cnt'],
-            );
-        }
-        return $result;
+        return ShopReviewRatings::all($productIds);
     }
 
     public static function productRating($productId)
     {
-        $ratings = self::productRatings(array((int)$productId));
-        $id = (int)$productId;
-        return isset($ratings[$id]) ? $ratings[$id] : array('avg' => 0.0, 'count' => 0);
+        return ShopReviewRatings::one($productId);
     }
 
     public static function getReviews($active = null, $limit = 200)
@@ -4050,92 +3873,38 @@ class ShopHelper
      * Favorites
      * ------------------------------------------------------------------ */
 
-    /** @var bool */
-    private static $favoritesTableReady = false;
-
     /**
      * Older installations do not have the favorites table yet: create it on
      * first use instead of requiring a module reinstall.
      */
     public static function ensureFavoritesTable()
     {
-        if (self::$favoritesTableReady) return true;
-
-        $table = self::table('favorites');
-        try {
-            self::db()->query("CREATE TABLE IF NOT EXISTS `{$table}` (
-                `user_id` INT UNSIGNED NOT NULL,
-                `product_id` INT UNSIGNED NOT NULL,
-                `created_at` DATETIME DEFAULT NULL,
-                PRIMARY KEY (`user_id`, `product_id`),
-                KEY `product_id` (`product_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } catch (Exception $e) {
-            return false;
-        }
-
-        self::$favoritesTableReady = true;
-        return true;
+        return ShopFavorites::ensureTable();
     }
 
     public static function favoriteIds($userId)
     {
-        $userId = (int)$userId;
-        if ($userId < 1 || !self::ensureFavoritesTable()) return array();
-
-        $table = self::table('favorites');
-        $rows = self::db()->query("SELECT `product_id` FROM `{$table}`
-            WHERE `user_id` = {$userId}
-            ORDER BY `created_at` DESC, `product_id` DESC");
-
-        $ids = array();
-        foreach ($rows as $row) $ids[] = (int)$row['product_id'];
-        return $ids;
+        return ShopFavorites::ids($userId);
     }
 
     public static function isFavorite($userId, $productId)
     {
-        $userId = (int)$userId;
-        $productId = (int)$productId;
-        if ($userId < 1 || $productId < 1 || !self::ensureFavoritesTable()) return false;
-
-        $table = self::table('favorites');
-        $rows = self::db()->query("SELECT 1 FROM `{$table}`
-            WHERE `user_id` = {$userId} AND `product_id` = {$productId} LIMIT 1");
-        return !empty($rows);
+        return ShopFavorites::contains($userId, $productId);
     }
 
     public static function addFavorite($userId, $productId)
     {
-        $userId = (int)$userId;
-        $productId = (int)$productId;
-        if ($userId < 1 || $productId < 1 || !self::ensureFavoritesTable()) return false;
-
-        $table = self::table('favorites');
-        self::db()->query("INSERT IGNORE INTO `{$table}`
-            (`user_id`, `product_id`, `created_at`) VALUES ({$userId}, {$productId}, NOW())");
-        return true;
+        return ShopFavorites::add($userId, $productId);
     }
 
     public static function removeFavorite($userId, $productId)
     {
-        $userId = (int)$userId;
-        $productId = (int)$productId;
-        if ($userId < 1 || $productId < 1 || !self::ensureFavoritesTable()) return false;
-
-        $table = self::table('favorites');
-        self::db()->query("DELETE FROM `{$table}`
-            WHERE `user_id` = {$userId} AND `product_id` = {$productId}");
-        return true;
+        return ShopFavorites::remove($userId, $productId);
     }
 
     public static function getFavorites($userId, $limit = 100)
     {
-        $ids = self::favoriteIds($userId);
-        if (!$ids) {
-            return array('items' => array(), 'total' => 0, 'page' => 1, 'pages' => 0, 'limit' => 0, 'sort' => 'default');
-        }
-        return self::getProducts(array('ids' => $ids, 'limit' => $limit));
+        return ShopFavorites::products($userId, $limit);
     }
 
     /* ---------------------------------------------------------------------
@@ -4235,28 +4004,7 @@ class ShopHelper
 
     private static function variantCsvHeaderMap($header)
     {
-        $aliases = array(
-            'variant_id' => array('variant_id', 'id', 'идентификатор варианта'),
-            'currency' => array('currency', 'currency_code', 'валюта'),
-            'sku' => array('sku', 'артикул'),
-            'stock' => array('stock', 'остаток', 'количество'),
-            'active' => array('active', 'активен', 'активность'),
-            'price' => array('price', 'цена'),
-            'compare_price' => array('compare_price', 'old_price', 'старая цена', 'цена до скидки'),
-        );
-        $map = array();
-        foreach ((array)$header as $index => $name) {
-            $name = preg_replace('/^\xEF\xBB\xBF/', '', (string)$name);
-            $name = mb_strtolower(trim($name));
-            foreach ($aliases as $field => $names) {
-                if (isset($map[$field])) continue;
-                if (in_array($name, $names, true)) {
-                    $map[$field] = (int)$index;
-                    break;
-                }
-            }
-        }
-        return $map;
+        return ShopCsvParser::variantHeaderMap($header);
     }
 
     /**
@@ -4369,24 +4117,12 @@ class ShopHelper
             'meta_description' => array('meta_description', 'meta description', 'meta-описание'),
             'meta_keywords' => array('meta_keywords', 'meta keywords', 'meta-ключевые слова'),
         );
-        $map = array();
-        foreach ((array)$header as $index => $name) {
-            $name = preg_replace('/^\xEF\xBB\xBF/', '', (string)$name);
-            $name = mb_strtolower(trim($name));
-            foreach ($aliases as $field => $names) {
-                if (isset($map[$field])) continue;
-                if (in_array($name, $names, true)) {
-                    $map[$field] = (int)$index;
-                    break;
-                }
-            }
-        }
-        return $map;
+        return ShopCsvParser::headerMap($header, $aliases);
     }
 
     private static function csvFlag($value)
     {
-        return in_array(mb_strtolower(trim((string)$value)), array('1', 'да', 'yes', 'true', '+', 'y'), true) ? 1 : 0;
+        return ShopCsvParser::flag($value);
     }
 
     /**
@@ -4866,18 +4602,12 @@ class ShopHelper
 
     public static function returnStatuses()
     {
-        return array(
-            'new' => 'Оформлен',
-            'received' => 'Принят на склад',
-            'refunded' => 'Деньги возвращены',
-            'cancelled' => 'Отменён',
-        );
+        return ShopReturnStatus::all();
     }
 
     public static function returnStatusLabel($status)
     {
-        $statuses = self::returnStatuses();
-        return isset($statuses[$status]) ? $statuses[$status] : (string)$status;
+        return ShopReturnStatus::label($status);
     }
 
     public static function logReturnStatus($returnId, $status, $comment = '', $userId = 0, $userName = '')
@@ -5465,32 +5195,14 @@ class ShopHelper
      * Request rate limits
      * ------------------------------------------------------------------ */
 
-    /** @var bool */
-    private static $rateLimitReady = false;
-
     public static function ensureRateLimitTable()
     {
-        if (self::$rateLimitReady) return true;
-        try {
-            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('rate_limits') . "` (
-                `key_hash` CHAR(40) NOT NULL,
-                `hits` INT UNSIGNED NOT NULL DEFAULT 0,
-                `window_start` DATETIME DEFAULT NULL,
-                PRIMARY KEY (`key_hash`),
-                KEY `window_start` (`window_start`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } catch (Throwable $e) {
-            // If the database is unavailable, fail open: checkout must not break.
-            return false;
-        }
-        self::$rateLimitReady = true;
-        return true;
+        return ShopRateLimiter::ensureTable();
     }
 
     public static function rateLimitKey($action, $subject = '')
     {
-        $ip = !empty($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : 'unknown';
-        return sha1($action . '|' . $ip . '|' . (string)$subject);
+        return ShopRateLimiter::key($action, $subject);
     }
 
     /**
@@ -5498,28 +5210,7 @@ class ShopHelper
      */
     public static function rateLimit($action, $limit, $seconds, $subject = '')
     {
-        if (!self::ensureRateLimitTable()) return true;
-        $hash = self::rateLimitKey($action, $subject);
-        $limit = max(1, (int)$limit);
-        $seconds = max(1, (int)$seconds);
-        try {
-            $rows = self::db()->query("SELECT * FROM `" . self::table('rate_limits') . "`
-                WHERE `key_hash` = '" . self::esc($hash) . "' LIMIT 1");
-            $row = $rows[0] ?? null;
-            $now = time();
-            if (!$row || empty($row['window_start']) || strtotime($row['window_start']) < $now - $seconds) {
-                self::db()->query("INSERT INTO `" . self::table('rate_limits') . "`
-                    (`key_hash`, `hits`, `window_start`) VALUES ('" . self::esc($hash) . "', 1, NOW())
-                    ON DUPLICATE KEY UPDATE `hits` = 1, `window_start` = NOW()");
-                return true;
-            }
-            if ((int)$row['hits'] >= $limit) return false;
-            self::db()->query("UPDATE `" . self::table('rate_limits') . "`
-                SET `hits` = `hits` + 1 WHERE `key_hash` = '" . self::esc($hash) . "'");
-            return true;
-        } catch (Throwable $e) {
-            return true;
-        }
+        return ShopRateLimiter::allow($action, $limit, $seconds, $subject);
     }
 }
 

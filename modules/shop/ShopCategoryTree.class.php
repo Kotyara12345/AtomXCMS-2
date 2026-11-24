@@ -1,0 +1,9 @@
+<?php
+class ShopCategoryTree
+{
+    public static function build($categories, $parentId = 0) { $byParent = array(); foreach ($categories as $category) $byParent[(int)$category['parent_id']][] = $category; return self::branch($byParent, (int)$parentId); }
+    private static function branch($byParent, $parentId) { $branch = array(); foreach (isset($byParent[$parentId]) ? $byParent[$parentId] : array() as $category) { $category['children'] = self::branch($byParent, (int)$category['id']); $branch[] = $category; } return $branch; }
+    public static function html($tree, $currentId = 0, $level = 0) { if (!$tree) return ''; $html = $level === 0 ? '<ul class="shop-cats">' : '<ul>'; foreach ($tree as $category) { $html .= '<li' . ((int)$category['id'] === (int)$currentId ? ' class="active"' : '') . '><a href="' . h($category['url']) . '">' . h($category['title']) . '</a>' . self::html(!empty($category['children']) ? $category['children'] : array(), $currentId, $level + 1) . '</li>'; } return $html . '</ul>'; }
+    public static function descendantIds($categories, $categoryId) { $categoryId = (int)$categoryId; if ($categoryId < 1) return array(); $children = array(); foreach ($categories as $category) $children[(int)$category['parent_id']][] = (int)$category['id']; $ids = array($categoryId); for ($i = 0; $i < count($ids); $i++) foreach (isset($children[$ids[$i]]) ? $children[$ids[$i]] : array() as $childId) if (!in_array($childId, $ids, true)) $ids[] = $childId; return $ids; }
+    public static function breadcrumbs($categories, $categoryId) { $byId = array(); foreach ($categories as $category) $byId[(int)$category['id']] = $category; $crumbs = array(); for ($guard = 0; $categoryId > 0 && isset($byId[$categoryId]) && $guard < 20; $guard++) { array_unshift($crumbs, $byId[$categoryId]); $categoryId = (int)$byId[$categoryId]['parent_id']; } return $crumbs; }
+}

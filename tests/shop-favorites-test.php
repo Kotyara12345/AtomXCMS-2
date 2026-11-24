@@ -27,7 +27,8 @@ function atm_test_read($path)
 	return (string)@file_get_contents($path);
 }
 
-$library = atm_test_read($root . '/modules/shop/shop.lib.php');
+$library = atm_test_read($root . '/modules/shop/shop.lib.php')
+    . atm_test_read($root . '/modules/shop/ShopFavorites.class.php');
 $schema = atm_test_read($root . '/modules/shop/install_db.php');
 $controller = atm_test_read($root . '/modules/shop/index.php');
 $productTpl = atm_test_read($root . '/modules/shop/install_template/html/product.html');
@@ -56,10 +57,10 @@ foreach (array(
 	atm_test_assert(strpos($library, 'function ' . $method . '(') !== false, 'ShopHelper is missing ' . $method . '().');
 }
 atm_test_assert(strpos($library, "CREATE TABLE IF NOT EXISTS `{\$table}`") !== false, 'Favorites table is not created lazily.');
-atm_test_assert(strpos($library, "INSERT IGNORE INTO `{\$table}`") !== false, 'addFavorite() does not ignore duplicates.');
+atm_test_assert(strpos($library, 'INSERT IGNORE INTO') !== false, 'addFavorite() does not ignore duplicates.');
 atm_test_assert(strpos($library, "DELETE FROM `{\$table}`") !== false, 'removeFavorite() does not delete the row.');
 atm_test_assert(strpos($library, "p.`id` IN (") !== false, 'getProducts() is missing the ids filter.');
-atm_test_assert(strpos($library, "self::getProducts(array('ids' => \$ids") !== false, 'getFavorites() does not reuse getProducts().');
+atm_test_assert(strpos($library, "getProducts(array('ids' => \$ids") !== false, 'getFavorites() does not reuse getProducts().');
 
 /* Controller: only POST, CSRF-checked, login required. */
 atm_test_assert(strpos($controller, 'public function favorites()') !== false, 'Controller is missing the favorites page.');

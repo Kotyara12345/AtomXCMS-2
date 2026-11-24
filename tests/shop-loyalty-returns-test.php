@@ -19,6 +19,7 @@ function atm_test_assert($condition, $message)
 }
 
 $library = (string)file_get_contents($root . '/modules/shop/shop.lib.php');
+$statuses = (string)file_get_contents($root . '/modules/shop/ShopOrderStatus.class.php');
 foreach (array(
     'function ensureInventoryTables',
     'function changeStock',
@@ -42,7 +43,7 @@ foreach (array(
 }
 
 foreach (array('returned', 'refunded') as $status) {
-    atm_test_assert(strpos($library, "'{$status}' =>") !== false,
+    atm_test_assert(strpos($statuses, "'{$status}' =>") !== false,
         'Order status ' . $status . ' is not registered.');
 }
 
