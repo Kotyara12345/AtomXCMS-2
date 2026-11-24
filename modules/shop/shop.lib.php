@@ -2362,9 +2362,9 @@ class ShopHelper
                     if ((int)$variant['stock'] < $delta) {
                         throw new RuntimeException('Недостаточно остатка для добавления позиции.');
                     }
-                    self::changeStock($variantId, $delta, 'order_edit', $orderId, 0, 0, 'Изменение состава заказа');
+                    self::changeStock($variantId, -$delta, 'order_edit', $orderId, 0, 0, 'Изменение состава заказа');
                 } elseif ($delta < 0) {
-                    self::changeStock($variantId, -abs($delta), 'order_edit', $orderId, 0, 0, 'Изменение состава заказа');
+                    self::changeStock($variantId, abs($delta), 'order_edit', $orderId, 0, 0, 'Изменение состава заказа');
                 }
             }
 
@@ -2489,10 +2489,11 @@ class ShopHelper
         $orders = self::table('orders');
         $variants = self::table('variants');
         $orderId = (int)$orderId;
-        if (!self::ensureOrderStatusHistoryTable()) return false;
-        self::ensurePromoTables();
-        self::ensureInventoryTables();
-        self::ensureReturnTables();
+        $ready = self::ensureOrderStatusHistoryTable()
+            && self::ensurePromoTables()
+            && self::ensureInventoryTables()
+            && self::ensureReturnTables();
+        if (!$ready) return false;
         try {
             self::db()->query('START TRANSACTION');
             $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
@@ -4548,60 +4549,59 @@ class ShopHelper
     public static function ensureInventoryTables()
     {
         if (self::$inventoryReady) return true;
-        try {
-            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('warehouses') . "` (
-                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                `title` VARCHAR(255) NOT NULL DEFAULT '',
-                `active` TINYINT(1) NOT NULL DEFAULT 1,
-                `position` INT NOT NULL DEFAULT 0,
-                `created_at` DATETIME DEFAULT NULL,
-                PRIMARY KEY (`id`),
-                KEY `active_position` (`active`, `position`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('warehouse_stock') . "` (
-                `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 1,
-                `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `stock` INT NOT NULL DEFAULT 0,
-                PRIMARY KEY (`warehouse_id`, `variant_id`),
-                KEY `variant_id` (`variant_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('stock_movements') . "` (
-                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `delta` INT NOT NULL DEFAULT 0,
-                `stock_after` INT NOT NULL DEFAULT 0,
-                `reason` VARCHAR(32) NOT NULL DEFAULT '',
-                `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
-                `comment` VARCHAR(255) NOT NULL DEFAULT '',
-                `created_at` DATETIME DEFAULT NULL,
-                PRIMARY KEY (`id`),
-                KEY `variant_created` (`variant_id`, `created_at`),
-                KEY `order_id` (`order_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } catch (Throwable $e) {
-            return false;
-        }
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            try {
+                self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('warehouses') . "` (
+                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `title` VARCHAR(255) NOT NULL DEFAULT '',
+                    `active` TINYINT(1) NOT NULL DEFAULT 1,
+                    `position` INT NOT NULL DEFAULT 0,
+                    `created_at` DATETIME DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `active_position` (`active`, `position`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('warehouse_stock') . "` (
+                    `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 1,
+                    `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `stock` INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (`warehouse_id`, `variant_id`),
+                    KEY `variant_id` (`variant_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('stock_movements') . "` (
+                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `delta` INT NOT NULL DEFAULT 0,
+                    `stock_after` INT NOT NULL DEFAULT 0,
+                    `reason` VARCHAR(32) NOT NULL DEFAULT '',
+                    `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `comment` VARCHAR(255) NOT NULL DEFAULT '',
+                    `created_at` DATETIME DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `variant_created` (`variant_id`, `created_at`),
+                    KEY `order_id` (`order_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-        try {
-            $now = date('Y-m-d H:i:s');
-            self::db()->query("INSERT IGNORE INTO `" . self::table('warehouses') . "`
-                (`id`, `title`, `active`, `position`, `created_at`)
-                VALUES (1, 'Основной склад', 1, 10, '" . self::esc($now) . "')");
-            self::db()->query("INSERT IGNORE INTO `" . self::table('warehouse_stock') . "`
-                (`warehouse_id`, `variant_id`, `stock`)
-                SELECT 1, v.`id`, v.`stock` FROM `" . self::table('variants') . "` v
-                LEFT JOIN `" . self::table('warehouse_stock') . "` ws
-                    ON ws.`variant_id` = v.`id` AND ws.`warehouse_id` = 1
-                WHERE ws.`variant_id` IS NULL");
-        } catch (Throwable $e) {
-            return false;
+                $now = date('Y-m-d H:i:s');
+                self::db()->query("INSERT IGNORE INTO `" . self::table('warehouses') . "`
+                    (`id`, `title`, `active`, `position`, `created_at`)
+                    VALUES (1, 'Основной склад', 1, 10, '" . self::esc($now) . "')");
+                self::db()->query("INSERT IGNORE INTO `" . self::table('warehouse_stock') . "`
+                    (`warehouse_id`, `variant_id`, `stock`)
+                    SELECT 1, v.`id`, v.`stock` FROM `" . self::table('variants') . "` v
+                    LEFT JOIN `" . self::table('warehouse_stock') . "` ws
+                        ON ws.`variant_id` = v.`id` AND ws.`warehouse_id` = 1
+                    WHERE ws.`variant_id` IS NULL");
+                self::$inventoryReady = true;
+                return true;
+            } catch (Throwable $e) {
+                // Concurrent first use can race on CREATE TABLE IF NOT EXISTS.
+                if ($attempt < 2) usleep(20000);
+            }
         }
-
-        self::$inventoryReady = true;
-        return true;
+        return false;
     }
 
     public static function warehouses($activeOnly = false)
