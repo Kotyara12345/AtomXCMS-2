@@ -39,6 +39,12 @@ class ShopModule extends Module
         // Prices, stock and the active currency are dynamic; keep the module
         // out of the page cache until the cache key includes those values.
         $this->cached = false;
+        if (!empty($_GET['ref']) && ShopHelper::loyaltyEnabled()) {
+            $ref = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)$_GET['ref']));
+            if ($ref !== '' && ShopHelper::loyaltyFindByReferral($ref)) {
+                $_SESSION['shop_ref'] = $ref;
+            }
+        }
     }
 
     protected function setModel()
@@ -714,6 +720,10 @@ class ShopModule extends Module
             ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
             redirect($target);
         }
+        if (!ShopHelper::rateLimit('apply_promo', 20, 600)) {
+            ShopHelper::flash('error', 'Слишком много попыток ввода промокода. Попробуйте позже.');
+            redirect($target);
+        }
 
         $code = ShopHelper::promoNormalize(isset($_POST['promocode']) ? $_POST['promocode'] : '');
         if ($code === '') {
@@ -864,6 +874,10 @@ class ShopModule extends Module
             ShopHelper::flash('error', 'Отзывы отключены.');
             $this->redirectBack($product['url']);
         }
+        if (!ShopHelper::rateLimit('add_review', 10, 3600)) {
+            ShopHelper::flash('error', 'Слишком много отзывов. Попробуйте позже.');
+            $this->redirectBack($product['url']);
+        }
 
         $user = ShopHelper::currentUser();
         $name = trim((string)(isset($_POST['name']) ? $_POST['name'] : ''));
@@ -973,6 +987,10 @@ class ShopModule extends Module
             ShopHelper::flash('error', 'Сессия истекла. Попробуйте ещё раз.');
             $this->redirectBack($product['url']);
         }
+        if (!ShopHelper::rateLimit('notify_stock', 10, 3600)) {
+            ShopHelper::flash('error', 'Слишком много заявок. Попробуйте позже.');
+            $this->redirectBack($product['url']);
+        }
 
         $email = trim((string)(isset($_POST['email']) ? $_POST['email'] : ''));
         if ($email === '') $email = ShopHelper::currentUser()['email'];
@@ -1050,6 +1068,10 @@ class ShopModule extends Module
         if (empty($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
             redirect('/shop/checkout/');
         }
+        if (!ShopHelper::rateLimit('place_order', 10, 3600)) {
+            ShopHelper::flash('error', 'Слишком много попыток оформления. Попробуйте через час.');
+            redirect('/shop/checkout/');
+        }
         $attempt = $_POST['csrf_token'] ?? '';
         $quote = is_string($attempt) && preg_match('/^[a-f0-9]{48}$/D', $attempt)
             ? ($_SESSION['shop_checkout'][$attempt] ?? null) : null;
@@ -1084,6 +1106,9 @@ class ShopModule extends Module
             ShopHelper::ensurePromoTables();
             ShopHelper::ensureOrderRequestsTable();
             ShopHelper::ensureOrderStatusHistoryTable();
+            ShopHelper::ensureInventoryTables();
+            ShopHelper::ensureOrderBusinessColumns();
+            if (ShopHelper::loyaltyEnabled()) ShopHelper::ensureLoyaltyTables();
             $existing = ShopHelper::orderForAttempt($attempt);
         } catch (Throwable $e) {
             error_log('Shop checkout storage unavailable: ' . $e->getMessage());
@@ -1123,6 +1148,11 @@ class ShopModule extends Module
         $deliveryPrice = $deliveryMethods[$old['delivery_method']]['price'];
         $promoCode = $totals['promo_code'];
         $discount = $totals['discount'];
+        $loyaltyEmail = ShopHelper::loyaltyEmail($old['email'], (int)$user['id']);
+        $loyaltyDiscount = ShopHelper::loyaltyTierDiscount($loyaltyEmail, $subtotal, (int)$user['id']);
+        $bonusMax = ShopHelper::loyaltyMaxBonus($loyaltyEmail, $subtotal, (int)$user['id']);
+        $bonusMax = min($bonusMax, max(0, $subtotal - $discount - $loyaltyDiscount));
+        $bonus = !empty($_POST['use_bonus']) ? $bonusMax : 0.0;
         if ($promoCode !== '' && $totals['promo_error'] !== '') {
             return $this->renderCheckout($old, array());
         }
@@ -1149,6 +1179,9 @@ class ShopModule extends Module
             || round((float)($quote['discount'] ?? 0), 2) !== round($discount, 2)) {
             $changes[] = 'Изменились условия промокода.';
         }
+        if (round((float)($quote['loyalty_discount'] ?? 0), 2) !== round($loyaltyDiscount, 2)) {
+            $changes[] = 'Изменилась скидка постоянного клиента.';
+        }
         if (array_column($items, 'quantity', 'variant_id') != ShopHelper::getCart()) {
             $changes[] = 'Остатки изменились. Корзина обновлена.';
         }
@@ -1158,7 +1191,12 @@ class ShopModule extends Module
         }
 
         $subtotal = array_sum(array_column($items, 'total'));
-        $total = $subtotal - $discount + $deliveryPrice;
+        $total = max(0, $subtotal - $discount - $loyaltyDiscount - $bonus + $deliveryPrice);
+        $referralCode = '';
+        if (ShopHelper::loyaltyEnabled()) {
+            $referralCode = isset($_SESSION['shop_ref']) ? (string)$_SESSION['shop_ref'] : '';
+            ShopHelper::loyaltyAccount($loyaltyEmail, true, $referralCode, (int)$user['id']);
+        }
         $now = date('Y-m-d H:i:s');
         $DB = ShopHelper::db();
         $variants = ShopHelper::table('variants');
@@ -1188,8 +1226,6 @@ class ShopModule extends Module
                     $change = 'Изменилась цена или доступность позиции: ' . $item['product_title'] . '. Проверьте заказ и подтвердите его ещё раз.';
                     throw new RuntimeException($change);
                 }
-                $DB->query("UPDATE `{$variants}` SET `stock` = `stock` - {$qty}
-                    WHERE `id` = {$variantId}");
             }
 
             if ($promoCode !== '') {
@@ -1207,6 +1243,12 @@ class ShopModule extends Module
                 'currency_code' => $currency['code'],
                 'subtotal' => $subtotal,
                 'discount' => $discount,
+                'loyalty_discount' => $loyaltyDiscount,
+                'bonus_spent' => $bonus,
+                'bonus_earned' => 0,
+                'loyalty_credited' => 0,
+                'bonus_refunded' => 0,
+                'referral_code' => ShopHelper::loyaltyEnabled() ? $referralCode : '',
                 'promocode' => $promoCode,
                 'delivery_price' => $deliveryPrice,
                 'total' => $total,
@@ -1221,11 +1263,25 @@ class ShopModule extends Module
                 'payment_title' => $paymentMethods[$old['payment_method']]['title'],
                 'access_token' => $token,
                 'stock_released' => 0,
+                'reserved_until' => ShopHelper::reservationDeadline($now),
                 'created_at' => $now,
                 'updated_at' => $now,
             ));
 
             if ($orderId < 1) throw new RuntimeException('Order ID was not generated');
+
+            foreach ($items as $item) {
+                if (ShopHelper::changeStock((int)$item['variant_id'], -(int)$item['quantity'], 'order',
+                    $orderId, 0, 0, 'Оформление заказа') === false) {
+                    throw new RuntimeException('Не удалось списать остаток товара.');
+                }
+            }
+            if ($bonus > 0) {
+                if (!ShopHelper::loyaltyAdd($loyaltyEmail, -$bonus, 'order_spend', $orderId,
+                    'Списание бонусов')) {
+                    throw new RuntimeException('Недостаточно бонусов.');
+                }
+            }
 
             if ($promoCode !== '') {
                 $DB->query("UPDATE `" . ShopHelper::table('promocodes') . "`
@@ -1274,6 +1330,7 @@ class ShopModule extends Module
             ShopHelper::saveCart(array());
         }
         ShopHelper::clearPromoCode();
+        unset($_SESSION['shop_ref']);
         $_SESSION['shop_checkout'][$attempt]['completed'] = true;
         $_SESSION['shop_last_order'] = array('id' => (int)$order['id'], 'token' => $order['access_token']);
         if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
@@ -1312,8 +1369,15 @@ class ShopModule extends Module
             ? $old['payment_method'] : key($paymentMethods);
         $promoCode = $totals['promo_code'];
         $discount = $totals['discount'];
+        $user = ShopHelper::currentUser();
+        $loyaltyEmail = ShopHelper::loyaltyEmail(isset($old['email']) ? $old['email'] : '', (int)$user['id']);
+        $loyaltyDiscount = ShopHelper::loyaltyTierDiscount($loyaltyEmail, $subtotal, (int)$user['id']);
+        $bonusMax = ShopHelper::loyaltyMaxBonus($loyaltyEmail, $subtotal, (int)$user['id']);
+        $bonusMax = min($bonusMax, max(0, $subtotal - $discount - $loyaltyDiscount));
+        $useBonus = !empty($_POST['use_bonus']) && $bonusMax > 0;
+        $bonus = $useBonus ? $bonusMax : 0.0;
         $deliveryPrice = ShopHelper::deliveryPrice($deliveryMethod, $currency['code'], $subtotal);
-        $total = $subtotal - $discount + $deliveryPrice;
+        $total = max(0, $subtotal - $discount - $loyaltyDiscount - $bonus + $deliveryPrice);
         if ($totals['promo_error'] !== '') {
             $errors[] = $totals['promo_error'] . ' Измените или уберите промокод.';
         }
@@ -1336,6 +1400,7 @@ class ShopModule extends Module
             'delivery' => array_column($deliveryMethods, 'price', 'code'),
             'promo_code' => $promoCode,
             'discount' => $discount,
+            'loyalty_discount' => $loyaltyDiscount,
         );
         if ($attempt === null || ($_SESSION['shop_checkout'][$attempt] ?? null) !== $quote) {
             $attempt = bin2hex(random_bytes(24));
@@ -1362,6 +1427,14 @@ class ShopModule extends Module
             'promo_code' => $promoCode,
             'discount_raw' => $discount,
             'discount_formatted' => ShopHelper::formatPrice($discount, $currency['code']),
+            'loyalty_discount_raw' => $loyaltyDiscount,
+            'loyalty_discount_formatted' => ShopHelper::formatPrice($loyaltyDiscount, $currency['code']),
+            'loyalty_balance_formatted' => ShopHelper::formatPrice(ShopHelper::loyaltyBalance($loyaltyEmail, (int)$user['id']), $currency['code']),
+            'bonus_raw' => $bonus,
+            'bonus_max_raw' => $bonusMax,
+            'bonus_max_formatted' => ShopHelper::formatPrice($bonusMax, $currency['code']),
+            'bonus_formatted' => ShopHelper::formatPrice($bonus, $currency['code']),
+            'use_bonus' => $useBonus,
             'delivery_price_formatted' => ShopHelper::formatPrice($deliveryPrice, $currency['code']),
             'total_formatted' => ShopHelper::formatPrice($total, $currency['code']),
             'free_delivery_hint' => ShopHelper::freeDeliveryHint($subtotal, $currency['code']),

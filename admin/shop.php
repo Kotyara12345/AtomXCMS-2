@@ -32,8 +32,8 @@ if (!$canProducts && !$canOrders) {
 }
 
 $tab = isset($_GET['tab']) ? preg_replace('/[^a-z_]/', '', (string)$_GET['tab']) : 'dashboard';
-$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing', 'reviews', 'emails', 'promocodes', 'promocode');
-$orderTabs = array('orders', 'order', 'order_create', 'customers');
+$productTabs = array('dashboard', 'products', 'product', 'variants', 'attributes', 'attribute', 'categories', 'category', 'landings', 'landing', 'reviews', 'emails', 'promocodes', 'promocode', 'warehouse', 'warehouse_stock');
+$orderTabs = array('orders', 'order', 'order_create', 'customers', 'loyalty');
 if (!in_array($tab, array_merge($productTabs, $orderTabs), true)) $tab = 'dashboard';
 if (in_array($tab, $productTabs, true) && !$canProducts) $tab = 'orders';
 if (in_array($tab, $orderTabs, true) && !$canOrders) $tab = 'dashboard';
@@ -45,7 +45,8 @@ if (in_array($tab, $orderTabs, true) && !$canOrders) $tab = 'dashboard';
 if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST'
     && !empty($_POST['action'])) {
     $action = (string)$_POST['action'];
-    $isOrderAction = in_array($action, array('order_status', 'order_mail', 'order_tracking', 'order_create', 'order_items_save'), true);
+    $isOrderAction = in_array($action, array('order_status', 'order_mail', 'order_tracking', 'order_create', 'order_items_save',
+        'order_return_create', 'order_return_receive', 'order_return_refund', 'order_return_cancel', 'loyalty_adjust'), true);
     if (($isOrderAction && !$canOrders) || (!$isOrderAction && !$canProducts)) {
         $_SESSION['errors'] = 'Недостаточно прав для этого действия.';
         redirect('/admin/shop.php?tab=dashboard');
@@ -307,12 +308,15 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
                 WHERE `id` = {$variantId} AND `product_id` = {$productId} LIMIT 1");
             if (empty($rows[0])) continue;
 
+            $stock = max(0, (int)(isset($data['stock']) ? $data['stock'] : 0));
             $DB->save('shop_variants', array(
                 'sku' => mb_substr(trim((string)(isset($data['sku']) ? $data['sku'] : '')), 0, 64),
-                'stock' => max(0, (int)(isset($data['stock']) ? $data['stock'] : 0)),
                 'active' => !empty($data['active']) ? 1 : 0,
                 'updated_at' => $now,
             ), array('id' => $variantId));
+
+            ShopHelper::setWarehouseStock(ShopHelper::defaultWarehouseId(), $variantId, $stock,
+                'adjust', 'Ручная корректировка в карточке товара');
 
             foreach ($currencies as $code => $currency) {
                 $price = isset($data['prices'][$code]) ? (float)str_replace(',', '.', $data['prices'][$code]) : 0;
@@ -702,6 +706,11 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         if ($minTotal < 0) $minTotal = 0;
         $maxUses = max(0, (int)(isset($_POST['max_uses']) ? $_POST['max_uses'] : 0));
         $oncePerCustomer = !empty($_POST['once_per_customer']) ? 1 : 0;
+        $promoEmail = mb_strtolower(trim((string)($_POST['email'] ?? '')));
+        if ($promoEmail !== '' && !filter_var($promoEmail, FILTER_VALIDATE_EMAIL)) {
+            $_SESSION['errors'] = 'Укажите корректный e-mail персонального промокода.';
+            shop_admin_go(array('tab' => 'promocode', 'id' => $id));
+        }
         $restrictProducts = implode(',', array_keys(ShopHelper::promoIdSet(
             isset($_POST['restrict_products']) ? implode(',', (array)$_POST['restrict_products']) : ''
         )));
@@ -735,6 +744,7 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
                 `code` = '{$codeSql}', `discount_type` = '{$typeSql}', `value` = {$valueSql},
                 `currency_code` = '{$currencySql}', `min_total` = {$minSql}, `max_uses` = {$maxUses},
                 `once_per_customer` = {$oncePerCustomer},
+                `email` = '" . ShopHelper::esc($promoEmail) . "',
                 `restrict_products` = '" . ShopHelper::esc($restrictProducts) . "',
                 `restrict_categories` = '" . ShopHelper::esc($restrictCategories) . "',
                 `starts_at` = {$startsSql}, `ends_at` = {$endsSql}, `active` = {$active},
@@ -744,10 +754,11 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
             $DB->query("INSERT INTO `{$table}`
                 (`code`, `discount_type`, `value`, `currency_code`, `min_total`, `max_uses`,
                     `used_count`, `once_per_customer`, `restrict_products`, `restrict_categories`,
-                    `starts_at`, `ends_at`, `active`, `created_at`, `updated_at`)
+                    `email`, `starts_at`, `ends_at`, `active`, `created_at`, `updated_at`)
                 VALUES ('{$codeSql}', '{$typeSql}', {$valueSql}, '{$currencySql}', {$minSql}, {$maxUses},
                     0, {$oncePerCustomer}, '" . ShopHelper::esc($restrictProducts) . "',
-                    '" . ShopHelper::esc($restrictCategories) . "', {$startsSql}, {$endsSql}, {$active},
+                    '" . ShopHelper::esc($restrictCategories) . "', '" . ShopHelper::esc($promoEmail) . "',
+                    {$startsSql}, {$endsSql}, {$active},
                     '" . ShopHelper::esc($now) . "', '" . ShopHelper::esc($now) . "')");
         }
 
@@ -820,6 +831,8 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
 
         try {
             ShopHelper::ensureOrderStatusHistoryTable();
+            ShopHelper::ensureInventoryTables();
+            ShopHelper::ensureOrderBusinessColumns();
             $DB->query('START TRANSACTION');
             ksort($requested);
             foreach ($requested as $variantId => $qty) {
@@ -847,7 +860,6 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
                     'quantity' => $qty,
                     'total' => $total,
                 );
-                $DB->query("UPDATE `{$variants}` SET `stock` = `stock` - {$qty} WHERE `id` = " . (int)$variantId);
             }
 
             $orderId = (int)$DB->save('shop_orders', array(
@@ -870,12 +882,17 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
                 'payment_title' => $paymentMethods[$paymentMethod]['title'],
                 'access_token' => $token,
                 'stock_released' => 0,
+                'reserved_until' => ShopHelper::reservationDeadline($now),
                 'created_at' => $now,
                 'updated_at' => $now,
             ));
             if ($orderId < 1) throw new RuntimeException('Order ID was not generated');
 
             foreach ($lines as $line) {
+                if (ShopHelper::changeStock((int)$line['variant_id'], -(int)$line['quantity'], 'order',
+                    $orderId, 0, 0, 'Заказ создан администратором') === false) {
+                    throw new RuntimeException('Не удалось списать остаток товара.');
+                }
                 $line['order_id'] = $orderId;
                 $DB->save('shop_order_items', $line);
             }
@@ -1042,6 +1059,110 @@ if (!empty($_SERVER['REQUEST_METHOD']) && strtoupper($_SERVER['REQUEST_METHOD'])
         }
         shop_admin_go(array('tab' => 'order', 'id' => $id));
     }
+
+    if ($action === 'order_return_create') {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $order = $id > 0 ? ShopHelper::getOrder($id) : false;
+        if (!$order) {
+            $_SESSION['errors'] = 'Заказ не найден.';
+            shop_admin_go(array('tab' => 'orders'));
+        }
+        $error = '';
+        $adminUserId = !empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : 0;
+        $adminUserName = !empty($_SESSION['user']['name']) ? (string)$_SESSION['user']['name'] : '';
+        $created = ShopHelper::createOrderReturn(
+            $id,
+            isset($_POST['return_qty']) ? (array)$_POST['return_qty'] : array(),
+            trim((string)($_POST['reason'] ?? '')),
+            trim((string)($_POST['comment'] ?? '')),
+            $error,
+            $adminUserId,
+            $adminUserName
+        );
+        if ($created) {
+            $_SESSION['message'] = 'Возврат №' . (int)$created . ' оформлен.';
+        } else {
+            $_SESSION['errors'] = $error !== '' ? $error : 'Не удалось оформить возврат.';
+        }
+        shop_admin_go(array('tab' => 'order', 'id' => $id));
+    }
+
+    if (in_array($action, array('order_return_receive', 'order_return_refund', 'order_return_cancel'), true)) {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $returnId = isset($_POST['return_id']) ? (int)$_POST['return_id'] : 0;
+        $comment = trim((string)($_POST['comment'] ?? ''));
+        $adminUserId = !empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : 0;
+        $adminUserName = !empty($_SESSION['user']['name']) ? (string)$_SESSION['user']['name'] : '';
+        $ok = false;
+        if ($action === 'order_return_receive') {
+            $ok = ShopHelper::receiveOrderReturn($returnId, $comment, $adminUserId, $adminUserName);
+        } elseif ($action === 'order_return_refund') {
+            $ok = ShopHelper::refundOrderReturn($returnId, $comment, $adminUserId, $adminUserName);
+        } else {
+            $ok = ShopHelper::cancelOrderReturn($returnId, $comment, $adminUserId, $adminUserName);
+        }
+        if ($ok) {
+            $_SESSION['message'] = 'Возврат обновлён.';
+        } else {
+            $_SESSION['errors'] = 'Не удалось обновить возврат. Проверьте статус и остатки.';
+        }
+        shop_admin_go(array('tab' => 'order', 'id' => $id));
+    }
+
+    if ($action === 'warehouse_save') {
+        ShopHelper::ensureInventoryTables();
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $title = trim((string)($_POST['title'] ?? ''));
+        if ($title === '') {
+            $_SESSION['errors'] = 'Укажите название склада.';
+            shop_admin_go(array('tab' => 'warehouse'));
+        }
+        $data = array(
+            'title' => mb_substr($title, 0, 255),
+            'active' => !empty($_POST['active']) ? 1 : 0,
+            'position' => isset($_POST['position']) ? (int)$_POST['position'] : 0,
+        );
+        if ($id > 0) {
+            $data['id'] = $id;
+            $DB->save('shop_warehouses', $data);
+        } else {
+            $data['created_at'] = date('Y-m-d H:i:s');
+            $DB->save('shop_warehouses', $data);
+        }
+        $_SESSION['message'] = 'Склад сохранён.';
+        shop_admin_go(array('tab' => 'warehouse'));
+    }
+
+    if ($action === 'warehouse_stock_save') {
+        ShopHelper::ensureInventoryTables();
+        $warehouseId = isset($_POST['warehouse_id']) ? (int)$_POST['warehouse_id'] : 0;
+        $stocks = isset($_POST['stock']) ? (array)$_POST['stock'] : array();
+        $saved = 0;
+        foreach ($stocks as $variantId => $stock) {
+            if (ShopHelper::setWarehouseStock($warehouseId, (int)$variantId, (int)$stock,
+                'adjust', 'Корректировка остатков склада')) {
+                $saved++;
+            }
+        }
+        $_SESSION['message'] = 'Остатки склада сохранены. Позиций: ' . $saved . '.';
+        shop_admin_go(array('tab' => 'warehouse_stock', 'id' => $warehouseId));
+    }
+
+    if ($action === 'loyalty_adjust') {
+        $email = trim((string)($_POST['email'] ?? ''));
+        $delta = (float)str_replace(',', '.', (string)($_POST['delta'] ?? '0'));
+        $comment = trim((string)($_POST['comment'] ?? ''));
+        if (!ShopHelper::loyaltyEmail($email)) {
+            $_SESSION['errors'] = 'Укажите корректный e-mail.';
+        } elseif (abs($delta) < 0.005) {
+            $_SESSION['errors'] = 'Укажите сумму бонусов.';
+        } elseif (!ShopHelper::loyaltyAdd($email, $delta, 'manual', 0, $comment)) {
+            $_SESSION['errors'] = 'Не удалось изменить бонусный баланс.';
+        } else {
+            $_SESSION['message'] = 'Бонусный баланс обновлён.';
+        }
+        shop_admin_go(array('tab' => 'loyalty'));
+    }
 }
 
 /* -------------------------------------------------------------------------
@@ -1187,6 +1308,12 @@ if ($tab === 'dashboard') {
     $output .= shop_admin_order();
 } elseif ($tab === 'order_create') {
     $output .= shop_admin_order_form();
+} elseif ($tab === 'warehouse') {
+    $output .= shop_admin_warehouses();
+} elseif ($tab === 'warehouse_stock') {
+    $output .= shop_admin_warehouse_stock();
+} elseif ($tab === 'loyalty') {
+    $output .= shop_admin_loyalty();
 }
 
 $output .= '</div>';
@@ -1743,6 +1870,7 @@ function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
         $tabs['attributes'] = 'Атрибуты';
         $tabs['categories'] = 'Категории';
         $tabs['landings'] = 'Посадочные страницы';
+        $tabs['warehouse'] = 'Склад';
         $tabs['reviews'] = 'Отзывы';
         $tabs['emails'] = 'Письма';
         $tabs['promocodes'] = 'Промокоды';
@@ -1750,6 +1878,7 @@ function shop_admin_tabs($tab, $canProducts, $canOrders, $canSettings)
     if ($canOrders) {
         $tabs['orders'] = 'Заказы';
         $tabs['customers'] = 'Покупатели';
+        $tabs['loyalty'] = 'Лояльность';
     }
 
     $html = '<div class="shop-admin-tabs">';
@@ -3441,6 +3570,7 @@ function shop_admin_promocode_form()
         'max_uses' => 0,
         'used_count' => 0,
         'once_per_customer' => 0,
+        'email' => '',
         'restrict_products' => '',
         'restrict_categories' => '',
         'starts_at' => null,
@@ -3515,6 +3645,13 @@ function shop_admin_promocode_form()
             <span>Один раз на покупателя</span>
         </label>
         <p class="shop-admin-muted">Повторное применение блокируется по аккаунту или e-mail из оформленных заказов с этим промокодом.</p>
+
+        <div class="shop-admin-form-row">
+            <label for="shop-promo-email">E-mail покупателя</label>
+            <input id="shop-promo-email" type="email" name="email" maxlength="255"
+                value="<?php echo h(isset($promo['email']) ? $promo['email'] : ''); ?>" placeholder="customer@example.com" />
+            <div class="shop-admin-muted">Персональный промокод: пусто — код общий, иначе применяется только с этим e-mail.</div>
+        </div>
 
         <div class="shop-admin-form-row">
             <label>Категории товаров</label>
@@ -3712,6 +3849,8 @@ function shop_admin_order()
     $order = $id > 0 ? ShopHelper::getOrder($id) : false;
     if (!$order) return '<div class="shop-admin-empty">Заказ не найден.</div>';
     ShopHelper::ensureOrderTrackingColumns();
+    ShopHelper::ensureOrderBusinessColumns();
+    $order = ShopHelper::getOrder($id);
     $items = ShopHelper::getOrderItems($id, $order['currency_code']);
 
     try {
@@ -3723,7 +3862,9 @@ function shop_admin_order()
         'unknown' => 'Нет данных', 'pending' => 'Ожидает отправки', 'sent' => 'Принято почтовой службой',
         'failed' => 'Ошибка отправки', 'skipped' => 'Нет отдельного адреса получателя',
     );
-    $editable = empty($order['stock_released']) && $order['status'] !== 'cancelled';
+    $editable = empty($order['stock_released'])
+        && !in_array($order['status'], array('cancelled', 'returned', 'refunded'), true)
+        && !ShopHelper::returnedQuantities($id);
     $addVariants = array();
     if ($editable) {
         $code = ShopHelper::esc($order['currency_code']);
@@ -3765,6 +3906,12 @@ function shop_admin_order()
                 <div><span>Товары:</span><span><?php echo h($order['subtotal_formatted']); ?></span></div>
                 <?php if (!empty($order['discount'])): ?>
                 <div><span>Скидка<?php echo $order['promocode'] !== '' ? ' (' . h($order['promocode']) . ')' : ''; ?>:</span><span>−<?php echo h($order['discount_formatted']); ?></span></div>
+                <?php endif; ?>
+                <?php if (!empty($order['loyalty_discount'])): ?>
+                <div><span>Скидка постоянного клиента:</span><span>−<?php echo h(ShopHelper::formatPrice($order['loyalty_discount'], $order['currency_code'])); ?></span></div>
+                <?php endif; ?>
+                <?php if (!empty($order['bonus_spent'])): ?>
+                <div><span>Оплачено бонусами:</span><span>−<?php echo h(ShopHelper::formatPrice($order['bonus_spent'], $order['currency_code'])); ?></span></div>
                 <?php endif; ?>
                 <div><span>Доставка:</span><span><?php echo h($order['delivery_price_formatted']); ?></span></div>
                 <div class="total"><span>Итого:</span><span><?php echo h($order['total_formatted']); ?></span></div>
@@ -3871,6 +4018,107 @@ function shop_admin_order()
             <?php endif; ?>
         </div>
 
+        <?php $returns = ShopHelper::getOrderReturns($id); $returnedQty = ShopHelper::returnedQuantities($id); ?>
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>Возвраты</h2></div>
+            <?php if (!$returns): ?>
+            <p class="shop-admin-muted">Возвратов по заказу нет.</p>
+            <?php else: ?>
+            <?php foreach ($returns as $return): ?>
+            <div class="shop-admin-return">
+                <p>
+                    <strong>Возврат №<?php echo (int)$return['id']; ?></strong>
+                    <span class="shop-admin-muted"><?php echo h($return['created_at_formatted']); ?></span>
+                    <?php echo shop_admin_status_badge($return['status'], $return['status_label']); ?>
+                    <span><?php echo h(ShopHelper::formatPrice($return['amount'], $order['currency_code'])); ?></span>
+                </p>
+                <?php if (!empty($return['reason'])): ?><p class="shop-admin-muted">Причина: <?php echo h($return['reason']); ?></p><?php endif; ?>
+                <ul class="shop-admin-history">
+                    <?php foreach ($return['items'] as $returnItem): ?>
+                    <li><?php echo h($returnItem['product_title']); ?> — <?php echo (int)$returnItem['quantity']; ?> шт. на <?php echo h(ShopHelper::formatPrice($returnItem['total'], $order['currency_code'])); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php if ($return['status'] !== 'cancelled' && empty($return['stock_returned'])): ?>
+                <form method="post" action="" class="shop-admin-order-line">
+                    <?php echo shop_admin_csrf(); ?>
+                    <input type="hidden" name="action" value="order_return_receive" />
+                    <input type="hidden" name="id" value="<?php echo $id; ?>" />
+                    <input type="hidden" name="return_id" value="<?php echo (int)$return['id']; ?>" />
+                    <input type="text" name="comment" maxlength="255" placeholder="Комментарий" />
+                    <button type="submit" class="shop-admin-btn">Принять на склад</button>
+                </form>
+                <?php endif; ?>
+                <?php if (!empty($return['stock_returned']) && $return['status'] !== 'refunded' && $return['status'] !== 'cancelled'): ?>
+                <form method="post" action="" class="shop-admin-order-line">
+                    <?php echo shop_admin_csrf(); ?>
+                    <input type="hidden" name="action" value="order_return_refund" />
+                    <input type="hidden" name="id" value="<?php echo $id; ?>" />
+                    <input type="hidden" name="return_id" value="<?php echo (int)$return['id']; ?>" />
+                    <input type="text" name="comment" maxlength="255" placeholder="Комментарий" />
+                    <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Вернуть деньги</button>
+                </form>
+                <?php endif; ?>
+                <?php if (empty($return['stock_returned']) && $return['status'] !== 'cancelled'): ?>
+                <form method="post" action="">
+                    <?php echo shop_admin_csrf(); ?>
+                    <input type="hidden" name="action" value="order_return_cancel" />
+                    <input type="hidden" name="id" value="<?php echo $id; ?>" />
+                    <input type="hidden" name="return_id" value="<?php echo (int)$return['id']; ?>" />
+                    <button type="submit" class="shop-admin-btn">Отменить возврат</button>
+                </form>
+                <?php endif; ?>
+                <?php if ($return['history']): ?>
+                <ul class="shop-admin-history">
+                    <?php foreach ($return['history'] as $entry): ?>
+                    <li>
+                        <strong><?php echo h($entry['status_label']); ?></strong>
+                        <span class="shop-admin-muted"><?php echo h($entry['created_at_formatted']); ?></span>
+                        <?php if (!empty($entry['user_name'])): ?><span class="shop-admin-muted">— <?php echo h($entry['user_name']); ?></span><?php endif; ?>
+                        <?php if (!empty($entry['comment'])): ?><div><?php echo h($entry['comment']); ?></div><?php endif; ?>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+            <?php endif; ?>
+
+            <?php $returnable = array(); foreach ($items as $item) {
+                $available = (int)$item['quantity'] - (int)(isset($returnedQty[$item['id']]) ? $returnedQty[$item['id']] : 0);
+                if ($available > 0) $returnable[] = array('item' => $item, 'available' => $available);
+            } ?>
+            <?php if ($returnable && !in_array($order['status'], array('cancelled', 'refunded'), true) && empty($order['stock_released'])): ?>
+            <details class="shop-admin-order-edit">
+                <summary>Оформить частичный возврат</summary>
+                <form method="post" action="" class="shop-admin-simple-form">
+                    <?php echo shop_admin_csrf(); ?>
+                    <input type="hidden" name="action" value="order_return_create" />
+                    <input type="hidden" name="id" value="<?php echo $id; ?>" />
+                    <table class="grid shop-admin-table">
+                        <thead><tr><th>Товар</th><th>Можно вернуть</th><th>К возврату</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($returnable as $entry): ?>
+                        <tr>
+                            <td><strong><?php echo h($entry['item']['product_title']); ?></strong><div class="shop-admin-muted"><?php echo h($entry['item']['variant_title']); ?> <?php echo h($entry['item']['sku']); ?></div></td>
+                            <td><?php echo (int)$entry['available']; ?></td>
+                            <td><input type="number" min="0" max="<?php echo (int)$entry['available']; ?>" name="return_qty[<?php echo (int)$entry['item']['id']; ?>]" value="0" /></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <label>Причина
+                        <input type="text" name="reason" maxlength="255" required="required" />
+                    </label>
+                    <label>Комментарий
+                        <input type="text" name="comment" maxlength="255" />
+                    </label>
+                    <p class="shop-admin-muted">Товары вернутся на склад после действия «Принять на склад». Деньги возвращаются отдельным шагом.</p>
+                    <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Оформить возврат</button>
+                </form>
+            </details>
+            <?php endif; ?>
+        </div>
+
         <div class="shop-admin-panel">
             <div class="shop-admin-panel-head"><h2>Покупатель</h2></div>
             <p><strong><?php echo h($order['customer_name']); ?></strong></p>
@@ -3928,6 +4176,256 @@ function shop_admin_order()
                 </label>
                 <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Сохранить</button>
             </form>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+function shop_admin_warehouses()
+{
+    ShopHelper::ensureInventoryTables();
+    $warehouses = ShopHelper::warehouses(false);
+    $movements = ShopHelper::stockMovements(100);
+    $editId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    $edit = null;
+    foreach ($warehouses as $warehouse) {
+        if ((int)$warehouse['id'] === $editId) $edit = $warehouse;
+    }
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1>Склады</h1>
+        <a href="<?php echo h(shop_admin_url(array('tab' => 'warehouse_stock'))); ?>">Остатки по складам</a>
+    </div>
+
+    <div class="shop-admin-order-grid">
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2><?php echo $edit ? 'Склад' : 'Новый склад'; ?></h2></div>
+            <form method="post" action="" class="shop-admin-simple-form">
+                <?php echo shop_admin_csrf(); ?>
+                <input type="hidden" name="action" value="warehouse_save" />
+                <input type="hidden" name="id" value="<?php echo $edit ? (int)$edit['id'] : 0; ?>" />
+                <label>Название
+                    <input type="text" name="title" maxlength="255" required="required" value="<?php echo h($edit ? $edit['title'] : ''); ?>" />
+                </label>
+                <label>Порядок
+                    <input type="number" name="position" value="<?php echo (int)($edit ? $edit['position'] : 10); ?>" />
+                </label>
+                <label class="shop-admin-inline-check">
+                    <input type="checkbox" name="active" value="1"<?php echo !$edit || !empty($edit['active']) ? ' checked="checked"' : ''; ?> />
+                    Активен
+                </label>
+                <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Сохранить</button>
+            </form>
+
+            <table class="grid shop-admin-table">
+                <thead><tr><th>Склад</th><th>Позиций</th><th>Остаток</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($warehouses as $warehouse): ?>
+                    <?php $totals = ShopHelper::db()->query("SELECT COUNT(*) AS cnt, COALESCE(SUM(`stock`),0) AS qty
+                        FROM `" . ShopHelper::table('warehouse_stock') . "`
+                        WHERE `warehouse_id` = " . (int)$warehouse['id'] . " AND `stock` <> 0"); ?>
+                    <tr>
+                        <td><strong><?php echo h($warehouse['title']); ?></strong><?php echo empty($warehouse['active']) ? ' <span class="shop-admin-muted">(выключен)</span>' : ''; ?></td>
+                        <td><?php echo (int)(isset($totals[0]['cnt']) ? $totals[0]['cnt'] : 0); ?></td>
+                        <td><?php echo (int)(isset($totals[0]['qty']) ? $totals[0]['qty'] : 0); ?></td>
+                        <td>
+                            <a href="<?php echo h(shop_admin_url(array('tab' => 'warehouse', 'id' => $warehouse['id']))); ?>">Изменить</a>
+                            <a href="<?php echo h(shop_admin_url(array('tab' => 'warehouse_stock', 'id' => $warehouse['id']))); ?>">Остатки</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>Журнал движений</h2></div>
+            <p class="shop-admin-muted">Последние 100 операций: оформление и отмена заказов, возвраты, ручные корректировки.</p>
+            <?php if (!$movements): ?>
+            <div class="shop-admin-empty">Движений пока нет.</div>
+            <?php else: ?>
+            <div class="shop-admin-table-wrap">
+                <table class="grid shop-admin-table">
+                    <thead><tr><th>Дата</th><th>Товар</th><th>Склад</th><th>Δ</th><th>Остаток</th><th>Причина</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($movements as $row): ?>
+                    <tr>
+                        <td><?php echo h($row['created_at_formatted']); ?></td>
+                        <td><?php echo h(trim($row['product_title'] . ' / ' . $row['variant_title'], ' /')); ?><div class="shop-admin-muted"><?php echo h($row['sku']); ?></div></td>
+                        <td><?php echo h($row['warehouse_title']); ?></td>
+                        <td><?php echo $row['delta'] > 0 ? '+' : ''; ?><?php echo (int)$row['delta']; ?></td>
+                        <td><?php echo (int)$row['stock_after']; ?></td>
+                        <td><?php echo h($row['reason']); ?><div class="shop-admin-muted"><?php echo h($row['comment']); ?><?php echo (int)$row['order_id'] > 0 ? ' · заказ #' . (int)$row['order_id'] : ''; ?></div></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+function shop_admin_warehouse_stock()
+{
+    ShopHelper::ensureInventoryTables();
+    $warehouses = ShopHelper::warehouses(false);
+    if (!$warehouses) return '<div class="shop-admin-empty">Сначала создайте склад.</div>';
+    $warehouseId = isset($_GET['id']) ? (int)$_GET['id'] : (int)$warehouses[0]['id'];
+    $warehouse = null;
+    foreach ($warehouses as $row) {
+        if ((int)$row['id'] === $warehouseId) $warehouse = $row;
+    }
+    if (!$warehouse) {
+        $warehouse = $warehouses[0];
+        $warehouseId = (int)$warehouse['id'];
+    }
+    $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+    $where = '';
+    if ($q !== '') {
+        $escaped = ShopHelper::esc($q);
+        $where = " AND (p.`title` LIKE '%{$escaped}%' OR v.`sku` LIKE '%{$escaped}%' OR v.`title` LIKE '%{$escaped}%')";
+    }
+    $rows = ShopHelper::db()->query("SELECT v.`id`, v.`title` AS variant_title, v.`sku`, p.`title` AS product_title,
+            COALESCE(ws.`stock`, 0) AS warehouse_stock
+        FROM `" . ShopHelper::table('variants') . "` v
+        INNER JOIN `" . ShopHelper::table('products') . "` p ON p.`id` = v.`product_id`
+        LEFT JOIN `" . ShopHelper::table('warehouse_stock') . "` ws
+            ON ws.`variant_id` = v.`id` AND ws.`warehouse_id` = {$warehouseId}
+        WHERE 1=1 {$where}
+        ORDER BY p.`title` ASC, v.`position` ASC, v.`id` ASC LIMIT 300");
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1>Остатки: <?php echo h($warehouse['title']); ?></h1>
+        <a href="<?php echo h(shop_admin_url(array('tab' => 'warehouse'))); ?>">← К складам</a>
+    </div>
+    <div class="shop-admin-toolbar">
+        <form method="get" action="<?php echo h(get_url('/admin/shop.php')); ?>">
+            <input type="hidden" name="tab" value="warehouse_stock" />
+            <select name="id">
+                <?php foreach ($warehouses as $row): ?>
+                <option value="<?php echo (int)$row['id']; ?>"<?php echo (int)$row['id'] === $warehouseId ? ' selected="selected"' : ''; ?>><?php echo h($row['title']); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="Товар, вариант, артикул" />
+            <button type="submit" class="shop-admin-btn">Показать</button>
+        </form>
+    </div>
+    <p class="shop-admin-muted">Сумма остатков всех складов показывается покупателю как общий остаток. Изменение здесь пишется в журнал движений.</p>
+    <form method="post" action="">
+        <?php echo shop_admin_csrf(); ?>
+        <input type="hidden" name="action" value="warehouse_stock_save" />
+        <input type="hidden" name="warehouse_id" value="<?php echo $warehouseId; ?>" />
+        <div class="shop-admin-table-wrap">
+            <table class="grid shop-admin-table">
+                <thead><tr><th>Товар</th><th>Артикул</th><th>Остаток на складе</th></tr></thead>
+                <tbody>
+                <?php foreach ($rows as $row): ?>
+                <tr>
+                    <td><strong><?php echo h($row['product_title']); ?></strong><div class="shop-admin-muted"><?php echo h($row['variant_title']); ?></div></td>
+                    <td><?php echo h($row['sku']); ?></td>
+                    <td><input type="number" min="0" name="stock[<?php echo (int)$row['id']; ?>]" value="<?php echo (int)$row['warehouse_stock']; ?>" /></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <div class="shop-admin-form-actions">
+            <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Сохранить остатки</button>
+        </div>
+    </form>
+    <?php
+    return ob_get_clean();
+}
+
+function shop_admin_loyalty()
+{
+    ShopHelper::ensureLoyaltyTables();
+    $accounts = ShopHelper::loyaltyAccounts(200);
+    $transactions = ShopHelper::loyaltyTransactions(100);
+    $enabled = ShopHelper::loyaltyEnabled();
+    $currency = ShopHelper::activeCurrency();
+
+    ob_start(); ?>
+    <div class="shop-admin-page-head">
+        <h1>Лояльность</h1>
+        <a href="<?php echo h(get_url('/admin/settings.php?m=shop')); ?>">Настройки</a>
+    </div>
+    <?php if (!$enabled): ?>
+    <div class="shop-admin-note">Программа лояльности выключена. Включите её в настройках магазина.</div>
+    <?php endif; ?>
+    <p class="shop-admin-muted">
+        Начисление: <?php echo (float)ShopHelper::cfg('loyalty_accrual_percent', 0); ?>% от суммы товаров.
+        Списание: до <?php echo (float)ShopHelper::cfg('loyalty_max_spend_percent', 30); ?>% заказа.
+        Скидка постоянного клиента: <?php echo h((string)ShopHelper::cfg('loyalty_tiers', '')); ?>.
+    </p>
+
+    <div class="shop-admin-order-grid">
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>Ручная корректировка</h2></div>
+            <form method="post" action="" class="shop-admin-simple-form">
+                <?php echo shop_admin_csrf(); ?>
+                <input type="hidden" name="action" value="loyalty_adjust" />
+                <label>E-mail покупателя
+                    <input type="email" name="email" maxlength="255" required="required" />
+                </label>
+                <label>Бонусы (минус — списать)
+                    <input type="number" step="0.01" name="delta" required="required" />
+                </label>
+                <label>Комментарий
+                    <input type="text" name="comment" maxlength="255" />
+                </label>
+                <button type="submit" class="shop-admin-btn shop-admin-btn-primary">Применить</button>
+            </form>
+
+            <h3>Счета</h3>
+            <?php if (!$accounts): ?>
+            <div class="shop-admin-empty">Счетов пока нет.</div>
+            <?php else: ?>
+            <div class="shop-admin-table-wrap">
+                <table class="grid shop-admin-table">
+                    <thead><tr><th>E-mail</th><th>Баланс</th><th>Куплено</th><th>Реферальный код</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($accounts as $account): ?>
+                    <tr>
+                        <td><?php echo h($account['email']); ?></td>
+                        <td><?php echo h(ShopHelper::formatPrice($account['balance'], $currency['code'])); ?></td>
+                        <td><?php echo h(ShopHelper::formatPrice($account['total_spent'], $currency['code'])); ?></td>
+                        <td><code><?php echo h($account['referral_code']); ?></code></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <div class="shop-admin-panel">
+            <div class="shop-admin-panel-head"><h2>История бонусов</h2></div>
+            <?php if (!$transactions): ?>
+            <div class="shop-admin-empty">Операций пока нет.</div>
+            <?php else: ?>
+            <div class="shop-admin-table-wrap">
+                <table class="grid shop-admin-table">
+                    <thead><tr><th>Дата</th><th>E-mail</th><th>Δ</th><th>Причина</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($transactions as $row): ?>
+                    <tr>
+                        <td><?php echo h($row['created_at_formatted']); ?></td>
+                        <td><?php echo h($row['email']); ?></td>
+                        <td><?php echo $row['delta'] > 0 ? '+' : ''; ?><?php echo h(ShopHelper::formatPrice($row['delta'], $currency['code'])); ?></td>
+                        <td><?php echo h($row['reason']); ?><div class="shop-admin-muted"><?php echo h($row['comment']); ?><?php echo (int)$row['order_id'] > 0 ? ' · заказ #' . (int)$row['order_id'] : ''; ?></div></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     <?php

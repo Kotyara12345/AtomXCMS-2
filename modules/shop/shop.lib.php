@@ -388,6 +388,15 @@ class ShopHelper
                 }
             }
         }
+        try {
+            self::db()->query("SELECT `email` FROM `" . self::table('promocodes') . "` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                self::db()->query("ALTER TABLE `" . self::table('promocodes') . "`
+                    ADD COLUMN `email` VARCHAR(255) NOT NULL DEFAULT ''");
+            } catch (Throwable $alterError) {
+            }
+        }
 
         $prices = self::table('variant_prices');
         try {
@@ -486,6 +495,15 @@ class ShopHelper
 
         $promo = $rows[0];
         $result['promocode'] = $promo;
+        $promoEmail = mb_strtolower(trim((string)(isset($promo['email']) ? $promo['email'] : '')));
+        if ($promoEmail !== '') {
+            $email = mb_strtolower(trim((string)$customerEmail));
+            if ($email === '') $email = mb_strtolower(trim((string)self::currentUser()['email']));
+            if ($email !== $promoEmail) {
+                $result['error'] = 'Этот промокод персональный. Войдите с тем e-mail, на который он выдан.';
+                return $result;
+            }
+        }
         if (empty($promo['active'])) {
             $result['error'] = 'Промокод не действует.';
             return $result;
@@ -1136,6 +1154,8 @@ class ShopHelper
             'paid' => 'Оплачен',
             'shipped' => 'Отправлен',
             'completed' => 'Выполнен',
+            'returned' => 'Возврат принят',
+            'refunded' => 'Возвращены деньги',
             'cancelled' => 'Отменён',
         );
     }
@@ -2302,6 +2322,7 @@ class ShopHelper
             $error = 'Не удалось подготовить историю заказов.';
             return false;
         }
+        self::ensureInventoryTables();
 
         try {
             self::db()->query('START TRANSACTION');
@@ -2341,9 +2362,9 @@ class ShopHelper
                     if ((int)$variant['stock'] < $delta) {
                         throw new RuntimeException('Недостаточно остатка для добавления позиции.');
                     }
-                    self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` - {$delta} WHERE `id` = {$variantId}");
+                    self::changeStock($variantId, $delta, 'order_edit', $orderId, 0, 0, 'Изменение состава заказа');
                 } elseif ($delta < 0) {
-                    self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` + " . abs($delta) . " WHERE `id` = {$variantId}");
+                    self::changeStock($variantId, -abs($delta), 'order_edit', $orderId, 0, 0, 'Изменение состава заказа');
                 }
             }
 
@@ -2470,6 +2491,8 @@ class ShopHelper
         $orderId = (int)$orderId;
         if (!self::ensureOrderStatusHistoryTable()) return false;
         self::ensurePromoTables();
+        self::ensureInventoryTables();
+        self::ensureReturnTables();
         try {
             self::db()->query('START TRANSACTION');
             $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
@@ -2480,12 +2503,18 @@ class ShopHelper
             $released = !empty($order['stock_released']) ? 1 : 0;
             if ($status === 'cancelled' && !$released) {
                 $itemsTable = self::table('order_items');
-                $items = self::db()->query("SELECT `variant_id`, `quantity` FROM `{$itemsTable}` WHERE `order_id` = {$orderId} ORDER BY `variant_id`");
+                $items = self::db()->query("SELECT `id`, `variant_id`, `quantity` FROM `{$itemsTable}` WHERE `order_id` = {$orderId} ORDER BY `variant_id`");
                 usort($items, function ($a, $b) { return (int)$a['variant_id'] <=> (int)$b['variant_id']; });
+                $returned = self::returnedQuantities($orderId);
                 foreach ($items as $item) {
                     $variantId = (int)$item['variant_id'];
                     $qty = (int)$item['quantity'];
-                    if ($variantId > 0 && $qty > 0) self::db()->query("UPDATE `{$variants}` SET `stock` = `stock` + {$qty} WHERE `id` = {$variantId}");
+                    $itemId = (int)$item['id'];
+                    // Items already received back must not be added to stock twice.
+                    if (isset($returned[$itemId])) $qty -= (int)$returned[$itemId];
+                    if ($variantId > 0 && $qty > 0) {
+                        self::changeStock($variantId, $qty, 'cancel', $orderId, 0, 0, 'Отмена заказа');
+                    }
                 }
                 // A cancelled order frees its promo redemption for another customer.
                 if (!empty($order['promocode'])) {
@@ -2501,6 +2530,11 @@ class ShopHelper
                 throw new RuntimeException('Order status history write failed');
             }
             self::db()->query('COMMIT');
+            if ($status === 'paid' || $status === 'completed') {
+                self::loyaltyCreditOrder($orderId);
+            } elseif ($status === 'refunded' || $status === 'cancelled') {
+                self::loyaltyReverseOrder($orderId);
+            }
             return true;
         } catch (Throwable $e) {
             try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
@@ -2594,11 +2628,14 @@ class ShopHelper
         if ($hours < 1) return true;
 
         try {
+            self::ensureOrderBusinessColumns();
             $orders = self::table('orders');
             $cutoff = date('Y-m-d H:i:s', time() - $hours * 3600);
             $rows = self::db()->query("SELECT `id` FROM `{$orders}`
-                WHERE `status` = 'new' AND `created_at` IS NOT NULL
-                    AND `created_at` < '" . self::esc($cutoff) . "'
+                WHERE `status` = 'new' AND (
+                    (`reserved_until` IS NOT NULL AND `reserved_until` < NOW())
+                    OR (`reserved_until` IS NULL AND `created_at` IS NOT NULL AND `created_at` < '" . self::esc($cutoff) . "')
+                )
                 ORDER BY `id` ASC LIMIT 50");
             foreach ($rows as $row) {
                 $id = (int)$row['id'];
@@ -4499,6 +4536,990 @@ class ShopHelper
         fclose($handle);
 
         return $result;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Warehouse, stock journal and reservations
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $inventoryReady = false;
+
+    public static function ensureInventoryTables()
+    {
+        if (self::$inventoryReady) return true;
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('warehouses') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `title` VARCHAR(255) NOT NULL DEFAULT '',
+                `active` TINYINT(1) NOT NULL DEFAULT 1,
+                `position` INT NOT NULL DEFAULT 0,
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `active_position` (`active`, `position`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('warehouse_stock') . "` (
+                `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 1,
+                `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `stock` INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (`warehouse_id`, `variant_id`),
+                KEY `variant_id` (`variant_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('stock_movements') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `delta` INT NOT NULL DEFAULT 0,
+                `stock_after` INT NOT NULL DEFAULT 0,
+                `reason` VARCHAR(32) NOT NULL DEFAULT '',
+                `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `comment` VARCHAR(255) NOT NULL DEFAULT '',
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `variant_created` (`variant_id`, `created_at`),
+                KEY `order_id` (`order_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        try {
+            $now = date('Y-m-d H:i:s');
+            self::db()->query("INSERT IGNORE INTO `" . self::table('warehouses') . "`
+                (`id`, `title`, `active`, `position`, `created_at`)
+                VALUES (1, 'Основной склад', 1, 10, '" . self::esc($now) . "')");
+            self::db()->query("INSERT IGNORE INTO `" . self::table('warehouse_stock') . "`
+                (`warehouse_id`, `variant_id`, `stock`)
+                SELECT 1, v.`id`, v.`stock` FROM `" . self::table('variants') . "` v
+                LEFT JOIN `" . self::table('warehouse_stock') . "` ws
+                    ON ws.`variant_id` = v.`id` AND ws.`warehouse_id` = 1
+                WHERE ws.`variant_id` IS NULL");
+        } catch (Throwable $e) {
+            return false;
+        }
+
+        self::$inventoryReady = true;
+        return true;
+    }
+
+    public static function warehouses($activeOnly = false)
+    {
+        if (!self::ensureInventoryTables()) return array();
+        $where = $activeOnly ? ' WHERE `active` = 1' : '';
+        $rows = self::db()->query("SELECT * FROM `" . self::table('warehouses') . "`{$where}
+            ORDER BY `position` ASC, `id` ASC");
+        foreach ($rows as &$row) {
+            $row['id'] = (int)$row['id'];
+            $row['active'] = (int)$row['active'];
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function defaultWarehouseId()
+    {
+        $rows = self::db()->query("SELECT `id` FROM `" . self::table('warehouses') . "`
+            WHERE `active` = 1 ORDER BY `position` ASC, `id` ASC LIMIT 1");
+        return !empty($rows[0]['id']) ? (int)$rows[0]['id'] : 1;
+    }
+
+    public static function logStockMovement($variantId, $warehouseId, $delta, $stockAfter, $reason,
+        $orderId = 0, $returnId = 0, $comment = '')
+    {
+        try {
+            self::db()->save('shop_stock_movements', array(
+                'variant_id' => (int)$variantId,
+                'warehouse_id' => (int)$warehouseId,
+                'delta' => (int)$delta,
+                'stock_after' => (int)$stockAfter,
+                'reason' => mb_substr((string)$reason, 0, 32),
+                'order_id' => (int)$orderId,
+                'return_id' => (int)$returnId,
+                'user_id' => !empty($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : 0,
+                'comment' => mb_substr((string)$comment, 0, 255),
+                'created_at' => date('Y-m-d H:i:s'),
+            ));
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop stock movement write failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Change the aggregate variant stock and keep the warehouse allocation in
+     * sync. Negative deltas are taken from warehouses with stock first.
+     */
+    public static function changeStock($variantId, $delta, $reason, $orderId = 0,
+        $returnId = 0, $warehouseId = 0, $comment = '')
+    {
+        $variantId = (int)$variantId;
+        $delta = (int)$delta;
+        if ($variantId < 1 || $delta === 0) return false;
+        if (!self::ensureInventoryTables()) return false;
+
+        $rows = self::db()->query("SELECT `stock` FROM `" . self::table('variants') . "`
+            WHERE `id` = {$variantId} FOR UPDATE");
+        if (empty($rows[0])) return false;
+        $before = (int)$rows[0]['stock'];
+        $after = max(0, $before + $delta);
+        $actual = $after - $before;
+        if ($actual === 0) return true;
+
+        self::db()->query("UPDATE `" . self::table('variants') . "`
+            SET `stock` = {$after}, `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "'
+            WHERE `id` = {$variantId}");
+
+        $defaultId = self::defaultWarehouseId();
+        if ($actual > 0) {
+            $target = (int)$warehouseId > 0 ? (int)$warehouseId : $defaultId;
+            self::db()->query("INSERT INTO `" . self::table('warehouse_stock') . "`
+                (`warehouse_id`, `variant_id`, `stock`) VALUES ({$target}, {$variantId}, {$actual})
+                ON DUPLICATE KEY UPDATE `stock` = `stock` + {$actual}");
+        } else {
+            $need = abs($actual);
+            $stockRows = self::db()->query("SELECT `warehouse_id`, `stock`
+                FROM `" . self::table('warehouse_stock') . "`
+                WHERE `variant_id` = {$variantId} AND `stock` > 0
+                ORDER BY `warehouse_id` ASC FOR UPDATE");
+            foreach ($stockRows as $row) {
+                if ($need < 1) break;
+                $take = min($need, (int)$row['stock']);
+                self::db()->query("UPDATE `" . self::table('warehouse_stock') . "`
+                    SET `stock` = `stock` - {$take}
+                    WHERE `warehouse_id` = " . (int)$row['warehouse_id'] . " AND `variant_id` = {$variantId}");
+                $need -= $take;
+            }
+            // Older rows may predate the warehouse mirror; keep the allocation
+            // from going negative by draining the default warehouse last.
+            if ($need > 0) {
+                self::db()->query("UPDATE `" . self::table('warehouse_stock') . "`
+                    SET `stock` = GREATEST(`stock` - {$need}, 0)
+                    WHERE `warehouse_id` = {$defaultId} AND `variant_id` = {$variantId}");
+            }
+        }
+
+        self::logStockMovement($variantId, (int)$warehouseId > 0 ? (int)$warehouseId : $defaultId,
+            $actual, $after, $reason, $orderId, $returnId, $comment);
+        return $after;
+    }
+
+    public static function warehouseStockRows($variantId)
+    {
+        if (!self::ensureInventoryTables()) return array();
+        return self::db()->query("SELECT ws.*, w.`title`
+            FROM `" . self::table('warehouse_stock') . "` ws
+            INNER JOIN `" . self::table('warehouses') . "` w ON w.`id` = ws.`warehouse_id`
+            WHERE ws.`variant_id` = " . (int)$variantId . "
+            ORDER BY w.`position` ASC, w.`id` ASC");
+    }
+
+    public static function setWarehouseStock($warehouseId, $variantId, $stock, $reason = 'adjust', $comment = '')
+    {
+        $warehouseId = (int)$warehouseId;
+        $variantId = (int)$variantId;
+        $stock = max(0, (int)$stock);
+        if ($warehouseId < 1 || $variantId < 1) return false;
+        if (!self::ensureInventoryTables()) return false;
+
+        try {
+            self::db()->query('START TRANSACTION');
+            $rows = self::db()->query("SELECT `stock` FROM `" . self::table('warehouse_stock') . "`
+                WHERE `warehouse_id` = {$warehouseId} AND `variant_id` = {$variantId} FOR UPDATE");
+            $old = !empty($rows[0]) ? (int)$rows[0]['stock'] : 0;
+            if ($old !== $stock) {
+                self::db()->query("INSERT INTO `" . self::table('warehouse_stock') . "`
+                    (`warehouse_id`, `variant_id`, `stock`) VALUES ({$warehouseId}, {$variantId}, {$stock})
+                    ON DUPLICATE KEY UPDATE `stock` = {$stock}");
+                $delta = $stock - $old;
+                $variant = self::db()->query("SELECT `stock` FROM `" . self::table('variants') . "`
+                    WHERE `id` = {$variantId} FOR UPDATE");
+                $after = max(0, (int)(isset($variant[0]['stock']) ? $variant[0]['stock'] : 0) + $delta);
+                self::db()->query("UPDATE `" . self::table('variants') . "`
+                    SET `stock` = {$after}, `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "'
+                    WHERE `id` = {$variantId}");
+                self::logStockMovement($variantId, $warehouseId, $delta, $after, $reason, 0, 0, $comment);
+            }
+            self::db()->query('COMMIT');
+            return true;
+        } catch (Throwable $e) {
+            try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
+            error_log('Shop warehouse stock update failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function stockMovements($limit = 200)
+    {
+        if (!self::ensureInventoryTables()) return array();
+        $limit = max(1, min(1000, (int)$limit));
+        $rows = self::db()->query("SELECT m.*, v.`title` AS variant_title, v.`sku`,
+                p.`title` AS product_title, w.`title` AS warehouse_title
+            FROM `" . self::table('stock_movements') . "` m
+            LEFT JOIN `" . self::table('variants') . "` v ON v.`id` = m.`variant_id`
+            LEFT JOIN `" . self::table('products') . "` p ON p.`id` = v.`product_id`
+            LEFT JOIN `" . self::table('warehouses') . "` w ON w.`id` = m.`warehouse_id`
+            ORDER BY m.`id` DESC LIMIT {$limit}");
+        foreach ($rows as &$row) {
+            $row['delta'] = (int)$row['delta'];
+            $row['created_at_formatted'] = self::formatDate($row['created_at']);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    /**
+     * Explicit reservation deadline. Stock is already deducted when an order
+     * is placed, so the deadline tells expireUnpaidOrders() when to release.
+     */
+    public static function ensureOrderBusinessColumns()
+    {
+        $orders = self::table('orders');
+        foreach (array(
+            'reserved_until' => "DATETIME DEFAULT NULL",
+            'loyalty_discount' => "DECIMAL(12,2) NOT NULL DEFAULT 0.00",
+            'bonus_spent' => "DECIMAL(12,2) NOT NULL DEFAULT 0.00",
+            'bonus_earned' => "DECIMAL(12,2) NOT NULL DEFAULT 0.00",
+            'loyalty_credited' => "TINYINT(1) NOT NULL DEFAULT 0",
+            'bonus_refunded' => "TINYINT(1) NOT NULL DEFAULT 0",
+            'referral_code' => "VARCHAR(64) NOT NULL DEFAULT ''",
+        ) as $column => $definition) {
+            try {
+                self::db()->query("SELECT `{$column}` FROM `{$orders}` LIMIT 1");
+            } catch (Throwable $e) {
+                try {
+                    self::db()->query("ALTER TABLE `{$orders}` ADD COLUMN `{$column}` {$definition}");
+                } catch (Throwable $alterError) {
+                }
+            }
+        }
+        return true;
+    }
+
+    public static function reservationDeadline($from = null)
+    {
+        $hours = (int)self::cfg('order_ttl_hours', 72);
+        if ($hours < 1) return null;
+        $time = $from ? strtotime($from) : time();
+        if (!$time) $time = time();
+        return date('Y-m-d H:i:s', $time + $hours * 3600);
+    }
+
+    /* ---------------------------------------------------------------------
+     * Returns and refunds
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $returnTablesReady = false;
+
+    public static function ensureReturnTables()
+    {
+        if (self::$returnTablesReady) return true;
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('order_returns') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `status` VARCHAR(16) NOT NULL DEFAULT 'new',
+                `reason` VARCHAR(255) NOT NULL DEFAULT '',
+                `comment` TEXT,
+                `amount` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                `stock_returned` TINYINT(1) NOT NULL DEFAULT 0,
+                `created_by` INT UNSIGNED NOT NULL DEFAULT 0,
+                `created_by_name` VARCHAR(255) NOT NULL DEFAULT '',
+                `created_at` DATETIME DEFAULT NULL,
+                `updated_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `order_id` (`order_id`),
+                KEY `status` (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('order_return_items') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `order_item_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `quantity` INT NOT NULL DEFAULT 0,
+                `price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                `total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                PRIMARY KEY (`id`),
+                KEY `return_id` (`return_id`),
+                KEY `variant_id` (`variant_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('return_history') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `status` VARCHAR(16) NOT NULL DEFAULT '',
+                `comment` VARCHAR(255) NOT NULL DEFAULT '',
+                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `user_name` VARCHAR(255) NOT NULL DEFAULT '',
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `return_id` (`return_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+        self::$returnTablesReady = true;
+        return true;
+    }
+
+    public static function returnStatuses()
+    {
+        return array(
+            'new' => 'Оформлен',
+            'received' => 'Принят на склад',
+            'refunded' => 'Деньги возвращены',
+            'cancelled' => 'Отменён',
+        );
+    }
+
+    public static function returnStatusLabel($status)
+    {
+        $statuses = self::returnStatuses();
+        return isset($statuses[$status]) ? $statuses[$status] : (string)$status;
+    }
+
+    public static function logReturnStatus($returnId, $status, $comment = '', $userId = 0, $userName = '')
+    {
+        try {
+            self::db()->save('shop_return_history', array(
+                'return_id' => (int)$returnId,
+                'status' => (string)$status,
+                'comment' => mb_substr((string)$comment, 0, 255),
+                'user_id' => (int)$userId,
+                'user_name' => mb_substr((string)$userName, 0, 255),
+                'created_at' => date('Y-m-d H:i:s'),
+            ));
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * @param array $quantities order_item_id => quantity
+     */
+    public static function createOrderReturn($orderId, $quantities, $reason, $comment = '', &$error = null,
+        $userId = 0, $userName = '')
+    {
+        $error = '';
+        $orderId = (int)$orderId;
+        if (!self::ensureReturnTables() || !self::ensureOrderBusinessColumns()) {
+            $error = 'Не удалось подготовить таблицы возвратов.';
+            return false;
+        }
+        if ($orderId < 1) {
+            $error = 'Заказ не найден.';
+            return false;
+        }
+        $desired = array();
+        foreach ((array)$quantities as $itemId => $qty) {
+            $itemId = (int)$itemId;
+            $qty = (int)$qty;
+            if ($itemId > 0 && $qty > 0) $desired[$itemId] = $qty;
+        }
+        if (!$desired) {
+            $error = 'Укажите количество товаров к возврату.';
+            return false;
+        }
+
+        try {
+            self::db()->query('START TRANSACTION');
+            $orderRows = self::db()->query("SELECT * FROM `" . self::table('orders') . "`
+                WHERE `id` = {$orderId} FOR UPDATE");
+            $order = $orderRows[0] ?? null;
+            if (!$order) throw new RuntimeException('Заказ не найден.');
+            if ($order['status'] === 'cancelled') throw new RuntimeException('По отменённому заказу возврат не оформляется.');
+
+            $items = self::db()->query("SELECT * FROM `" . self::table('order_items') . "`
+                WHERE `order_id` = {$orderId} ORDER BY `id` ASC");
+            $byId = array();
+            foreach ($items as $item) $byId[(int)$item['id']] = $item;
+            if (!$byId) throw new RuntimeException('В заказе нет позиций.');
+
+            $returned = array();
+            $rows = self::db()->query("SELECT ri.`order_item_id`, SUM(ri.`quantity`) AS qty
+                FROM `" . self::table('order_return_items') . "` ri
+                INNER JOIN `" . self::table('order_returns') . "` r ON r.`id` = ri.`return_id`
+                WHERE r.`order_id` = {$orderId} AND r.`status` <> 'cancelled'
+                GROUP BY ri.`order_item_id`");
+            foreach ($rows as $row) $returned[(int)$row['order_item_id']] = (int)$row['qty'];
+
+            $lines = array();
+            $amount = 0.0;
+            foreach ($desired as $itemId => $qty) {
+                if (empty($byId[$itemId])) throw new RuntimeException('Позиция заказа не найдена.');
+                $item = $byId[$itemId];
+                $available = (int)$item['quantity'] - (isset($returned[$itemId]) ? $returned[$itemId] : 0);
+                if ($qty > $available) {
+                    throw new RuntimeException('К возврату доступно меньше: ' . $item['product_title'] . '.');
+                }
+                $total = round((float)$item['price'] * $qty, 2);
+                $amount += $total;
+                $lines[] = array(
+                    'order_item_id' => $itemId,
+                    'variant_id' => (int)$item['variant_id'],
+                    'quantity' => $qty,
+                    'price' => (float)$item['price'],
+                    'total' => $total,
+                );
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $returnId = (int)self::db()->save('shop_order_returns', array(
+                'order_id' => $orderId,
+                'status' => 'new',
+                'reason' => mb_substr((string)$reason, 0, 255),
+                'comment' => (string)$comment,
+                'amount' => $amount,
+                'stock_returned' => 0,
+                'created_by' => (int)$userId,
+                'created_by_name' => mb_substr((string)$userName, 0, 255),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ));
+            if ($returnId < 1) throw new RuntimeException('Возврат не создан.');
+            foreach ($lines as $line) {
+                $line['return_id'] = $returnId;
+                self::db()->save('shop_order_return_items', $line);
+            }
+            self::logReturnStatus($returnId, 'new', 'Возврат оформлен. ' . (string)$reason, $userId, $userName);
+            self::logOrderStatus($orderId, (string)$order['status'],
+                'Оформлен возврат №' . $returnId . ' на ' . self::formatPrice($amount, $order['currency_code']),
+                $userId, $userName);
+            self::db()->query('COMMIT');
+            return $returnId;
+        } catch (Throwable $e) {
+            try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
+            $error = $e instanceof RuntimeException ? $e->getMessage() : 'Не удалось оформить возврат.';
+            error_log('Shop return create failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function receiveOrderReturn($returnId, $comment = '', $userId = 0, $userName = '')
+    {
+        $returnId = (int)$returnId;
+        if (!self::ensureReturnTables() || !self::ensureInventoryTables() || $returnId < 1) return false;
+        try {
+            self::db()->query('START TRANSACTION');
+            $rows = self::db()->query("SELECT * FROM `" . self::table('order_returns') . "`
+                WHERE `id` = {$returnId} FOR UPDATE");
+            $return = $rows[0] ?? null;
+            if (!$return || $return['status'] === 'cancelled') throw new RuntimeException('Возврат не найден.');
+            if (!empty($return['stock_returned'])) {
+                self::db()->query('COMMIT');
+                return true;
+            }
+            $items = self::db()->query("SELECT * FROM `" . self::table('order_return_items') . "`
+                WHERE `return_id` = {$returnId} ORDER BY `id` ASC");
+            foreach ($items as $item) {
+                if ((int)$item['variant_id'] > 0 && (int)$item['quantity'] > 0) {
+                    self::changeStock((int)$item['variant_id'], (int)$item['quantity'], 'return',
+                        (int)$return['order_id'], $returnId);
+                }
+            }
+            self::db()->query("UPDATE `" . self::table('order_returns') . "`
+                SET `status` = 'received', `stock_returned` = 1,
+                    `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "'
+                WHERE `id` = {$returnId}");
+            self::logReturnStatus($returnId, 'received', $comment !== '' ? $comment : 'Товары приняты на склад.', $userId, $userName);
+            self::db()->query('COMMIT');
+
+            $orderId = (int)$return['order_id'];
+            $itemTotals = self::db()->query("SELECT COALESCE(SUM(`quantity`),0) AS qty
+                FROM `" . self::table('order_items') . "` WHERE `order_id` = {$orderId}");
+            $returned = array_sum(self::returnedQuantities($orderId));
+            $ordered = (int)(isset($itemTotals[0]['qty']) ? $itemTotals[0]['qty'] : 0);
+            if ($ordered > 0 && $returned >= $ordered) {
+                self::setOrderStatus($orderId, 'returned', 'Возврат №' . $returnId . ': все товары приняты на склад.',
+                    $userId, $userName);
+            }
+            return true;
+        } catch (Throwable $e) {
+            try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
+            error_log('Shop return receive failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function refundOrderReturn($returnId, $comment = '', $userId = 0, $userName = '')
+    {
+        $returnId = (int)$returnId;
+        if (!self::ensureReturnTables() || $returnId < 1) return false;
+        try {
+            self::db()->query('START TRANSACTION');
+            $rows = self::db()->query("SELECT * FROM `" . self::table('order_returns') . "`
+                WHERE `id` = {$returnId} FOR UPDATE");
+            $return = $rows[0] ?? null;
+            if (!$return || $return['status'] === 'cancelled') throw new RuntimeException('Возврат не найден.');
+            if (empty($return['stock_returned'])) throw new RuntimeException('Сначала примите товары на склад.');
+            if ($return['status'] === 'refunded') {
+                self::db()->query('COMMIT');
+                return true;
+            }
+            self::db()->query("UPDATE `" . self::table('order_returns') . "`
+                SET `status` = 'refunded', `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "'
+                WHERE `id` = {$returnId}");
+            self::logReturnStatus($returnId, 'refunded', $comment !== '' ? $comment : 'Деньги возвращены покупателю.', $userId, $userName);
+            self::db()->query('COMMIT');
+
+            $orderId = (int)$return['order_id'];
+            $itemTotals = self::db()->query("SELECT COALESCE(SUM(`quantity`),0) AS qty
+                FROM `" . self::table('order_items') . "` WHERE `order_id` = {$orderId}");
+            $returned = array_sum(self::returnedQuantities($orderId));
+            $ordered = (int)(isset($itemTotals[0]['qty']) ? $itemTotals[0]['qty'] : 0);
+            if ($ordered > 0 && $returned >= $ordered) {
+                self::setOrderStatus($orderId, 'refunded', 'Возврат №' . $returnId . ': деньги возвращены полностью.',
+                    $userId, $userName);
+            }
+            return true;
+        } catch (Throwable $e) {
+            try { self::db()->query('ROLLBACK'); } catch (Throwable $ignored) {}
+            error_log('Shop return refund failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function cancelOrderReturn($returnId, $comment = '', $userId = 0, $userName = '')
+    {
+        $returnId = (int)$returnId;
+        if (!self::ensureReturnTables() || $returnId < 1) return false;
+        $rows = self::db()->query("SELECT * FROM `" . self::table('order_returns') . "`
+            WHERE `id` = {$returnId} LIMIT 1");
+        $return = $rows[0] ?? null;
+        if (!$return || !empty($return['stock_returned']) || $return['status'] === 'cancelled') return false;
+        self::db()->query("UPDATE `" . self::table('order_returns') . "`
+            SET `status` = 'cancelled', `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "'
+            WHERE `id` = {$returnId}");
+        self::logReturnStatus($returnId, 'cancelled', $comment !== '' ? $comment : 'Возврат отменён.', $userId, $userName);
+        return true;
+    }
+
+    public static function getOrderReturns($orderId)
+    {
+        if (!self::ensureReturnTables()) return array();
+        $orderId = (int)$orderId;
+        $returns = self::db()->query("SELECT * FROM `" . self::table('order_returns') . "`
+            WHERE `order_id` = {$orderId} ORDER BY `id` DESC");
+        foreach ($returns as &$return) {
+            $return['id'] = (int)$return['id'];
+            $return['status_label'] = self::returnStatusLabel($return['status']);
+            $return['items'] = self::db()->query("SELECT ri.*, oi.`product_title`, oi.`variant_title`, oi.`sku`
+                FROM `" . self::table('order_return_items') . "` ri
+                LEFT JOIN `" . self::table('order_items') . "` oi ON oi.`id` = ri.`order_item_id`
+                WHERE ri.`return_id` = " . (int)$return['id'] . " ORDER BY ri.`id` ASC");
+            $return['history'] = self::getReturnHistory((int)$return['id']);
+            $return['amount_formatted'] = self::formatPrice($return['amount']);
+            $return['created_at_formatted'] = self::formatDate($return['created_at']);
+        }
+        unset($return);
+        return $returns;
+    }
+
+    public static function getReturnHistory($returnId)
+    {
+        if (!self::ensureReturnTables()) return array();
+        $rows = self::db()->query("SELECT * FROM `" . self::table('return_history') . "`
+            WHERE `return_id` = " . (int)$returnId . " ORDER BY `id` ASC");
+        foreach ($rows as &$row) {
+            $row['status_label'] = self::returnStatusLabel($row['status']);
+            $row['created_at_formatted'] = self::formatDate($row['created_at']);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function returnedQuantities($orderId)
+    {
+        if (!self::ensureReturnTables()) return array();
+        $rows = self::db()->query("SELECT ri.`order_item_id`, SUM(ri.`quantity`) AS qty
+            FROM `" . self::table('order_return_items') . "` ri
+            INNER JOIN `" . self::table('order_returns') . "` r ON r.`id` = ri.`return_id`
+            WHERE r.`order_id` = " . (int)$orderId . " AND r.`status` <> 'cancelled'
+            GROUP BY ri.`order_item_id`");
+        $result = array();
+        foreach ($rows as $row) $result[(int)$row['order_item_id']] = (int)$row['qty'];
+        return $result;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Loyalty, bonuses and referrals
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $loyaltyReady = false;
+
+    public static function ensureLoyaltyTables()
+    {
+        if (self::$loyaltyReady) return true;
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('loyalty_accounts') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `email` VARCHAR(255) NOT NULL DEFAULT '',
+                `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `balance` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                `total_spent` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                `referral_code` VARCHAR(32) NOT NULL DEFAULT '',
+                `referred_by` VARCHAR(32) NOT NULL DEFAULT '',
+                `referral_rewarded` TINYINT(1) NOT NULL DEFAULT 0,
+                `created_at` DATETIME DEFAULT NULL,
+                `updated_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `email` (`email`),
+                UNIQUE KEY `referral_code` (`referral_code`),
+                KEY `user_id` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('loyalty_transactions') . "` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `account_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `delta` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                `reason` VARCHAR(64) NOT NULL DEFAULT '',
+                `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+                `comment` VARCHAR(255) NOT NULL DEFAULT '',
+                `created_at` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `account_id` (`account_id`),
+                KEY `order_id` (`order_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            return false;
+        }
+        self::$loyaltyReady = true;
+        return true;
+    }
+
+    public static function loyaltyEnabled()
+    {
+        return (int)self::cfg('loyalty_enabled', 0) === 1;
+    }
+
+    public static function loyaltyEmail($email, $userId = 0)
+    {
+        $email = mb_strtolower(trim((string)$email));
+        if ($email === '' && (int)$userId > 0) {
+            $user = self::currentUser();
+            if ((int)$user['id'] === (int)$userId) $email = mb_strtolower(trim((string)$user['email']));
+        }
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : '';
+    }
+
+    public static function loyaltyAccount($email, $create = true, $referralCode = '', $userId = 0)
+    {
+        if (!self::ensureLoyaltyTables()) return false;
+        $email = self::loyaltyEmail($email, $userId);
+        if ($email === '') return false;
+        $escaped = self::esc($email);
+        $rows = self::db()->query("SELECT * FROM `" . self::table('loyalty_accounts') . "`
+            WHERE `email` = '{$escaped}' LIMIT 1");
+        if (!empty($rows[0])) {
+            if ($userId > 0 && empty($rows[0]['user_id'])) {
+                self::db()->query("UPDATE `" . self::table('loyalty_accounts') . "`
+                    SET `user_id` = " . (int)$userId . " WHERE `id` = " . (int)$rows[0]['id']);
+            }
+            return $rows[0];
+        }
+        if (!$create) return false;
+
+        $now = date('Y-m-d H:i:s');
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $code = strtoupper(substr(md5($email . microtime(true) . mt_rand()), 0, 8));
+            try {
+                $id = (int)self::db()->save('shop_loyalty_accounts', array(
+                    'email' => $email,
+                    'user_id' => (int)$userId,
+                    'balance' => 0,
+                    'total_spent' => 0,
+                    'referral_code' => $code,
+                    'referred_by' => substr(trim((string)$referralCode), 0, 32),
+                    'referral_rewarded' => 0,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ));
+                if ($id > 0) {
+                    $welcome = (float)self::cfg('loyalty_welcome_bonus', 0);
+                    if ($welcome > 0) {
+                        self::loyaltyAdd($email, $welcome, 'welcome', 0, 'Приветственный бонус');
+                    }
+                    $rows = self::db()->query("SELECT * FROM `" . self::table('loyalty_accounts') . "`
+                        WHERE `id` = {$id} LIMIT 1");
+                    return $rows[0] ?? false;
+                }
+            } catch (Throwable $e) {
+                // Referral code collision or a concurrent create: retry once more.
+            }
+            $rows = self::db()->query("SELECT * FROM `" . self::table('loyalty_accounts') . "`
+                WHERE `email` = '{$escaped}' LIMIT 1");
+            if (!empty($rows[0])) return $rows[0];
+        }
+        return false;
+    }
+
+    public static function loyaltyAdd($email, $delta, $reason, $orderId = 0, $comment = '')
+    {
+        if (!self::ensureLoyaltyTables()) return false;
+        $delta = round((float)$delta, 2);
+        if (abs($delta) < 0.005) return true;
+        $account = self::loyaltyAccount($email, true);
+        if (!$account) return false;
+        $accountId = (int)$account['id'];
+        if ($delta < 0 && (float)$account['balance'] + $delta < 0) return false;
+        self::db()->query("UPDATE `" . self::table('loyalty_accounts') . "`
+            SET `balance` = `balance` + " . number_format($delta, 2, '.', '') . ",
+                `updated_at` = '" . self::esc(date('Y-m-d H:i:s')) . "'
+            WHERE `id` = {$accountId}");
+        self::db()->save('shop_loyalty_transactions', array(
+            'account_id' => $accountId,
+            'delta' => $delta,
+            'reason' => mb_substr((string)$reason, 0, 64),
+            'order_id' => (int)$orderId,
+            'comment' => mb_substr((string)$comment, 0, 255),
+            'created_at' => date('Y-m-d H:i:s'),
+        ));
+        return true;
+    }
+
+    public static function loyaltyBalance($email, $userId = 0)
+    {
+        if (!self::loyaltyEnabled()) return 0.0;
+        $account = self::loyaltyAccount($email, false, '', $userId);
+        return $account ? max(0, (float)$account['balance']) : 0.0;
+    }
+
+    public static function loyaltyTierPercent($totalSpent)
+    {
+        $raw = (string)self::cfg('loyalty_tiers', '');
+        $totalSpent = (float)$totalSpent;
+        $best = 0.0;
+        foreach (preg_split('/\r\n|\r|\n/', $raw) as $line) {
+            $parts = explode('|', trim($line), 2);
+            if (count($parts) !== 2) continue;
+            $from = (float)str_replace(',', '.', trim($parts[0]));
+            $percent = (float)str_replace(',', '.', trim($parts[1]));
+            if ($percent > 0 && $percent <= 100 && $totalSpent >= $from && $percent > $best) {
+                $best = $percent;
+            }
+        }
+        return $best;
+    }
+
+    public static function loyaltyTierDiscount($email, $subtotal, $userId = 0)
+    {
+        if (!self::loyaltyEnabled()) return 0.0;
+        $account = self::loyaltyAccount($email, false, '', $userId);
+        if (!$account) return 0.0;
+        $percent = self::loyaltyTierPercent((float)$account['total_spent']);
+        return $percent > 0 ? round((float)$subtotal * $percent / 100, 2) : 0.0;
+    }
+
+    public static function loyaltyMaxBonus($email, $subtotal, $userId = 0)
+    {
+        if (!self::loyaltyEnabled()) return 0.0;
+        $balance = self::loyaltyBalance($email, $userId);
+        if ($balance <= 0) return 0.0;
+        $percent = max(0.0, min(100.0, (float)self::cfg('loyalty_max_spend_percent', 30)));
+        return round(min($balance, (float)$subtotal * $percent / 100), 2);
+    }
+
+    public static function loyaltyReferralLink($email, $userId = 0)
+    {
+        if (!self::loyaltyEnabled()) return '';
+        $account = self::loyaltyAccount($email, true, '', $userId);
+        if (!$account || empty($account['referral_code'])) return '';
+        return self::absoluteUrl('/shop/?ref=' . rawurlencode($account['referral_code']));
+    }
+
+    public static function loyaltyFindByReferral($code)
+    {
+        if (!self::ensureLoyaltyTables()) return false;
+        $code = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)$code));
+        if ($code === '') return false;
+        $rows = self::db()->query("SELECT * FROM `" . self::table('loyalty_accounts') . "`
+            WHERE `referral_code` = '" . self::esc($code) . "' LIMIT 1");
+        return $rows[0] ?? false;
+    }
+
+    /**
+     * Pay out order bonuses once. Called after the status transaction commits.
+     */
+    public static function loyaltyCreditOrder($orderId)
+    {
+        $orderId = (int)$orderId;
+        if ($orderId < 1 || !self::ensureLoyaltyTables()) return false;
+        self::ensureOrderBusinessColumns();
+        $orders = self::table('orders');
+        try {
+            $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} LIMIT 1");
+            $order = $rows[0] ?? null;
+            if (!$order || !empty($order['loyalty_credited'])) return true;
+            if (!self::loyaltyEnabled() || $order['status'] !== 'paid' && $order['status'] !== 'completed') return true;
+            $email = self::loyaltyEmail($order['email'], (int)$order['user_id']);
+            if ($email === '') return true;
+
+            $base = max(0.0, (float)$order['subtotal'] - (float)$order['discount']
+                - (float)($order['loyalty_discount'] ?? 0) - (float)($order['bonus_spent'] ?? 0));
+            $percent = max(0.0, min(100.0, (float)self::cfg('loyalty_accrual_percent', 0)));
+            $earned = round($base * $percent / 100, 2);
+            $account = self::loyaltyAccount($email, true, (string)($order['referral_code'] ?? ''),
+                (int)$order['user_id']);
+            if (!$account) return false;
+
+            self::db()->query("UPDATE `{$orders}` SET `bonus_earned` = " . number_format($earned, 2, '.', '') . ",
+                `loyalty_credited` = 1 WHERE `id` = {$orderId}");
+            self::db()->query("UPDATE `" . self::table('loyalty_accounts') . "`
+                SET `total_spent` = `total_spent` + " . number_format(max(0, (float)$order['total']), 2, '.', '') . "
+                WHERE `id` = " . (int)$account['id']);
+            if ($earned > 0) self::loyaltyAdd($email, $earned, 'order', $orderId, 'Бонусы за заказ');
+
+            if (!empty($account['referred_by']) && empty($account['referral_rewarded'])) {
+                $referrer = self::loyaltyFindByReferral($account['referred_by']);
+                if ($referrer && strtolower((string)$referrer['email']) !== $email) {
+                    $reward = (float)self::cfg('loyalty_referral_bonus', 0);
+                    if ($reward > 0) {
+                        self::loyaltyAdd($referrer['email'], $reward, 'referral', $orderId,
+                            'Бонус за приглашённого покупателя');
+                    }
+                    self::db()->query("UPDATE `" . self::table('loyalty_accounts') . "`
+                        SET `referral_rewarded` = 1 WHERE `id` = " . (int)$account['id']);
+                }
+            }
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop loyalty credit failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Undo earned bonuses, spend and total_spent for a cancelled or refunded
+     * order. Idempotent.
+     */
+    public static function loyaltyReverseOrder($orderId)
+    {
+        $orderId = (int)$orderId;
+        if ($orderId < 1 || !self::ensureLoyaltyTables()) return false;
+        self::ensureOrderBusinessColumns();
+        $orders = self::table('orders');
+        try {
+            $rows = self::db()->query("SELECT * FROM `{$orders}` WHERE `id` = {$orderId} FOR UPDATE");
+            $order = $rows[0] ?? null;
+            if (!$order) return false;
+            $email = self::loyaltyEmail($order['email'], (int)$order['user_id']);
+            if ($email === '') return true;
+            $account = self::loyaltyAccount($email, false);
+            if (!$account) return true;
+
+            $earned = !empty($order['loyalty_credited']) ? (float)$order['bonus_earned'] : 0.0;
+            if ($earned > 0) {
+                self::loyaltyAdd($email, -$earned, 'order_reverse', $orderId, 'Отмена начисления по заказу');
+                self::db()->query("UPDATE `" . self::table('loyalty_accounts') . "`
+                    SET `total_spent` = GREATEST(`total_spent` - " . number_format(max(0, (float)$order['total']), 2, '.', '') . ", 0)
+                    WHERE `id` = " . (int)$account['id']);
+                self::db()->query("UPDATE `{$orders}` SET `loyalty_credited` = 0, `bonus_earned` = 0 WHERE `id` = {$orderId}");
+            }
+            $spent = (float)($order['bonus_spent'] ?? 0);
+            if ($spent > 0 && empty($order['bonus_refunded'])) {
+                self::loyaltyAdd($email, $spent, 'order_refund', $orderId, 'Возврат списанных бонусов');
+                self::db()->query("UPDATE `{$orders}` SET `bonus_refunded` = 1 WHERE `id` = {$orderId}");
+            }
+            return true;
+        } catch (Throwable $e) {
+            error_log('Shop loyalty reverse failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public static function loyaltyAccounts($limit = 200)
+    {
+        if (!self::ensureLoyaltyTables()) return array();
+        $limit = max(1, min(1000, (int)$limit));
+        $rows = self::db()->query("SELECT * FROM `" . self::table('loyalty_accounts') . "`
+            ORDER BY `updated_at` DESC, `id` DESC LIMIT {$limit}");
+        foreach ($rows as &$row) {
+            $row['balance'] = (float)$row['balance'];
+            $row['total_spent'] = (float)$row['total_spent'];
+            $row['updated_at_formatted'] = self::formatDate($row['updated_at']);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function loyaltyTransactions($limit = 200)
+    {
+        if (!self::ensureLoyaltyTables()) return array();
+        $limit = max(1, min(1000, (int)$limit));
+        $rows = self::db()->query("SELECT t.*, a.`email`
+            FROM `" . self::table('loyalty_transactions') . "` t
+            LEFT JOIN `" . self::table('loyalty_accounts') . "` a ON a.`id` = t.`account_id`
+            ORDER BY t.`id` DESC LIMIT {$limit}");
+        foreach ($rows as &$row) {
+            $row['delta'] = (float)$row['delta'];
+            $row['created_at_formatted'] = self::formatDate($row['created_at']);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Request rate limits
+     * ------------------------------------------------------------------ */
+
+    /** @var bool */
+    private static $rateLimitReady = false;
+
+    public static function ensureRateLimitTable()
+    {
+        if (self::$rateLimitReady) return true;
+        try {
+            self::db()->query("CREATE TABLE IF NOT EXISTS `" . self::table('rate_limits') . "` (
+                `key_hash` CHAR(40) NOT NULL,
+                `hits` INT UNSIGNED NOT NULL DEFAULT 0,
+                `window_start` DATETIME DEFAULT NULL,
+                PRIMARY KEY (`key_hash`),
+                KEY `window_start` (`window_start`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {
+            // If the database is unavailable, fail open: checkout must not break.
+            return false;
+        }
+        self::$rateLimitReady = true;
+        return true;
+    }
+
+    public static function rateLimitKey($action, $subject = '')
+    {
+        $ip = !empty($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : 'unknown';
+        return sha1($action . '|' . $ip . '|' . (string)$subject);
+    }
+
+    /**
+     * Sliding fixed window counter. Returns false when the limit is reached.
+     */
+    public static function rateLimit($action, $limit, $seconds, $subject = '')
+    {
+        if (!self::ensureRateLimitTable()) return true;
+        $hash = self::rateLimitKey($action, $subject);
+        $limit = max(1, (int)$limit);
+        $seconds = max(1, (int)$seconds);
+        try {
+            $rows = self::db()->query("SELECT * FROM `" . self::table('rate_limits') . "`
+                WHERE `key_hash` = '" . self::esc($hash) . "' LIMIT 1");
+            $row = $rows[0] ?? null;
+            $now = time();
+            if (!$row || empty($row['window_start']) || strtotime($row['window_start']) < $now - $seconds) {
+                self::db()->query("INSERT INTO `" . self::table('rate_limits') . "`
+                    (`key_hash`, `hits`, `window_start`) VALUES ('" . self::esc($hash) . "', 1, NOW())
+                    ON DUPLICATE KEY UPDATE `hits` = 1, `window_start` = NOW()");
+                return true;
+            }
+            if ((int)$row['hits'] >= $limit) return false;
+            self::db()->query("UPDATE `" . self::table('rate_limits') . "`
+                SET `hits` = `hits` + 1 WHERE `key_hash` = '" . self::esc($hash) . "'");
+            return true;
+        } catch (Throwable $e) {
+            return true;
+        }
     }
 }
 

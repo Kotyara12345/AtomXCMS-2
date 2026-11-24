@@ -87,7 +87,7 @@ foreach (array(
 
 $templates = array(
     'cart.html' => array('apply_promo_action', 'remove_promo_action', 'totals.discount_formatted', 'totals.total_formatted'),
-    'checkout.html' => array('apply_promo_action', 'promo_code', 'discount_raw', 'subtotal - discount + price'),
+    'checkout.html' => array('apply_promo_action', 'promo_code', 'discount_raw', 'loyalty_discount_raw', 'use_bonus', 'subtotal - discount - loyalty - bonus + price'),
     'product.html' => array('price_from_compare_formatted', 'variant.compare_price_formatted', 'shop-badge-discount'),
     'list.html' => array('product.price_from_compare_formatted', 'price_discount_percent'),
     'favorites.html' => array('product.price_from_compare_formatted'),

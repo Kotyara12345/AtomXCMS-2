@@ -67,6 +67,13 @@
                 <textarea name="comment" rows="4" placeholder="Комментарий к заказу">{{ old.comment|escape }}</textarea>
             </div>
 
+            {% if bonus_max_raw > 0 %}
+            <label class="shop-agree">
+                <input type="checkbox" name="use_bonus" value="1" id="shop-use-bonus" data-bonus="{{ bonus_max_raw }}"{% if use_bonus %} checked="checked"{% endif %} />
+                <span>Списать бонусы: {{ bonus_max_formatted }} (баланс {{ loyalty_balance_formatted }})</span>
+            </label>
+            {% endif %}
+
             <label class="shop-agree">
                 <input type="checkbox" name="agree" value="1" required="required" />
                 <span>Я согласен с условиями заказа и обработкой персональных данных.</span>
@@ -116,6 +123,16 @@
                 <span>Скидка:</span>
                 <span id="shop-discount">−{{ discount_formatted }}</span>
             </div>
+            {% if loyalty_discount_raw > 0 %}
+            <div class="shop-summary-row shop-summary-discount">
+                <span>Скидка постоянного клиента:</span>
+                <span id="shop-loyalty">−{{ loyalty_discount_formatted }}</span>
+            </div>
+            {% endif %}
+            <div class="shop-summary-row shop-summary-discount" id="shop-bonus-row"{% if not use_bonus %} style="display:none"{% endif %}>
+                <span>Бонусы:</span>
+                <span id="shop-bonus">−{{ bonus_formatted }}</span>
+            </div>
             <div class="shop-summary-row">
                 <span>Доставка:</span>
                 <span id="shop-delivery">{{ delivery_price_formatted }}</span>
@@ -133,10 +150,14 @@
 (function () {
     var subtotal = {{ subtotal_raw }};
     var discount = {{ discount_raw }};
+    var loyalty = {{ loyalty_discount_raw }};
     var symbol = '{{ currency.symbol|escape }}';
     var methods = document.querySelectorAll('input[name="delivery_method"]');
     var deliveryNode = document.getElementById('shop-delivery');
     var totalNode = document.getElementById('shop-total');
+    var bonusNode = document.getElementById('shop-bonus-row');
+    var bonusValueNode = document.getElementById('shop-bonus');
+    var useBonus = document.getElementById('shop-use-bonus');
     if (!methods.length || !deliveryNode || !totalNode) return;
 
     function format(value) {
@@ -155,12 +176,16 @@
             }
         }
         deliveryNode.textContent = price > 0 ? format(price) : 'Бесплатно';
-        totalNode.textContent = format(subtotal - discount + price);
+        var bonus = useBonus && useBonus.checked ? parseFloat(useBonus.getAttribute('data-bonus') || '0') : 0;
+        if (bonusNode) bonusNode.style.display = bonus > 0 ? '' : 'none';
+        if (bonusValueNode && bonus > 0) bonusValueNode.textContent = '−' + format(bonus);
+        totalNode.textContent = format(Math.max(0, subtotal - discount - loyalty - bonus + price));
     }
 
     for (var i = 0; i < methods.length; i++) {
         methods[i].addEventListener('change', update);
     }
+    if (useBonus) useBonus.addEventListener('change', update);
     update();
 })();
 </script>

@@ -208,6 +208,13 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_orders` (
     `tracking_number` VARCHAR(128) NOT NULL DEFAULT '',
     `tracking_url` VARCHAR(255) NOT NULL DEFAULT '',
     `stock_released` TINYINT(1) NOT NULL DEFAULT 0,
+    `reserved_until` DATETIME DEFAULT NULL,
+    `loyalty_discount` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `bonus_spent` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `bonus_earned` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `loyalty_credited` TINYINT(1) NOT NULL DEFAULT 0,
+    `bonus_refunded` TINYINT(1) NOT NULL DEFAULT 0,
+    `referral_code` VARCHAR(64) NOT NULL DEFAULT '',
     `created_at` DATETIME DEFAULT NULL,
     `updated_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`id`),
@@ -227,6 +234,7 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_promocodes
     `max_uses` INT UNSIGNED NOT NULL DEFAULT 0,
     `used_count` INT UNSIGNED NOT NULL DEFAULT 0,
     `once_per_customer` TINYINT(1) NOT NULL DEFAULT 0,
+    `email` VARCHAR(255) NOT NULL DEFAULT '',
     `restrict_products` TEXT,
     `restrict_categories` TEXT,
     `starts_at` DATETIME DEFAULT NULL,
@@ -348,4 +356,119 @@ $FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_carts` (
     `updated_at` DATETIME DEFAULT NULL,
     `reminded_at` DATETIME DEFAULT NULL,
     PRIMARY KEY (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_warehouses` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `title` VARCHAR(255) NOT NULL DEFAULT '',
+    `active` TINYINT(1) NOT NULL DEFAULT 1,
+    `position` INT NOT NULL DEFAULT 0,
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `active_position` (`active`, `position`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_warehouse_stock` (
+    `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 1,
+    `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `stock` INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`warehouse_id`, `variant_id`),
+    KEY `variant_id` (`variant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_stock_movements` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `warehouse_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `delta` INT NOT NULL DEFAULT 0,
+    `stock_after` INT NOT NULL DEFAULT 0,
+    `reason` VARCHAR(32) NOT NULL DEFAULT '',
+    `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `comment` VARCHAR(255) NOT NULL DEFAULT '',
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `variant_created` (`variant_id`, `created_at`),
+    KEY `order_id` (`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_returns` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `status` VARCHAR(16) NOT NULL DEFAULT 'new',
+    `reason` VARCHAR(255) NOT NULL DEFAULT '',
+    `comment` TEXT,
+    `amount` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `stock_returned` TINYINT(1) NOT NULL DEFAULT 0,
+    `created_by` INT UNSIGNED NOT NULL DEFAULT 0,
+    `created_by_name` VARCHAR(255) NOT NULL DEFAULT '',
+    `created_at` DATETIME DEFAULT NULL,
+    `updated_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `order_id` (`order_id`),
+    KEY `status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_order_return_items` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `order_item_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `variant_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `quantity` INT NOT NULL DEFAULT 0,
+    `price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    PRIMARY KEY (`id`),
+    KEY `return_id` (`return_id`),
+    KEY `variant_id` (`variant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_return_history` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `return_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `status` VARCHAR(16) NOT NULL DEFAULT '',
+    `comment` VARCHAR(255) NOT NULL DEFAULT '',
+    `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `user_name` VARCHAR(255) NOT NULL DEFAULT '',
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `return_id` (`return_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_loyalty_accounts` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `email` VARCHAR(255) NOT NULL DEFAULT '',
+    `user_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `balance` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `total_spent` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `referral_code` VARCHAR(32) NOT NULL DEFAULT '',
+    `referred_by` VARCHAR(32) NOT NULL DEFAULT '',
+    `referral_rewarded` TINYINT(1) NOT NULL DEFAULT 0,
+    `created_at` DATETIME DEFAULT NULL,
+    `updated_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `email` (`email`),
+    UNIQUE KEY `referral_code` (`referral_code`),
+    KEY `user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_loyalty_transactions` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `account_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `delta` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `reason` VARCHAR(64) NOT NULL DEFAULT '',
+    `order_id` INT UNSIGNED NOT NULL DEFAULT 0,
+    `comment` VARCHAR(255) NOT NULL DEFAULT '',
+    `created_at` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `account_id` (`account_id`),
+    KEY `order_id` (`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+$FpsInstallQueries[] = "CREATE TABLE IF NOT EXISTS `{$shopPrefix}shop_rate_limits` (
+    `key_hash` CHAR(40) NOT NULL,
+    `hits` INT UNSIGNED NOT NULL DEFAULT 0,
+    `window_start` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`key_hash`),
+    KEY `window_start` (`window_start`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";

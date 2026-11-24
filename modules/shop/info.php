@@ -11,6 +11,8 @@ $menuInfo = array(
         'shop.php?tab=categories' => 'Категории',
         'shop.php?tab=landings' => 'Посадочные страницы',
         'shop.php?tab=orders' => 'Заказы',
+        'shop.php?tab=loyalty' => 'Лояльность',
+        'shop.php?tab=warehouse' => 'Склад',
         'settings.php?m=shop' => 'Настройки',
         'design.php?m=shop' => 'Дизайн',
     ),
@@ -190,6 +192,45 @@ $settingsInfo = array(
         'value' => '1',
         'checked' => '1',
         'default' => '1',
+    ),
+
+    'Лояльность',
+    'loyalty_enabled' => array(
+        'type' => 'checkbox',
+        'title' => 'Программа лояльности',
+        'description' => 'Бонусы, скидка постоянного клиента и реферальные ссылки на оформлении заказа.',
+        'value' => '1',
+        'default' => '0',
+    ),
+    'loyalty_accrual_percent' => array(
+        'type' => 'text',
+        'title' => 'Начисление бонусов, %',
+        'description' => 'Процент от стоимости товаров заказа. Бонусы начисляются после оплаты или завершения заказа.',
+        'default' => '3',
+    ),
+    'loyalty_max_spend_percent' => array(
+        'type' => 'text',
+        'title' => 'Оплата бонусами, % от заказа',
+        'description' => 'Максимальная доля стоимости товаров, которую можно покрыть бонусами.',
+        'default' => '30',
+    ),
+    'loyalty_welcome_bonus' => array(
+        'type' => 'text',
+        'title' => 'Приветственный бонус',
+        'description' => 'Начисляется при первом оформлении заказа. 0 — не начислять.',
+        'default' => '0',
+    ),
+    'loyalty_referral_bonus' => array(
+        'type' => 'text',
+        'title' => 'Бонус за реферала',
+        'description' => 'Начисляется пригласившему после первого заказа приглашённого. 0 — не начислять.',
+        'default' => '0',
+    ),
+    'loyalty_tiers' => array(
+        'type' => 'textarea',
+        'title' => 'Скидка постоянного клиента',
+        'description' => 'По одной строке: сумма покупок|процент скидки от стоимости товаров. Например: 10000|3',
+        'default' => "10000|3\n50000|5\n100000|7",
     ),
 
     'similar_enabled' => array(
